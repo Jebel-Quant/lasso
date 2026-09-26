@@ -1,0 +1,12 @@
+INHERIT: docs/mkdocs-base.yml
+
+site_name: lasso
+site_description: Lasso and sparse regression tools for quantitative finance.
+site_url: https://jebel-quant.github.io/lasso/
+repo_url: https://github.com/Jebel-Quant/lasso
+repo_name: Jebel-Quant/lasso
+
+nav:
+  - Home: index.md
+  - Development:
+      - Rhiza: development/rhiza.md
