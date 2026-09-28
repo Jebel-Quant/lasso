@@ -1,0 +1,3 @@
+figures/
+# fetched by fetch_sp500.py, not redistributed
+data/sp500_pct_returns.parquet
