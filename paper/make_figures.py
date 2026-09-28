@@ -653,6 +653,7 @@ class RobustRow:
     corner_gap: float  # worst corner against the independent QP at the same tilt
     minvar_gap: float  # closed-form minimum-variance end against the minimum-variance QP
     kkt: float  # worst KKT residual over the corners and the minimum-variance end
+    seconds: float  # Algorithm 1 from (X, y): nu_last, the shifted path and the end
 
 
 def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = ROBUST_SEEDS) -> list[RobustRow]:
@@ -669,7 +670,9 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
             f = factor_data(seed=seed, n_assets=n)
             mu, sigma = f.returns.mean(axis=0), np.diag(f.d) + (f.u * f.delta) @ f.u.T
             x, y = as_regression(mu, sigma)
+            start = time.perf_counter()
             w, tilts, w_minvar = long_only_frontier(x, y, sigma)
+            seconds = time.perf_counter() - start
             corner_gap = max(float(np.abs(tilted(mu, sigma, lam) - w[:, k]).max()) for k, lam in enumerate(tilts))
             minvar_gap = float(np.abs(tilted(mu, sigma, 0.0) - w_minvar).max())
             rows.append(
@@ -681,6 +684,7 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
                     corner_gap,
                     minvar_gap,
                     long_only_kkt(mu, sigma, w, tilts, w_minvar),
+                    seconds,
                 )
             )
     return rows
@@ -1226,7 +1230,7 @@ def print_real_data(rd: RealData) -> None:
 def print_robustness() -> None:
     """Print Table 1 of the note."""
     print("\nrobustness of the long-only recipe (Table 1 of the note):")
-    print("     n  seeds  corners   last corner nu     worst corner   min-variance end   KKT")
+    print("     n  seeds  corners   last corner nu     worst corner   min-variance end   KKT      seconds")
     for n in ROBUST_SIZES:
         rows = robustness(sizes=(n,))
         corners = sorted({r.corners for r in rows})
@@ -1236,6 +1240,7 @@ def print_robustness() -> None:
             f"  {n:4d}  {len(rows):5d}  {span:>7}  {lo:7.2f} to {hi:6.2f}"
             f"    {max(r.corner_gap for r in rows):.1e}        {max(r.minvar_gap for r in rows):.1e}"
             f"      {max(r.kkt for r in rows):.1e}"
+            f"  {np.median([r.seconds for r in rows]):.4f}"
         )
 
 
