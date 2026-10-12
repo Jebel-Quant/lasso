@@ -1,7 +1,8 @@
-# The efficient frontier from a LASSO solver: code and data
+# The efficient frontier from a LASSO solver: source, code and data
 
-Everything needed to reproduce the figures and numbers of the note *The Efficient
-Frontier from a LASSO Solver* (Schmelzer, 2026). The note computes Markowitz efficient
+The LaTeX source of the note *The Efficient Frontier from a LASSO Solver* (Schmelzer,
+2026; [arXiv:2609.37108](https://arxiv.org/abs/2609.37108)), and everything needed to
+reproduce its figures and numbers. The note computes Markowitz efficient
 frontiers with a stock LASSO solver, `lars_path` from scikit-learn, using the identity
 between the Critical Line Algorithm and the LASSO path proved by Schmelzer and Hastie
 ([arXiv:2609.25704](https://arxiv.org/abs/2609.25704)).
@@ -9,6 +10,8 @@ between the Critical Line Algorithm and the LASSO path proved by Schmelzer and H
 ## Contents
 
 ```
+lasso.tex           the note
+Makefile            builds lasso.pdf from lasso.tex (make figures first)
 make_figures.py     every figure and number in the note, and the checks as pytest tests
 fetch_sp500.py      downloads the S&P 500 returns of the real-data example
 data/test_problem/  the 20-asset test problem and its long-short path, as CSV
@@ -27,6 +30,7 @@ uv run make_figures.py          # write figures/*.pdf and print every number the
 uv run make_figures.py test     # the same numbers as pytest checks, with tolerances
 uv run make_figures.py export   # rewrite data/test_problem/ for the R check
 Rscript R/long_short.R          # needs the lars package: install.packages("lars")
+make pdf                        # build lasso.pdf from lasso.tex and figures/ (pdflatex)
 ```
 
 Without the stock data, `make_figures.py` skips the real-data example and its test and
