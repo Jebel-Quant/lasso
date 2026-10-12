@@ -29,4 +29,6 @@ make -C preprints/lasso pdf    # build one
 ```
 
 Every pull request into `main` builds all the preprints. When it is merged, the PDFs are
-published as the only files on the [`paper`](../../tree/paper) branch.
+published on the [`paper`](../../tree/paper) branch, with an `index.html` that links each
+one by its title. GitHub Pages serves that branch at
+<https://jebel-quant.github.io/lasso/>.
