@@ -26,7 +26,16 @@ Homepage = "https://github.com/jebel-quant/lasso"
 Repository = "https://github.com/jebel-quant/lasso"
 
 [dependency-groups]
+dev = [
+    "marimo>=0.25.0",  # docs/notebooks/ (deptry reads these, not the PEP 723 header)
+    "matplotlib>=3.11.0",
+    "numpy>=2.4.6",
+    "scikit-learn>=1.9.0",
+]
 test = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[tool.deptry.package_module_name_map]
+scikit-learn = "sklearn"
 
 [tool.bumpversion]
 current_version = "0.1.0"
