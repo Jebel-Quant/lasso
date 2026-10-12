@@ -30,14 +30,16 @@ jobs:
         with:
           ref: ${{ env.SHA }}
 
-      # The TeX packages' install scripts build the pdflatex format, which is not a
-      # packaged file, so they have to run again when the packages come from the cache.
       - name: Install TeX Live
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
           packages: texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended lmodern
           version: 1
-          execute_install_scripts: true
+
+      # The file database, font maps and pdflatex format are generated at install time,
+      # not packaged, so a restore from the cache leaves them out. Rebuild them.
+      - name: Rebuild TeX's generated files
+        run: sudo mktexlsr && sudo updmap-sys && sudo fmtutil-sys --byfmt pdflatex
 
       # make_figures.py spends minutes computing the note's numbers before it draws, so
       # reuse the figures until the script or its data change.
