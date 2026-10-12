@@ -1,7 +1,7 @@
 # lasso
 
-Preprints on computing efficient frontiers with a LASSO solver, each with its LaTeX
-source and the code and data behind it.
+Preprints on the identity between Markowitz's Critical Line Algorithm and the LASSO
+path, each with its LaTeX source and the code and data behind it.
 
 ## Preprints
 
@@ -9,6 +9,11 @@ source and the code and data behind it.
   ([arXiv:2609.37108](https://arxiv.org/abs/2609.37108)): one script that reproduces
   every figure and number, a script that fetches the S&P 500 returns it uses, and an R
   check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
+- [`preprints/constrained_lasso/`](preprints/constrained_lasso) — *The Constrained LASSO
+  by the Critical Line Algorithm*: the identity run the other way, computing
+  constrained-LASSO paths with an unmodified CLA, and one script that reproduces every
+  figure and number. See
+  [`preprints/constrained_lasso/README.md`](preprints/constrained_lasso/README.md).
 
 ## Layout
 
