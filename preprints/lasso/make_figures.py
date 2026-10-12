@@ -694,7 +694,7 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
 # Real data -- the S&P 500 sample of ../cla, through the centred-returns route
 # --------------------------------------------------------------------------------------
 # The frozen S&P 500 snapshot: next to this script in the public repository
-# (github.com/Jebel-Quant/lasso, under paper/), or in the CLA paper's directory of the working repository.
+# (github.com/Jebel-Quant/lasso, under preprints/lasso/), or in the CLA paper's directory of the working repository.
 _HERE = Path(__file__).parent
 SNAPSHOT_SHA256 = "b5faa5222555f28d77bad5404565297bb25bbe92b0b813f416cd2bebac79937e"
 SP500 = next(
