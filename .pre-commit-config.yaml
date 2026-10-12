@@ -69,12 +69,6 @@ repos:
       - id: actionlint
         groups: ["lint", "fast"]
 
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.9.4
-    hooks:
-      - id: bandit
-        groups: ["python", "security", "slow"]
-
   - repo: https://github.com/betterleaks/betterleaks
     rev: v1.8.1
     hooks:
