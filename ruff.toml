@@ -13,15 +13,3 @@ ignore = [
 
 [lint.pydocstyle]
 convention = "google"
-
-# marimo notebooks
-[lint.per-file-ignores]
-"**/notebooks/*.py" = [
-    "ANN",     # interactive cells, not annotated functions
-    "D100",    # marimo requires `import marimo` as the first statement
-    "N803",
-    "S101",
-    "B018",
-    "RUF001",
-    "RUF002",
-]
