@@ -1,6 +1,6 @@
 # The rules for every preprint. Each folder here holds one preprint, and its Makefile
-# includes this one. Run here, a target runs in every preprint: `make pdf` builds them
-# all, `make -C lasso pdf` just one.
+# includes this one. Run here, a target runs in every preprint in parallel: `make pdf`
+# builds them all, `make -C lasso pdf` just one.
 #
 # A preprint's main source is the one .tex file in its folder with a \documentclass; the
 # PDF takes its name. A make_figures.py, if present, draws the figures into figures/;
@@ -16,11 +16,18 @@ MAIN := $(basename $(shell grep -l '^[[:space:]]*\\documentclass' *.tex 2>/dev/n
 
 ifeq ($(MAIN),)
 
-# No main source here, so this is preprints/ itself.
+# No main source here, so this is preprints/ itself. A target runs in every preprint at
+# once, one job each; `lasso/pdf` and the like run it in just one.
 PREPRINTS := $(patsubst %/Makefile,%,$(wildcard */Makefile))
+JOBS      := $(foreach target,$(TARGETS),$(addsuffix /$(target),$(PREPRINTS)))
+
+.PHONY: $(JOBS)
 
 $(TARGETS):
-	@for dir in $(PREPRINTS); do $(MAKE) -C $$dir $@ || exit 1; done
+	@$(MAKE) -j$(words $(PREPRINTS)) $(addsuffix /$@,$(PREPRINTS))
+
+$(JOBS):
+	@$(MAKE) -C $(@D) $(@F)
 
 else
 
