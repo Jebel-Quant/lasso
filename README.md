@@ -13,9 +13,10 @@ source and the code and data behind it.
 ## Layout
 
 Each folder in `preprints/` holds one preprint: a single `.tex` file with a
-`\documentclass`, a `Makefile` with `pdf`, `figures`, `test` and `clean` targets, and the
-Python behind its experiments. A `make_figures.py`, if present, writes the figures to
-`figures/`.
+`\documentclass`, the Python behind its experiments, and a `Makefile` that is just
+`include ../Makefile`. The rules (`pdf`, `figures`, `test`, `clean`) live in
+[`preprints/Makefile`](preprints/Makefile). A `make_figures.py`, if present, writes the
+figures to `figures/`.
 
 ```sh
 make -C preprints pdf          # build every preprint
