@@ -7,13 +7,14 @@ name: compile
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: compile
+  group: compile-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -53,6 +54,7 @@ jobs:
           done
 
       - name: Publish to the paper branch
+        if: github.event_name != 'pull_request'
         working-directory: paper
         run: |
           out=$(mktemp -d)
