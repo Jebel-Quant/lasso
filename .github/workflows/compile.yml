@@ -1,5 +1,6 @@
 # Build every preprint under preprints/ on each pull request into main, and when one is
-# merged, publish the PDFs as the only files on the `paper` branch.
+# merged, publish the PDFs on the `paper` branch with an index.html that links them.
+# GitHub Pages serves that branch.
 #
 # Each folder in preprints/ holds one preprint. Its main source is the one .tex file there
 # with a \documentclass, and the PDF takes that file's name. A make_figures.py next to it,
@@ -145,12 +146,55 @@ jobs:
           merge-multiple: true
           path: pdfs
 
+      # Only for the titles, which the index takes from each preprint's \title.
+      - uses: actions/checkout@v6.1.0
+        with:
+          ref: ${{ env.SHA }}
+          path: src
+          sparse-checkout: preprints
+
+      # One link per PDF, labelled with the main title: the \title text up to its first
+      # \\ or closing brace, so a subtitle set on a second line is left out.
+      - name: Write the index page
+        working-directory: pdfs
+        run: |
+          {
+            cat <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Preprints</title>
+          <style>
+            body { font: 17px/1.6 Georgia, serif; max-width: 38rem; margin: 4rem auto; padding: 0 1rem; color: #222; }
+            a { color: #1a4f8b; }
+            footer { margin-top: 3rem; font-size: 14px; color: #777; }
+            footer a { color: inherit; }
+          </style>
+          <h1>Preprints</h1>
+          <ul>
+          HTML
+            for pdf in *.pdf; do
+              job=${pdf%.pdf}
+              title=$(sed -n 's/^\\title{\([^\\}]*\).*/\1/p' ../src/preprints/*/"$job".tex | head -n 1)
+              title=${title//--/–}
+              title=${title//&/&amp;}; title=${title//</&lt;}; title=${title//>/&gt;}
+              echo "  <li><a href=\"$pdf\">${title:-$job}</a></li>"
+            done
+            cat <<HTML
+          </ul>
+          <footer>Built from <a href="https://github.com/$GITHUB_REPOSITORY/commit/$SHA">${SHA::7}</a> of <a href="https://github.com/$GITHUB_REPOSITORY">$GITHUB_REPOSITORY</a> on $(LC_ALL=C date -u '+%-d %b %Y').</footer>
+          </html>
+          HTML
+          } > index.html
+          touch .nojekyll
+
       - name: Publish to the paper branch
         working-directory: pdfs
         run: |
           git init -q -b paper
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add *.pdf
+          git add *.pdf index.html .nojekyll
           git commit -q -m "preprints from ${SHA::7}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" paper
