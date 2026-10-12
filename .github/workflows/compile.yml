@@ -1,6 +1,9 @@
-# Build the paper in paper/ on every pull request into main, and when one is merged,
-# publish its PDF as the only file on the `paper` branch. The main source is whichever
-# .tex file in paper/ has a \documentclass; the PDF takes its name.
+# Build every preprint under preprints/ on each pull request into main, and when one is
+# merged, publish the PDFs as the only files on the `paper` branch.
+#
+# Each folder in preprints/ holds one preprint. Its main source is the one .tex file there
+# with a \documentclass, and the PDF takes that file's name. A make_figures.py next to it,
+# if present, draws the figures into figures/ before the build.
 #
 # The first page carries an arXiv-style stamp in its left margin: build date, repository
 # and short commit hash. It is injected at build time, so the source itself stays clean.
@@ -18,29 +21,66 @@ concurrency:
   group: compile-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  # The merge commit on main once merged, the PR head before that.
+  SHA: ${{ github.event.pull_request.merged && github.event.pull_request.merge_commit_sha || github.event.pull_request.head.sha }}
+
 jobs:
-  compile:
+  # One matrix entry per preprint: its folder and the stem of its main .tex file.
+  discover:
     # A PR closed without merging has nothing to build.
     if: github.event.action != 'closed' || github.event.pull_request.merged
     runs-on: ubuntu-latest
-    env:
-      # The merge commit on main once merged, the PR head before that.
-      SHA: ${{ github.event.pull_request.merged && github.event.pull_request.merge_commit_sha || github.event.pull_request.head.sha }}
+    outputs:
+      preprints: ${{ steps.find.outputs.preprints }}
     steps:
       - uses: actions/checkout@v6.1.0
         with:
           ref: ${{ env.SHA }}
 
-      # Exactly one .tex file in paper/ may declare a \documentclass; its stem names the job.
-      - name: Find the main source
-        working-directory: paper
+      - name: Find the preprints
+        id: find
         run: |
-          mains=($(grep -l '^[[:space:]]*\\documentclass' -- *.tex))
-          if [ "${#mains[@]}" -ne 1 ]; then
-            echo "::error::expected one .tex file with a \\documentclass in paper/, found ${#mains[@]}: ${mains[*]}"
+          shopt -s nullglob
+          entries=()
+          for dir in preprints/*/; do
+            dir=${dir%/}
+            mains=($(grep -l '^[[:space:]]*\\documentclass' -- "$dir"/*.tex))
+            if [ "${#mains[@]}" -ne 1 ]; then
+              echo "::error::expected one .tex file with a \\documentclass in $dir, found ${#mains[@]}: ${mains[*]}"
+              exit 1
+            fi
+            main=${mains[0]##*/}
+            entries+=("$(jq -nc --arg dir "$dir" --arg job "${main%.tex}" '{dir: $dir, job: $job}')")
+          done
+          if [ "${#entries[@]}" -eq 0 ]; then
+            echo "::error::no preprints under preprints/"
             exit 1
           fi
-          echo "JOB=${mains[0]%.tex}" >> "$GITHUB_ENV"
+          preprints=$(printf '%s\n' "${entries[@]}" | jq -sc .)
+          # The PDFs share one branch, so two preprints cannot share a name.
+          dupes=$(jq -r 'group_by(.job) | map(select(length > 1) | .[0].job) | join(", ")' <<< "$preprints")
+          if [ -n "$dupes" ]; then
+            echo "::error::more than one preprint builds $dupes.pdf"
+            exit 1
+          fi
+          echo "preprints=$preprints" >> "$GITHUB_OUTPUT"
+
+  compile:
+    needs: discover
+    name: compile (${{ matrix.job }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.preprints) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v6.1.0
+        with:
+          ref: ${{ env.SHA }}
 
       - name: Install TeX Live
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
@@ -53,26 +93,26 @@ jobs:
       - name: Rebuild TeX's generated files
         run: sudo mktexlsr && sudo updmap-sys && sudo fmtutil-sys --byfmt pdflatex
 
-      # make_figures.py spends minutes computing the note's numbers before it draws, so
-      # reuse the figures until the script or its data change.
+      # make_figures.py can spend minutes computing a note's numbers before it draws, so
+      # reuse the figures until the preprint's Python or its data change.
       - name: Restore the figures
         id: figures
+        if: hashFiles(format('{0}/make_figures.py', matrix.dir)) != ''
         uses: actions/cache@v6.1.0
         with:
-          path: paper/figures
-          key: figures-${{ hashFiles('paper/make_figures.py', 'paper/data/**') }}
+          path: ${{ matrix.dir }}/figures
+          key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/data/**', matrix.dir)) }}
 
       - uses: astral-sh/setup-uv@v7.6.0
-        if: steps.figures.outputs.cache-hit != 'true'
+        if: steps.figures.outcome == 'success' && steps.figures.outputs.cache-hit != 'true'
 
       - name: Draw the figures
-        if: steps.figures.outputs.cache-hit != 'true'
-        working-directory: paper
+        if: steps.figures.outcome == 'success' && steps.figures.outputs.cache-hit != 'true'
         run: uv run make_figures.py
 
       - name: Compile with the stamp
-        working-directory: paper
         env:
+          JOB: ${{ matrix.job }}
           STAMP: ${{ github.repository }}
         run: |
           date=$(LC_ALL=C date -u '+%-d %b %Y')
@@ -87,16 +127,30 @@ jobs:
             pdflatex -interaction=nonstopmode -halt-on-error -jobname="$JOB" "\\input{stamp}\\input{$JOB}"
           done
 
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pdf-${{ matrix.job }}
+          path: ${{ matrix.dir }}/${{ matrix.job }}.pdf
+          if-no-files-found: error
+
+  # One push with every PDF, so the matrix jobs never race for the branch.
+  publish:
+    needs: compile
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: pdf-*
+          merge-multiple: true
+          path: pdfs
+
       - name: Publish to the paper branch
-        if: github.event.pull_request.merged
-        working-directory: paper
+        working-directory: pdfs
         run: |
-          out=$(mktemp -d)
-          cp "$JOB.pdf" "$out/"
-          cd "$out"
           git init -q -b paper
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$JOB.pdf"
-          git commit -q -m "$JOB.pdf from ${SHA::7}"
+          git add *.pdf
+          git commit -q -m "preprints from ${SHA::7}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" paper

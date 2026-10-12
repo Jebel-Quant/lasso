@@ -1,7 +1,7 @@
 # The long-short frontier of Section 5, traced by R's lars package.
 #
 # Runs the snippet of the note on the test problem and checks it against the path
-# scikit-learn's lars_path returns. Run from paper/:
+# scikit-learn's lars_path returns. Run from preprints/lasso/:
 #
 #     Rscript R/long_short.R
 #
