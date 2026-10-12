@@ -1,0 +1,12 @@
+# Shared by every preprint; a preprint's own .gitignore adds what is particular to it.
+
+# drawn by make_figures.py
+figures/
+
+# LaTeX build output: each preprint's PDF, and the stamp CI injects
+/*/*.pdf
+/*/stamp.tex
+*.aux
+*.log
+*.out
+*.toc
