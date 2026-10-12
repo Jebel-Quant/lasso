@@ -1,0 +1,66 @@
+# Build paper/lasso.pdf and publish it as the only file on the `paper` branch.
+#
+# The first page carries an arXiv-style stamp in its left margin: build date, repository
+# and short commit hash. It is injected at build time, so lasso.tex itself stays clean.
+name: compile
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: compile
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: astral-sh/setup-uv@v7.6.0
+
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+            texlive-fonts-recommended lmodern
+
+      - name: Draw the figures
+        working-directory: paper
+        run: uv run make_figures.py
+
+      - name: Compile with the stamp
+        working-directory: paper
+        env:
+          STAMP: ${{ github.repository }}
+        run: |
+          date=$(LC_ALL=C date -u '+%-d %b %Y')
+          sha=${GITHUB_SHA::7}
+          cat > stamp.tex <<EOF
+          \AddToHookNext{shipout/foreground}{%
+            \put(0.6in,-0.5\paperheight){\rotatebox{90}{\makebox[0pt][c]{%
+              \fontsize{16}{16}\selectfont\sffamily\color{black!45}%
+              ${date}\qquad\detokenize{${STAMP}}\qquad\texttt{${sha}}}}}}
+          EOF
+          for _ in 1 2 3; do
+            pdflatex -interaction=nonstopmode -halt-on-error -jobname=lasso '\input{stamp}\input{lasso}'
+          done
+
+      - name: Publish to the paper branch
+        working-directory: paper
+        run: |
+          out=$(mktemp -d)
+          cp lasso.pdf "$out/"
+          cd "$out"
+          git init -q -b paper
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lasso.pdf
+          git commit -q -m "lasso.pdf from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" paper
