@@ -1,18 +1,18 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
-#     "cvxcla==2.0.1",
-#     "cvxpy==1.9.2",
-#     "matplotlib==3.11.0",
-#     "numpy==2.4.6",
+#     "cvxcla==2.3.4",
+#     "cvxpy==1.9.3",
+#     "matplotlib==3.11.2",
+#     "numpy==2.5.4",
 #     "osqp==1.1.3",
-#     "pandas==3.0.3",
-#     "pyarrow==24.0.0",
-#     "pytest==8.4.2",
-#     "qpsolvers==4.12.0",
+#     "pandas==3.0.6",
+#     "pyarrow==26.0.0",
+#     "pytest==9.1.1",
+#     "qpsolvers==4.13.0",
 #     "quadprog==0.1.13",
-#     "scikit-learn==1.9.0",
-#     "scipy==1.17.1",
+#     "scikit-learn==1.9.1",
+#     "scipy==1.18.1",
 # ]
 # ///
 # The pytest tests live in this script, so assert is the test idiom here too.

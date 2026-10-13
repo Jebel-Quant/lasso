@@ -1,12 +1,12 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
-#     "cvxpy==1.9.2",
-#     "matplotlib==3.11.0",
-#     "numpy==2.4.6",
-#     "pytest==8.4.2",
-#     "scikit-learn==1.9.0",
-#     "scipy==1.17.1",
+#     "cvxpy==1.9.3",
+#     "matplotlib==3.11.2",
+#     "numpy==2.5.4",
+#     "pytest==9.1.1",
+#     "scikit-learn==1.9.1",
+#     "scipy==1.18.1",
 # ]
 # ///
 # The pytest tests live in this script, so assert is the test idiom here too.
