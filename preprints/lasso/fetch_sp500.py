@@ -1,9 +1,9 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
 #     "lxml==6.1.3",
-#     "pandas==3.0.3",
-#     "pyarrow==24.0.0",
+#     "pandas==3.0.6",
+#     "pyarrow==26.0.0",
 #     "requests==2.34.2",
 #     "yfinance==1.7.0",
 # ]
