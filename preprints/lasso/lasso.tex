@@ -533,7 +533,8 @@ Section~\ref{sec:longshort} is \texttt{R/long\_short.R}, with a check against
 The lockfile fixes the software, not the hardware. Residuals and gaps near $10^{-13}$ come
 out with different last digits on another CPU or BLAS build, so a rerun will not match
 the printed values digit for digit. The tests therefore check them against tolerances
-between $10^{-12}$ and $10^{-9}$. Costs are given only as ratios, which carry over between
+between $10^{-12}$ and $10^{-9}$ on the note's data, and up to $10^{-8}$ on fresh downloads.
+Costs are given only as ratios, which carry over between
 machines; \texttt{uv run python/make\_figures.py timings} measures them.
 
 The test problem and the factor models of Table~\ref{tab:robust} are simulated inside
@@ -548,9 +549,9 @@ Section~\ref{sec:evidence} come from Yahoo Finance and are not redistributed.
 adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than
 5\% of days missing. The note used the snapshot with SHA-256 \texttt{b5faa522\ldots9937e}.
 A later download differs slightly, because the constituents change and Yahoo revises
-adjusted prices. On one, from October 2026, the path's KKT residuals stay below
-$4\times10^{-12}$, but the QP baseline drifts to $3.4\times10^{-10}$ at one corner, so the
-tests allow $10^{-9}$ for that gap on any download other than the note's snapshot.
+adjusted prices. On two from October 2026 the path's KKT residuals stay below
+$4\times10^{-12}$, but the QP baseline drifts by up to $9\times10^{-10}$ at some corners, so
+the tests allow $10^{-8}$ for that gap on any download other than the note's snapshot.
 
 \section*{Acknowledgements}
 
