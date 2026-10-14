@@ -424,25 +424,25 @@ and re-enter.
 \begin{table}[t]
 \centering
 \small\setlength{\tabcolsep}{4.5pt}
-\begin{tabular}{rccccccr}
+\begin{tabular}{rcccccc}
 \toprule
 $n$ & seeds & corners & $\nu_{\mathrm{last}}$ & KKT residual & worst corner
-& min.-variance end & time (ms)\\
+& min.-variance end\\
 \midrule
 20 & 3 & 19 & $-0.57$ to $0.12$ & $1.1\times10^{-14}$ & $8.6\times10^{-14}$
-& $2.4\times10^{-16}$ & $0.8$\\
+& $2.4\times10^{-16}$\\
 50 & 3 & 49 & $-11.9$ to $-0.74$ & $1.0\times10^{-13}$ & $1.5\times10^{-13}$
-& $1.7\times10^{-16}$ & $2.5$\\
+& $1.7\times10^{-16}$\\
 100 & 3 & 99--103 & $-0.56$ to $-0.38$ & $2.5\times10^{-14}$ & $1.1\times10^{-11}$
-& $3.3\times10^{-16}$ & $7.7$\\
+& $3.3\times10^{-16}$\\
 500 & 3 & 503 & $-0.45$ to $-0.26$ & $2.1\times10^{-13}$ & $6.7\times10^{-11}$
-& $4.3\times10^{-16}$ & $239$\\
+& $4.3\times10^{-16}$\\
 \bottomrule
 \end{tabular}
 \caption{Algorithm~1 on five-factor models, three seeds each: the worst KKT residual over
 the corners and the minimum-variance end, the largest $\ell_\infty$ weight discrepancy
-against an independent active-set QP at the same tilt, and the median time of one run of
-Algorithm~1, $\nu_{\mathrm{last}}$ included, on a laptop.}
+against an independent active-set QP at the same tilt, and the same discrepancy at the
+minimum-variance end.}
 \label{tab:robust}
 \end{table}
 
@@ -461,20 +461,25 @@ only 12 times and a grid of QPs is cheap here. The stock data test the method at
 \emph{Real returns at scale.} On daily returns of 494 S\&P~500 stocks over 1213 days (July 2021
 to May 2026, from Yahoo Finance; the script that fetches them is published with the code), with the centred returns as $X$, the last corner sits at
 $\nu_{\mathrm{last}}=-0.178$, about fifty times $\max_j|\mu_j|$ below zero. Algorithm~1
-returns all 94 corners in $0.14$ seconds, while one QP takes about $0.12$ seconds, so a
-100-point grid costs about 12 seconds and still misses the corners. Warm-starting
+returns all 94 corners in the time of one to three QP solves, so a 100-point grid of QPs
+costs tens of times as much as the path and still misses the corners. Warm-starting
 helps less than one might hope: OSQP \cite{stellato2020}, set up once so that its
 factorisation is reused, with each tilt changing only the linear term and each solve
-starting from the last, takes 4.9 seconds for the same grid at tolerance $10^{-6}$ and
-agrees with the cold QP to $4.1\times10^{-13}$ at every grid point. At $10^{-5}$ it takes
-3.4 seconds but misses some points by $10^{-3}$. Every corner has a KKT
-residual below $3.7\times10^{-13}$ and matches its QP to $5.4\times10^{-13}$, and the
-minimum-variance portfolio, which holds 53 stocks, matches to $1.2\times10^{-15}$. The timings come from a laptop.
+starting from the last, needs a third to a half of the cold grid's time at tolerance
+$10^{-6}$ and agrees with the cold QP to $4.1\times10^{-13}$ at every grid point. At
+$10^{-5}$ it is faster still but misses some points by $10^{-3}$. These ratios held on
+both machines the note was run on; absolute times depend on the machine and are not
+reported. Every
+corner has a KKT residual below $3.7\times10^{-13}$ and matches its QP to
+$5.4\times10^{-13}$, and the minimum-variance portfolio, which holds 53 stocks, matches
+to $1.2\times10^{-15}$.
 
 \section{When to use it}
 \label{sec:scope}
 
-The path beats a grid of QP solves, cold- or warm-started, on both speed and accuracy. LARS is in R
+The path beats a grid of QP solves, cold- or warm-started, on accuracy, since it finds
+the corners exactly. On speed it wins at scale, on the S\&P~500 stocks; on a problem as
+small as the Fama--French portfolios a grid of QPs costs about as much as the path. LARS is in R
 and \texttt{scikit-learn}, the positive LASSO only in \texttt{scikit-learn}, so corner
 portfolios need no portfolio software, and one call
 shows that the knots of a LASSO path and the turning points of a frontier are the same
@@ -519,10 +524,10 @@ Section~\ref{sec:longshort} is \texttt{R/long\_short.R}, with a check against
 \texttt{lars\_path}.
 
 The lockfile fixes the software, not the hardware. Residuals and gaps near $10^{-13}$ come
-out with different last digits on another CPU or BLAS build, and the timings scale with
-the machine, so a rerun will not match the printed values digit for digit. The tests
-therefore check the residuals and gaps against tolerances between $10^{-12}$ and
-$10^{-9}$, and leave the timings unchecked.
+out with different last digits on another CPU or BLAS build, so a rerun will not match
+the printed values digit for digit. The tests therefore check them against tolerances
+between $10^{-12}$ and $10^{-9}$. Costs are given only as ratios, which carry over between
+machines; \texttt{uv run python/make\_figures.py timings} measures them.
 
 The test problem and the factor models of Table~\ref{tab:robust} are simulated inside
 the script from fixed seeds, so they need no data. The portfolio returns of
