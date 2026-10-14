@@ -55,8 +55,8 @@ appetite, and the classical long-only, fully invested frontier. Every corner the
 returns meets its own optimality conditions to about $10^{-13}$ and agrees with
 independent quadratic-programming solvers, on factor models of up to 500 assets, on the
 Fama--French size and book-to-market portfolios, and on daily returns of 494
-S\&P~500 stocks. Called naively, the long-only path stops at the maximum-Sharpe
-portfolio. One shift of the response, by an amount computed in advance, lets a single
+S\&P~500 stocks. A plain call stops the long-only path at the maximum-Sharpe
+portfolio; shifting the response once, by an amount computed in advance, lets a single
 call reach the minimum-variance portfolio. The script, its checks, scripts that fetch
 the data, and an R cross-check are published, with a locked environment, so that anyone
 can repeat them.
@@ -64,7 +64,7 @@ can repeat them.
 
 \section{Introduction}
 
-As the trade-off between expected return and variance moves, the optimal portfolio moves
+As the trade-off between expected return and variance changes, the optimal portfolio moves
 along straight lines and changes direction only at finitely many \emph{corner
 portfolios}, where an asset enters or leaves. Markowitz's Critical Line Algorithm (CLA)
 \cite{markowitz1956} walks from one corner to the next. The LASSO \cite{tibshirani1996}
@@ -115,11 +115,11 @@ is an approximation.
 \section{The test problem}
 \label{sec:test}
 
-We use the seeded 20-asset example of Figure~1 in \cite{perspective}: a five-factor
+The test problem is the seeded 20-asset example of Figure~1 in \cite{perspective}: a five-factor
 covariance $\Sig=\operatorname{diag}(d)+U\operatorname{diag}(\delta)U\trans$, and $\mu$
 the sample mean of 50 days of returns simulated from it. Its units are arbitrary and
 its expected returns large against its risk, so Sharpe ratios reach $2.1$ per period, far
-above anything real assets offer. It serves to illustrate; Section~\ref{sec:evidence}
+above anything real assets offer. It is for illustration only; Section~\ref{sec:evidence}
 adds real returns. The companion script
 \texttt{python/make\_figures.py} regenerates every figure and number in the note, and its tests
 check each against a tolerance. The statement on
@@ -148,8 +148,8 @@ w = np.linalg.lstsq(X, y)[0]               # unconstrained optimum Sigma^{-1} mu
 The last line solves the normal equations $X\trans Xw=X\trans y$, which are $\Sig w=\mu$.
 With constraints, the optimality conditions become normal equations restricted to the
 assets held, a linear system in the trade-off parameter. The weights stay linear until
-the holdings change, and those changes are the corners. This is a change of variables,
-not a statistical model: $X$ has one row per asset, and nobody measured $y$
+the holdings change, and those changes are the corners. The substitution is a change of
+variables, not a statistical model: $X$ has one row per asset, and $y$ is not data
 \cite[\S4]{perspective}.
 
 Only $X\trans X$ and $X\trans y$ matter, so any square root of $\Sig$ will do. If $\Sig$
@@ -169,8 +169,9 @@ Cholesky path to rounding.
 \caption{Both frontiers of the test problem, computed with a LASSO solver.
 \emph{(a)} Long--short under a gross-exposure cap. \emph{(b)} Long-only, fully invested:
 blue corners come from a plain call, red squares are the two it misses
-(Section~\ref{sec:longonly}). Marked are the highest-return (triangle), maximum-Sharpe
-(diamond) and minimum-variance (star) portfolios; the inset magnifies the low-risk end.}
+(Section~\ref{sec:longonly}). A triangle marks the highest-return portfolio, a diamond
+the maximum-Sharpe and a star the minimum-variance portfolio; the inset magnifies the
+low-risk end.}
 \label{fig:frontier}
 \end{figure}
 
@@ -225,7 +226,7 @@ second-order approximation to expected log growth, so it is the Kelly portfolio
 \cite{kelly1956}. Since $\Sig^{-1}\mu$ also maximises the scale-free Sharpe ratio, it
 points towards the maximum-Sharpe portfolio. On the test problem the Sharpe ratio rises
 from corner to corner, from $0.539$ at the first to $\sqrt{\mu\trans\Sig^{-1}\mu}=2.120$ at
-the end; we have not shown that it must. Neither end is the minimum-variance
+the end, although nothing shown here says it must. Neither end is the minimum-variance
 portfolio, which needs the budget $\mathbf 1\trans w=1$ that \eqref{eq:mark} lacks.
 
 \section{Fixed leverage, varying risk appetite}
@@ -244,7 +245,7 @@ W, tilts = B[:, 1:] * (c / t), c / t    # the same portfolios at leverage c
 
 \noindent
 At $c=2$ the columns cover tilts from $745.6$ down to $0.2576$. Below that the cap is
-slack and the solution $\lambda\Sig^{-1}\mu$ shrinks to zero, so nothing is missing.
+slack and the solution $\lambda\Sig^{-1}\mu$ shrinks to zero, so the path covers every tilt.
 
 \section{Long only, fully invested}
 \label{sec:longonly}
@@ -284,9 +285,10 @@ Section~\ref{sec:longshort} with long-only weights. Writing $v=sw$ with
 $\mathbf 1\trans w=1$ and maximising over the scale $s\ge0$ first leaves
 $\frac12(\mu\trans w)^2/w\trans\Sig w$, half the squared Sharpe ratio, so
 $v_0/\mathbf 1\trans v_0$ is the long-only maximum-Sharpe portfolio, at tilt $0.1414$.
-The frontier goes on, though: the budget still binds while $\nu$ turns negative
+The frontier continues beyond it: the budget still binds while $\nu$ turns negative
 (Figure~\ref{fig:multiplier}), which a constraint allows and a penalty does not
-\cite[\S3.4]{perspective}. The stop comes from the penalised form that LASSO solvers use, not from the problem.
+\cite[\S3.4]{perspective}. The stop is a property of the penalised form that LASSO
+solvers use.
 
 \paragraph{The shift.} Completing the square once more moves the penalty into the
 response:
@@ -331,7 +333,7 @@ nu0 = nu_last - max(abs(nu_last), np.abs(mu).max())
 \end{lstlisting}
 
 \noindent
-No fixed value would be safe. $\nu_{\mathrm{last}}$ is $-4.95$ on the test problem,
+A fixed $\nu_0$ would not work, because $\nu_{\mathrm{last}}$ varies widely: it is $-4.95$ on the test problem,
 $-11.9$ on one of the models of Table~\ref{tab:robust}, $-0.178$ on the stock data and
 $-0.0118$ on the portfolio data of Section~\ref{sec:evidence}, where $\mu$ is small. The margin $\delta$ in $\nu_0=\nu_{\mathrm{last}}-\delta
 \max(|\nu_{\mathrm{last}}|,\|\mu\|_\infty)$ has to be large enough that the end of the
@@ -346,7 +348,7 @@ final segment it is $w_S\propto\Sig_{SS}^{-1}\mathbf 1$.
 \paragraph{What $\nu$ means.} By \eqref{eq:shift} the point with multiplier $\nu$ solves
 the same problem with $\mu$ replaced by $\mu-\nu\mathbf 1$, so it is the long-only
 maximum-Sharpe portfolio at risk-free rate $r=\nu$, Black's zero-beta rate
-\cite{black1972}. That is classical. The LASSO view adds that the rate is the path's own
+\cite{black1972}, a classical result. What the LASSO adds is that the rate is the path's own
 parameter, so for $\nu_0<r<\max_j\mu_j$ the maximum-Sharpe portfolio is an interpolation
 between the two columns that bracket $r$:
 
@@ -364,7 +366,7 @@ w_r /= w_r.sum()                                 # max-Sharpe portfolio at r
 $\lambda$ (or, in Section~\ref{sec:longshort}, in the cap $c$) and the variance is
 quadratic, so each piece of the frontier is an arc.
 Traced by the tilt $\lambda$ at fixed constraints (Sections~\ref{sec:leverage}
-and~\ref{sec:longonly}) it has no kinks either, since its slope
+and~\ref{sec:longonly}), the frontier has no kinks, since its slope
 $\mathrm dE/\mathrm dV=1/(2\lambda)$ varies continuously. The corners then show only in
 the weights (Figure~\ref{fig:weights-lo}). The long--short path of
 Section~\ref{sec:longshort} is traced by the cap instead and does kink
@@ -446,7 +448,7 @@ minimum-variance end.}
 \label{tab:robust}
 \end{table}
 
-\emph{Real returns, a public source.} The daily value-weighted returns of the 100
+\emph{Portfolio returns.} The daily value-weighted returns of the 100
 portfolios that Fama and French form on size and book-to-market \cite{french}, from
 January 2016 to December 2025, are free to download from their Data Library, and a
 script published with the code fetches them. One portfolio misses 250
@@ -456,20 +458,20 @@ $\max_j|\mu_j|$ below zero. Algorithm~1 returns all 12 corners. They match the Q
 $2.1\times10^{-13}$ and have KKT residuals below $3.9\times10^{-14}$, and the
 minimum-variance portfolio, which holds 7 of the portfolios, matches to
 $1.6\times10^{-15}$. Diversified portfolios are highly correlated, so the frontier turns
-only 12 times and a grid of QPs is cheap here. The stock data test the method at scale.
+only 12 times and a grid of QPs is cheap here.
 
-\emph{Real returns at scale.} On daily returns of 494 S\&P~500 stocks over 1213 days (July 2021
-to May 2026, from Yahoo Finance; the script that fetches them is published with the code), with the centred returns as $X$, the last corner sits at
+\emph{Stock returns.} The second data set tests the method at scale: daily returns of 494
+S\&P~500 stocks over 1213 days, from July 2021 to May 2026, taken from Yahoo Finance by
+a published script. With the centred returns as $X$ the last corner sits at
 $\nu_{\mathrm{last}}=-0.178$, about fifty times $\max_j|\mu_j|$ below zero. Algorithm~1
 returns all 94 corners in the time of one to three QP solves, so a 100-point grid of QPs
 costs tens of times as much as the path and still misses the corners. Warm-starting
-helps less than one might hope: OSQP \cite{stellato2020}, set up once so that its
+narrows the gap without closing it: OSQP \cite{stellato2020}, set up once so that its
 factorisation is reused, with each tilt changing only the linear term and each solve
 starting from the last, needs a third to a half of the cold grid's time at tolerance
 $10^{-6}$ and agrees with the cold QP to $4.1\times10^{-13}$ at every grid point. At
 $10^{-5}$ it is faster still but misses some points by $10^{-3}$. These ratios held on
-both machines the note was run on; absolute times depend on the machine and are not
-reported. Every
+two different machines; absolute times depend on the machine and are not reported. Every
 corner has a KKT residual below $3.7\times10^{-13}$ and matches its QP to
 $5.4\times10^{-13}$, and the minimum-variance portfolio, which holds 53 stocks, matches
 to $1.2\times10^{-15}$.
@@ -496,26 +498,27 @@ LASSO with general linear constraints exist \cite{gaines2018,james2020}, but not
 along each segment the variance is quadratic in the parameter, so the portfolio at a
 given $\sigma$ comes from one scalar equation.
 
-The numbers above are evidence for Theorem~1 and Proposition~3 of \cite{perspective},
-not a proof of them; the proofs are there. They test what each result predicts.
+The numbers above are evidence for Theorem~1 and Proposition~3 of \cite{perspective};
+the proofs are in that paper. Each check tests a prediction of one of the two results.
 Theorem~1 says the LASSO path is the frontier under a gross-exposure cap: every column
 meets the optimality conditions of its cap and matches Clarabel there. Proposition~3
 says the nonnegative LASSO is the long-only frontier: every corner, and every point
 between corners, matches an active-set QP at the same tilt. Both make the frontier
 piecewise linear in its parameter, so a path finds its corners exactly where a grid of QP
-solves, cold- or warm-started, misses them. On the stock data the checks pass on the
-note's snapshot and on a later download, although the two differ in the number of
-corners and in $\nu_{\mathrm{last}}$. The checks were written by an author of
+solves, cold- or warm-started, misses them. On the stock data the path's own KKT residuals
+stay below $10^{-11}$ on the note's snapshot and on two later downloads, although
+these differ in the number of corners and in $\nu_{\mathrm{last}}$. The checks were written by an author of
 \cite{perspective}, so they are not independent in the usual sense. The baseline solvers
 are, and the script and its tolerances are published so that anyone can rerun them.
-Along the way the note adds what a practitioner needs to use the result: the shift, a
-$\nu_0$ computed in advance, and a \texttt{max\_iter} large enough for big problems.
+For practical use the note adds three details: the shift, a $\nu_0$ computed in
+advance, and a \texttt{max\_iter} large enough for big problems.
 
 \section*{Code and data availability}
 \label{sec:availability}
 
-The software is at \url{https://github.com/Jebel-Quant/lasso}, in the directory
-\texttt{preprints/lasso/}, under the MIT license. \texttt{python/make\_figures.py} regenerates every
+The software is in the directory \texttt{preprints/lasso/} of
+\url{https://github.com/Jebel-Quant/lasso}, under the MIT license.
+\texttt{python/make\_figures.py} regenerates every
 figure and number in the note; \texttt{uv run python/make\_figures.py test} runs its checks. It
 is a single Python script that declares its own pinned dependencies, and
 \texttt{python/make\_figures.py.lock} next to it fixes Python 3.12 and every package it
@@ -541,7 +544,9 @@ Section~\ref{sec:evidence} come from Yahoo Finance and are not redistributed.
 adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than
 5\% of days missing. The note used the snapshot with SHA-256 \texttt{b5faa522\ldots9937e}.
 A later download differs slightly, because the constituents change and Yahoo revises
-adjusted prices; the checks pass on it all the same.
+adjusted prices. On one, from October 2026, the path's KKT residuals stay below
+$4\times10^{-12}$, but the QP baseline drifts to $3.4\times10^{-10}$ at one corner, above the
+test's tolerance of $10^{-10}$.
 
 \section*{Acknowledgements}
 
