@@ -13,7 +13,9 @@ between the Critical Line Algorithm and the LASSO path proved by Schmelzer and H
 lasso.tex           the note
 Makefile            builds lasso.pdf from lasso.tex (make figures first)
 make_figures.py     every figure and number in the note, and the checks as pytest tests
-fetch_sp500.py      downloads the S&P 500 returns of the real-data example
+fetch_french.py     rebuilds data/french100_daily.csv, the portfolio returns of Section 8
+fetch_sp500.py      downloads the S&P 500 returns of the real-data example at scale
+data/french100_daily.csv  Fama-French 100 size x book-to-market portfolios, daily, 2016-2025
 *.py.lock           the locked environment of each script: Python 3.12 and every package
 data/test_problem/  the 20-asset test problem and its long-short path, as CSV
 R/long_short.R      the R snippet of Section 5, checked against lars_path
@@ -23,7 +25,8 @@ R/long_short.R      the R snippet of Section 5, checked against lars_path
 
 `make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/)
 script with pinned dependencies, so [uv](https://docs.astral.sh/uv/) needs nothing else.
-Each script has a lockfile next to it (`make_figures.py.lock`, `fetch_sp500.py.lock`)
+Each script has a lockfile next to it (`make_figures.py.lock`, `fetch_french.py.lock`,
+`fetch_sp500.py.lock`)
 that fixes Python 3.12 and every transitive dependency to an exact version and hash;
 `uv run` uses it automatically, and `uv run --locked` fails if it is out of date.
 After changing a pin, refresh it with `uv lock --script make_figures.py`.
@@ -38,14 +41,33 @@ Rscript R/long_short.R          # needs the lars package: install.packages("lars
 make pdf                        # build lasso.pdf from lasso.tex and figures/ (pdflatex)
 ```
 
-Without the stock data, `make_figures.py` skips the real-data example and its test and
-runs everything else. The full run takes about three minutes, almost all of it the
+Without the stock data, `make_figures.py` skips the S&P 500 example and its test and
+runs everything else, including the Fama-French check, whose data are committed. The full run takes about three minutes, almost all of it the
 independent QP baselines. The tests take about twenty seconds and exit nonzero if any
 number misses its tolerance. Everything except the download is seeded and runs offline.
 
 ## Data
 
-The Yahoo Finance prices behind the real-data example are not redistributed here.
+Section 8 checks the method on two sets of real returns.
+
+**Fama-French portfolios (committed).** `data/french100_daily.csv` holds the daily
+value-weighted returns, in percent, of the 100 portfolios formed on size and
+book-to-market, from 2016-01-04 to 2025-12-31, cut from
+[Kenneth French's Data Library](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html)
+(file built from the CRSP database of August 2026). `ME9 BM10` misses 250 days in the
+window and is dropped, which leaves 99 portfolios over 2514 days. SHA-256:
+
+```
+98298ef6a28ead0ebd0b518bd8a309aa6ec4f10b23e7d1e5933802a8cbc03c43
+```
+
+`uv run fetch_french.py` rebuilds the file and says whether it matches. The library
+rebuilds its history each month from CRSP, so a later download can differ where CRSP
+has revised a return. The data are Kenneth French's; cite the Data Library if you
+use them.
+
+**S&P 500 stocks (downloaded).** The Yahoo Finance prices behind the example at scale
+are not redistributed here.
 `fetch_sp500.py` downloads them: it takes the current S&P 500 ticker list from
 Wikipedia, fetches adjusted closing prices with
 [`yfinance`](https://github.com/ranaroussi/yfinance) from 2021-06-01 to 2026-06-01,

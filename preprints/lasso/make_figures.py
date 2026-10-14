@@ -691,11 +691,16 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
 
 
 # --------------------------------------------------------------------------------------
-# Real data -- the S&P 500 sample of ../cla, through the centred-returns route
+# Real data -- through the centred-returns route
 # --------------------------------------------------------------------------------------
+# The Fama--French 100 portfolios formed on size and book-to-market, value-weighted daily
+# returns in percent, 2016--2025, with the one portfolio that misses days dropped. The
+# snapshot is committed, so this check runs everywhere; fetch_french.py rebuilds it.
 # The frozen S&P 500 snapshot: next to this script in the public repository
 # (github.com/Jebel-Quant/lasso, under preprints/lasso/), or in the CLA paper's directory of the working repository.
 _HERE = Path(__file__).parent
+FRENCH = _HERE / "data" / "french100_daily.csv"
+FRENCH_SHA256 = "98298ef6a28ead0ebd0b518bd8a309aa6ec4f10b23e7d1e5933802a8cbc03c43"
 SNAPSHOT_SHA256 = "b5faa5222555f28d77bad5404565297bb25bbe92b0b813f416cd2bebac79937e"
 SP500 = next(
     (
@@ -763,26 +768,35 @@ class RealData:
     kkt: float  # worst KKT residual over the corners and the minimum-variance end
 
 
-def sp500_problem() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(X, y, Sigma) for the S&P 500 sample: centred returns as X, y from least squares."""
+def sp500_returns() -> np.ndarray:
+    """Daily simple returns of the S&P 500 sample, days by stocks."""
     import pandas as pd
 
-    r = pd.read_parquet(SP500).to_numpy()
+    return pd.read_parquet(SP500).to_numpy()
+
+
+def french_returns() -> np.ndarray:
+    """Daily simple returns of the Fama--French portfolios, days by portfolios."""
+    import pandas as pd
+
+    return pd.read_csv(FRENCH, index_col=0).to_numpy() / 100.0
+
+
+def centred_problem(r: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(X, y, Sigma) for a return matrix: centred returns as X, y from least squares."""
     mu = r.mean(axis=0)
     x = (r - mu) / np.sqrt(r.shape[0] - 1)
     return x, np.linalg.lstsq(x.T, mu)[0], np.cov(r, rowvar=False)
 
 
-def real_data(every: int = 1) -> RealData:
-    """Run Algorithm 1 on daily S&P 500 returns, X taken as the centred returns.
+def real_data(r: np.ndarray, snapshot: bool, every: int = 1) -> RealData:
+    """Run Algorithm 1 on daily returns ``r`` (days by assets), X taken as the centred returns.
 
     mu is the sample mean and Sigma the sample covariance, so X^T X = Sigma exactly with
-    no factorisation. The shift comes from the closed-form last corner. ``every``
-    compares only every so many corners with the QP (the tests use a subsample).
+    no factorisation. The shift comes from the closed-form last corner. ``snapshot`` says
+    whether ``r`` is the note's data, so that its numbers apply. ``every`` compares only
+    every so many corners with the QP (the tests use a subsample).
     """
-    import pandas as pd
-
-    r = pd.read_parquet(SP500).to_numpy()
     days, n = r.shape
     mu, sigma = r.mean(axis=0), np.cov(r, rowvar=False)
     x = (r - mu) / np.sqrt(days - 1)
@@ -812,7 +826,7 @@ def real_data(every: int = 1) -> RealData:
         qp_seconds=float(np.median(seconds)),
         warm_seconds=warm_seconds,
         warm_gap=warm_gap,
-        snapshot=hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256,
+        snapshot=snapshot,
         corner_gap=max(gaps),
         minvar_gap=float(np.abs(tilted(mu, sigma, 0.0) - w_minvar).max()),
         kkt=long_only_kkt(mu, sigma, w, tilts, w_minvar),
@@ -1191,15 +1205,18 @@ def main() -> None:
     print("\nnumbers quoted in the note (run with `test` to check them against tolerances):")
     for c in checks.values():
         print(f"  {c.name}: {c.measured:.2e}")
+    french_snapshot = hashlib.sha256(FRENCH.read_bytes()).hexdigest() == FRENCH_SHA256
+    print_real_data(real_data(french_returns(), french_snapshot), "Fama-French portfolios", "portfolios")
     if SP500.exists():
-        print_real_data(real_data())
+        sp500_snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
+        print_real_data(real_data(sp500_returns(), sp500_snapshot), "S&P 500", "stocks")
     else:
         print(f"\nreal data skipped: {SP500} not found (fetch it with `uv run fetch_sp500.py`)")
     print("\nthe margin delta in nu0 = nu_last - delta * max(|nu_last|, max|mu_j|):")
     mu, sigma = factor_problem()
-    problems = {"test problem": (*as_regression(mu, sigma), sigma)}
+    problems = {"test problem": (*as_regression(mu, sigma), sigma), "Fama-French": centred_problem(french_returns())}
     if SP500.exists():
-        problems["S&P 500"] = sp500_problem()
+        problems["S&P 500"] = centred_problem(sp500_returns())
     for name, (xp, yp, sp) in problems.items():
         cells = "  ".join(
             f"{d:g}: {k} corners, KKT {e:.1e}" if k else f"{d:g}: stops short" for d, k, e in margin_sweep(xp, yp, sp)
@@ -1208,9 +1225,10 @@ def main() -> None:
     print_robustness()
 
 
-def print_real_data(rd: RealData) -> None:
-    """Print the numbers of the real-returns paragraph of Section 8."""
-    print(f"\nreal data: S&P 500, {rd.assets} stocks x {rd.days} days, centred returns as X")
+def print_real_data(rd: RealData, name: str, unit: str) -> None:
+    """Print the numbers of a real-returns paragraph of Section 8."""
+    note = "" if rd.snapshot else " (NOT the note's snapshot: its numbers will differ)"
+    print(f"\nreal data: {name}, {rd.assets} {unit} x {rd.days} days, centred returns as X{note}")
     print(
         f"  {rd.corners} corners; last corner at nu = {rd.nu_last:.4f} "
         f"({rd.nu_last / rd.mu_max:.0f} max|mu_j|); minimum variance holds "
@@ -1325,10 +1343,23 @@ def test_robustness_across_sizes_and_seeds() -> None:
     assert max(r.kkt for r in rows) <= 1e-12
 
 
+def test_french_data() -> None:
+    """Algorithm 1 on the committed Fama--French returns, through centred returns.
+
+    The data ship with the repository, so this real-data check runs everywhere.
+    """
+    assert hashlib.sha256(FRENCH.read_bytes()).hexdigest() == FRENCH_SHA256, "not the note's snapshot"
+    rd = real_data(french_returns(), snapshot=True)
+    assert rd.corner_gap <= 1e-10, rd
+    assert rd.minvar_gap <= 1e-12, rd
+    assert rd.kkt <= 1e-11, rd
+
+
 @pytest.mark.skipif(not SP500.exists(), reason="no S&P 500 data; fetch it with `uv run fetch_sp500.py`")
 def test_real_data() -> None:
     """Algorithm 1 on S&P 500 returns, through centred returns (every 10th corner)."""
-    rd = real_data(every=10)
+    snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
+    rd = real_data(sp500_returns(), snapshot, every=10)
     assert rd.corner_gap <= 1e-10, rd
     assert rd.minvar_gap <= 1e-12, rd
     assert rd.kkt <= 1e-11, rd

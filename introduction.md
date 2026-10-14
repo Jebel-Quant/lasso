@@ -148,8 +148,11 @@ those changes.
 - **Data that cannot be redistributed are fetched, and checked.** The S&P 500 returns in
   `preprints/lasso/` come from Yahoo Finance and are not committed. `fetch_sp500.py`
   downloads them and prints the SHA-256 of the result, so you can tell whether you have
-  the snapshot the note used. Without that data, `make_figures.py` skips the real-data
-  example and runs everything else.
+  the snapshot the note used. Without that data, `make_figures.py` skips that example
+  and runs everything else.
+- **Where possible, real data are committed.** `preprints/lasso/` also checks the method
+  on the Fama-French portfolio returns, committed as `data/french100_daily.csv` with
+  `fetch_french.py` to rebuild them, so a real-data check runs on every build.
 - **The numbers are tested.** `make test` reruns the numbers the note quotes as pytest
   checks with tolerances and exits nonzero if any of them misses.
 
