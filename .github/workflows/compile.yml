@@ -156,18 +156,39 @@ jobs:
           if-no-files-found: error
 
   # One push with every PDF, so the matrix jobs never race for the branch.
+  #
+  # Two merges in quick succession race: both builds force-push, and the older one can
+  # finish last and overwrite the newer PDFs. So publishing runs one merge at a time, and
+  # a build that is no longer of main's tip publishes nothing; the newer merge's build
+  # publishes instead.
   publish:
     needs: compile
     if: github.event.pull_request.merged
     runs-on: ubuntu-24.04
+    concurrency:
+      group: publish
+      cancel-in-progress: false
     steps:
+      - name: Check this build is of main's tip
+        id: tip
+        run: |
+          tip=$(git ls-remote "https://github.com/${{ github.repository }}.git" refs/heads/main | cut -f1)
+          if [ "$tip" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main has moved on to ${tip::7}; its own build will publish, not this one (${SHA::7})"
+          fi
+
       - uses: actions/download-artifact@v8.0.2
+        if: steps.tip.outputs.current == 'true'
         with:
           pattern: pdf-*
           merge-multiple: true
           path: pdfs
 
       - uses: actions/download-artifact@v8.0.2
+        if: steps.tip.outputs.current == 'true'
         with:
           pattern: arxiv-*
           merge-multiple: true
@@ -175,6 +196,7 @@ jobs:
 
       # Only for the titles, which the index takes from each preprint's \title.
       - uses: actions/checkout@v6.1.0
+        if: steps.tip.outputs.current == 'true'
         with:
           ref: ${{ env.SHA }}
           path: src
@@ -183,6 +205,7 @@ jobs:
       # One link per PDF, labelled with the main title: the \title text up to its first
       # \\ or closing brace, so a subtitle set on a second line is left out.
       - name: Write the index page
+        if: steps.tip.outputs.current == 'true'
         working-directory: pdfs
         run: |
           {
@@ -217,6 +240,7 @@ jobs:
           touch .nojekyll
 
       - name: Publish to the paper branch
+        if: steps.tip.outputs.current == 'true'
         working-directory: pdfs
         run: |
           git init -q -b paper
@@ -229,6 +253,7 @@ jobs:
       # The arXiv sources go to their own branch, which holds nothing else, as
       # arxiv/<preprint>.tar.gz: ready to upload as they are.
       - name: Publish to the arxiv branch
+        if: steps.tip.outputs.current == 'true'
         working-directory: arxiv
         run: |
           git init -q -b arxiv
