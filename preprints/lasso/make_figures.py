@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = "==3.12.*"
 # dependencies = [
 #     "cvxcla==2.3.4",
 #     "cvxpy==1.9.3",

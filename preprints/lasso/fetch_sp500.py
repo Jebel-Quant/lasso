@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = "==3.12.*"
 # dependencies = [
 #     "lxml==6.1.3",
 #     "pandas==3.0.6",

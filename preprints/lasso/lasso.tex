@@ -497,7 +497,9 @@ $\nu_0$ computed in advance, and a \texttt{max\_iter} large enough for big probl
 The software is at \url{https://github.com/Jebel-Quant/lasso}, in the directory
 \texttt{preprints/lasso/}, under the MIT license. \texttt{make\_figures.py} regenerates every
 figure and number in the note; \texttt{uv run make\_figures.py test} runs its checks. It
-is a single Python script that declares its own pinned dependencies. The R snippet of
+is a single Python script that declares its own pinned dependencies, and
+\texttt{make\_figures.py.lock} next to it fixes Python 3.12 and every package it
+pulls in, to the exact version and hash. The R snippet of
 Section~\ref{sec:longshort} is \texttt{R/long\_short.R}, with a check against
 \texttt{lars\_path}.
 
