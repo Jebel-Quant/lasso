@@ -33,7 +33,8 @@ uv run python/make_figures.py test     # check those numbers against tolerances
 ```
 
 [`introduction.md`](introduction.md) explains the setup in full and how to add a
-preprint.
+preprint. [`Reproducibility.md`](Reproducibility.md) explains why this matters, with
+stories of what goes wrong without it, here and elsewhere.
 
 ## Layout
 
