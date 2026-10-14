@@ -28,6 +28,7 @@ efficient frontier.
     uv run python/make_figures.py        # the five figures, and the numbers the note quotes
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
     uv run python/make_figures.py export # the test problem as CSV, for R/long_short.R
+    uv run python/make_figures.py timings # only the timings, and the CPU they come from
 
 Five figures (``figures/*.pdf``) and the numerical checks behind the note, all
 seeded and offline. The test problem is the one behind Figure 1 of the
@@ -38,6 +39,9 @@ reproduced here so this directory stands alone.
 from __future__ import annotations
 
 import hashlib
+import os
+import platform
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -1223,6 +1227,7 @@ def main() -> None:
         )
         print(f"  {name}: {cells}")
     print_robustness()
+    print(f"\ntimings from: {machine()}")
 
 
 def print_real_data(rd: RealData, name: str, unit: str) -> None:
@@ -1243,6 +1248,57 @@ def print_real_data(rd: RealData, name: str, unit: str) -> None:
         f"  worst corner vs QP {rd.corner_gap:.1e}; minimum-variance end {rd.minvar_gap:.1e}; "
         f"worst KKT residual {rd.kkt:.1e}"
     )
+
+
+def machine() -> str:
+    """The CPU, thread count and Python of this run, which the timings depend on."""
+    name = platform.processor()
+    cpuinfo = Path("/proc/cpuinfo")
+    if cpuinfo.exists():
+        models = [line.split(":", 1)[1].strip() for line in cpuinfo.read_text().splitlines() if line.startswith("model name")]
+        name = models[0] if models else name
+    elif sys.platform == "darwin":
+        brand = ["sysctl", "-n", "machdep.cpu.brand_string"]
+        name = subprocess.run(brand, capture_output=True, text=True, check=False).stdout.strip() or name
+    return f"{name or 'unknown CPU'}, {os.cpu_count()} threads, Python {platform.python_version()}"
+
+
+def timings() -> None:
+    """Print only the timings the note quotes, without the slow QP checks around them.
+
+    Run it on an otherwise idle machine: the numbers are wall-clock times.
+    """
+    print(f"machine: {machine()}")
+    print("Table 1, median seconds of one run of Algorithm 1 over the seeds:")
+    for n in ROBUST_SIZES:
+        seconds = []
+        for seed in ROBUST_SEEDS:
+            f = factor_data(seed=seed, n_assets=n)
+            mu, sigma = f.returns.mean(axis=0), np.diag(f.d) + (f.u * f.delta) @ f.u.T
+            x, y = as_regression(mu, sigma)
+            start = time.perf_counter()
+            long_only_frontier(x, y, sigma)
+            seconds.append(time.perf_counter() - start)
+        print(f"  n = {n:4d}: {np.median(seconds):.4f}")
+    for name, path in (("Fama-French", FRENCH), ("S&P 500", SP500)):
+        if not path.exists():
+            continue
+        r = french_returns() if path == FRENCH else sp500_returns()
+        x, y, sigma = centred_problem(r)
+        mu = r.mean(axis=0)
+        start = time.perf_counter()
+        w, tilts, _ = long_only_frontier(x, y, sigma)
+        path_seconds = time.perf_counter() - start
+        qp_seconds = []
+        for lam in tilts[:: max(1, len(tilts) // 10)]:
+            start = time.perf_counter()
+            tilted(mu, sigma, lam)
+            qp_seconds.append(time.perf_counter() - start)
+        _, warm_seconds = warm_grid(mu, sigma, np.geomspace(tilts.max(), tilts.min(), GRID))
+        print(
+            f"{name}, {r.shape[1]} assets: one path {path_seconds:.2f} s ({w.shape[1]} corners); "
+            f"one QP {np.median(qp_seconds) * 1e3:.0f} ms; warm-started {GRID}-point grid {warm_seconds:.1f} s"
+        )
 
 
 def print_robustness() -> None:
@@ -1403,6 +1459,8 @@ def export(out: Path = _HERE / "data" / "test_problem") -> None:
 if __name__ == "__main__":
     if sys.argv[1:2] == ["export"]:
         raise SystemExit(export())
+    if sys.argv[1:2] == ["timings"]:
+        raise SystemExit(timings())
     if sys.argv[1:2] == ["test"]:
         sys.dont_write_bytecode = True
         raise SystemExit(pytest.main([__file__, "-q", "-p", "no:cacheprovider", *sys.argv[2:]]))
