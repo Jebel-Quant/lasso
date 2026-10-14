@@ -28,7 +28,7 @@ efficient frontier.
     uv run python/make_figures.py        # the five figures, and the numbers the note quotes
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
     uv run python/make_figures.py export # the test problem as CSV, for R/long_short.R
-    uv run python/make_figures.py timings # only the timings, and the CPU they come from
+    uv run python/make_figures.py timings # the cost ratios the note quotes, and the machine
 
 Five figures (``figures/*.pdf``) and the numerical checks behind the note, all
 seeded and offline. The test problem is the one behind Figure 1 of the
@@ -1287,7 +1287,7 @@ def fastest(step: Callable[[], object], repeats: int = TIMING_REPEATS) -> float:
 
 
 def timings() -> None:
-    """Print the timings the note quotes, without the slow QP checks around them.
+    """Print the costs the note quotes, as ratios, without the slow QP checks around them.
 
     Each step is timed as the fastest of TIMING_REPEATS runs; see ``fastest``.
     """
@@ -1319,6 +1319,12 @@ def timings() -> None:
             f"{name}, {r.shape[1]} assets: one path {path_seconds:.2f} s ({w.shape[1]} corners); "
             f"one QP {qp_seconds * 1e3:.0f} ms, so a {GRID}-point grid {GRID * qp_seconds:.1f} s; "
             f"warm-started grid {warm_seconds:.1f} s"
+        )
+        # The ratios are what the note quotes; unlike the seconds, they carry over between machines.
+        print(
+            f"  ratios: one path = {path_seconds / qp_seconds:.1f} QPs; the cold grid = "
+            f"{GRID * qp_seconds / path_seconds:.0f} paths; the warm grid = "
+            f"{warm_seconds / (GRID * qp_seconds):.2f} of the cold grid"
         )
 
 
