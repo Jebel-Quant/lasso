@@ -38,14 +38,16 @@ uv run python/fetch_sp500.py           # download the stock data (not redistribu
 uv run python/make_figures.py          # write figures/*.pdf and print every number the note quotes
 uv run python/make_figures.py test     # the same numbers as pytest checks, with tolerances
 uv run python/make_figures.py export   # rewrite data/test_problem/ for the R check
+uv run python/make_figures.py timings  # only the timings, and the CPU they come from
 Rscript R/long_short.R          # needs the lars package: install.packages("lars")
 make pdf                        # build lasso.pdf from lasso.tex and figures/ (pdflatex)
 ```
 
 Without the downloaded data, `python/make_figures.py` skips the Fama-French and S&P 500
 examples and their tests and runs everything else. The full run takes about three minutes, almost all of it the
-independent QP baselines. The tests take about twenty seconds and exit nonzero if any
-number misses its tolerance. Everything except the download is seeded and runs offline.
+independent QP baselines; `timings` skips those and reruns only what the note times, which
+is best done on an otherwise idle machine. The tests take about twenty seconds and exit nonzero if any
+number misses its tolerance. Everything except the downloads is seeded and runs offline.
 
 ## Data
 
