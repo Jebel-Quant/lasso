@@ -29,6 +29,7 @@ accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditio
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 make_figures.py         the CLA, both forms, three figures, the table, and the checks as pytest tests
+make_figures.py.lock    the locked environment: Python 3.12 and every package, by version and hash
 ```
 
 `make_figures.py` writes `figures/path.pdf` (the diabetes path, CLA against LARS knots,
@@ -39,6 +40,9 @@ Fig. 1), `figures/portfolio.pdf` (the same path as a long/short/cash portfolio, 
 
 `make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/) script
 with pinned dependencies, seeded and offline (the diabetes data ship with scikit-learn).
+`make_figures.py.lock` fixes Python 3.12 and every transitive dependency to an exact
+version and hash; `uv run` uses it automatically. After changing a pin, refresh it with
+`uv lock --script make_figures.py`.
 Run it from this directory:
 
 ```sh

@@ -15,6 +15,24 @@ path, each with its LaTeX source and the code and data behind it.
   figure and number. See
   [`preprints/constrained_lasso/README.md`](preprints/constrained_lasso/README.md).
 
+## Reproducing the results
+
+Each preprint's numbers and figures come from one Python script, `make_figures.py`, run
+with [uv](https://docs.astral.sh/uv/). Its dependencies are pinned in the script itself
+([PEP 723](https://peps.python.org/pep-0723/)), and `make_figures.py.lock` next to it
+fixes Python 3.12 and every package to an exact version and hash, so a rerun uses the
+environment that produced the PDF. Everything is seeded and runs offline, except the
+download of the S&P 500 returns in `preprints/lasso/`, which are not redistributed.
+
+```sh
+cd preprints/lasso
+uv run make_figures.py          # draw the figures and print every number in the note
+uv run make_figures.py test     # check those numbers against tolerances
+```
+
+[`introduction.md`](introduction.md) explains the setup in full and how to add a
+preprint.
+
 ## Layout
 
 Each folder in `preprints/` holds one preprint: a single `.tex` file with a

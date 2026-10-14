@@ -112,7 +112,7 @@ Keeping the dependencies in the script has three advantages here:
   stamped on the PDF. A preprint can go further and lock the transitive dependencies
   too: `uv lock --script make_figures.py` writes `make_figures.py.lock` next to the
   script, with an exact version and hash for every package, and `uv run` then uses it.
-  `preprints/lasso/` does this, with `requires-python = "==3.12.*"`.
+  Both preprints do this, with `requires-python = "==3.12.*"`.
 
 When the pins are bumped, as in [#21](https://github.com/Jebel-Quant/lasso/pull/21),
 CI reruns every script and its tests against the new versions before the change is

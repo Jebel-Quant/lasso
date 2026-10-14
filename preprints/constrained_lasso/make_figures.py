@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = "==3.12.*"
 # dependencies = [
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
