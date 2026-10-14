@@ -7,7 +7,7 @@ the other way from the LASSO-solver note in [`../lasso/`](../lasso). That note c
 efficient frontiers with a LASSO solver. This one computes constrained-LASSO paths with a
 Critical Line Algorithm that knows nothing about regression.
 
-The CLA (`cla` in `make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
+The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
 general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
 `γ = ∞` down to 0. Two encodings feed it a LASSO:
 
@@ -28,21 +28,26 @@ accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditio
 ```
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
-make_figures.py         the CLA, both forms, three figures, the table, and the checks as pytest tests
+python/
+  make_figures.py       the CLA, both forms, three figures, the table, and the checks as pytest tests
+  make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
 ```
 
-`make_figures.py` writes `figures/path.pdf` (the diabetes path, CLA against LARS knots,
+`python/make_figures.py` writes `figures/path.pdf` (the diabetes path, CLA against LARS knots,
 Fig. 1), `figures/portfolio.pdf` (the same path as a long/short/cash portfolio, Fig. 2) and
 `figures/constrained.pdf` (box-constrained and zero-sum paths, Fig. 3).
 
 ## Running it
 
-`make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/) script
+`python/make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/) script
 with pinned dependencies, seeded and offline (the diabetes data ship with scikit-learn).
+`python/make_figures.py.lock` fixes Python 3.12 and every transitive dependency to an exact
+version and hash; `uv run` uses it automatically. After changing a pin, refresh it with
+`uv lock --script python/make_figures.py`.
 Run it from this directory:
 
 ```sh
-make figures    # write figures/*.pdf and print Table 1 (uv run make_figures.py)
-make test       # the same numbers as pytest checks (uv run make_figures.py test)
+make figures    # write figures/*.pdf and print Table 1 (uv run python/make_figures.py)
+make test       # the same numbers as pytest checks (uv run python/make_figures.py test)
 make pdf        # build constrained_lasso.pdf from constrained_lasso.tex and figures/
 ```

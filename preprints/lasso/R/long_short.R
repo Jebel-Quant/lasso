@@ -5,7 +5,7 @@
 #
 #     Rscript R/long_short.R
 #
-# The inputs come from `uv run make_figures.py export`. lars has no positivity
+# The inputs come from `uv run python/make_figures.py export`. lars has no positivity
 # constraint, so the long-only path of Section 7 needs scikit-learn.
 
 library(lars)

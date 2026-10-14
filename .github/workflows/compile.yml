@@ -3,7 +3,7 @@
 # GitHub Pages serves that branch.
 #
 # Each folder in preprints/ holds one preprint. Its main source is the one .tex file there
-# with a \documentclass, and the PDF takes that file's name. A make_figures.py next to it,
+# with a \documentclass, and the PDF takes that file's name. A python/make_figures.py in its folder,
 # if present, draws the figures into figures/ before the build.
 #
 # The first page carries an arXiv-style stamp in its left margin: build date, repository
@@ -102,24 +102,24 @@ jobs:
       # reuse the figures until the preprint's Python or its data change.
       - name: Restore the figures
         id: figures
-        if: hashFiles(format('{0}/make_figures.py', matrix.dir)) != ''
+        if: hashFiles(format('{0}/python/make_figures.py', matrix.dir)) != ''
         uses: actions/cache@v6.1.0
         with:
           path: ${{ matrix.dir }}/figures
           key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/**/*.py.lock', matrix.dir), format('{0}/data/**', matrix.dir)) }}
 
-      # The dependencies are pinned inline in make_figures.py (PEP 723), and locked in
-      # make_figures.py.lock where a preprint has one, so key uv's cache on both.
+      # The dependencies are pinned inline in python/make_figures.py (PEP 723) and locked
+      # in python/make_figures.py.lock next to it, so key uv's cache on both.
       - uses: astral-sh/setup-uv@v7.6.0
         if: steps.figures.outcome == 'success' && steps.figures.outputs.cache-hit != 'true'
         with:
           cache-dependency-glob: |
-            ${{ matrix.dir }}/make_figures.py
-            ${{ matrix.dir }}/make_figures.py.lock
+            ${{ matrix.dir }}/python/make_figures.py
+            ${{ matrix.dir }}/python/make_figures.py.lock
 
       - name: Draw the figures
         if: steps.figures.outcome == 'success' && steps.figures.outputs.cache-hit != 'true'
-        run: uv run make_figures.py
+        run: uv run python/make_figures.py
 
       - name: Compile with the stamp
         env:
