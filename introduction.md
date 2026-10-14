@@ -155,8 +155,10 @@ those changes.
 
 ### What is not pinned
 
-The PEP 723 block pins the direct dependencies, but not *their* dependencies; uv
-resolves those to the newest compatible versions at install time. In practice this
-rarely moves a number, and the tests would catch it if it did. The LaTeX toolchain is
+The PEP 723 block alone pins the direct dependencies, but not *their* dependencies.
+Each script's lockfile closes that gap, so the Python environment is fixed down to the
+last package. What it cannot fix is the hardware: floating-point results can differ in
+the last digits between CPUs and BLAS builds, which is why the tests check tolerances
+rather than exact values. The LaTeX toolchain is
 pinned in a similar way: CI installs TeX Live from the apt archive of a fixed runner
 image, `ubuntu-24.04`, rather than `ubuntu-latest`.
