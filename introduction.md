@@ -34,10 +34,12 @@ lockfile. If `python/make_figures.py` exists, it writes the figures into
 The shared rules in [`preprints/Makefile`](preprints/Makefile) are:
 
 ```sh
-make figures   # uv run python/make_figures.py
-make test      # uv run python/make_figures.py test
-make pdf       # pdflatex, three passes; run `make figures` first
-make clean     # remove the LaTeX auxiliary files
+make figures      # uv run python/make_figures.py
+make test         # uv run python/make_figures.py test
+make pdf          # pdflatex, three passes; run `make figures` first
+make arxiv        # <name>.tar.gz: the .tex and the figures it includes, for arXiv
+make arxiv-check  # make arxiv, then compile the tarball alone, as arXiv will
+make clean        # remove the LaTeX auxiliary files and the arXiv build
 ```
 
 Run inside one preprint's folder, a target acts on that preprint. Run in `preprints/`, it
@@ -69,7 +71,10 @@ There is nothing to register in CI. The workflow in
 with uv and compiles the PDF; it fails if a folder has no main `.tex` file, or more than
 one. When the pull request is merged, the PDFs are published on the `paper` branch with
 an `index.html` that lists them by title, and GitHub Pages serves that branch at
-<https://jebel-quant.github.io/lasso/>. The first page of every built PDF carries a stamp
+<https://jebel-quant.github.io/lasso/>. Each preprint's arXiv source goes to the `arxiv`
+branch as `arxiv/<name>.tar.gz`; CI compiles every tarball on its own before publishing
+it, so one that is missing a figure fails the pull request rather than the arXiv
+submission. The first page of every built PDF carries a stamp
 in its margin with the build date, the repository and the short commit hash. It is added
 at build time, so the `.tex` source stays clean, and it ties every PDF to the exact code
 that produced it.

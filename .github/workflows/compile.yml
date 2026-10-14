@@ -1,6 +1,6 @@
 # Build every preprint under preprints/ on each pull request into main, and when one is
-# merged, publish the PDFs on the `paper` branch with an index.html that links them.
-# GitHub Pages serves that branch.
+# merged, publish the PDFs on the `paper` branch with an index.html that links them, and
+# each preprint's arXiv source tarball on the `arxiv` branch. GitHub Pages serves `paper`.
 #
 # Each folder in preprints/ holds one preprint. Its main source is the one .tex file there
 # with a \documentclass, and the PDF takes that file's name. A python/make_figures.py in its folder,
@@ -144,6 +144,17 @@ jobs:
           path: ${{ matrix.dir }}/${{ matrix.job }}.pdf
           if-no-files-found: error
 
+      # arXiv compiles the source itself, so it gets the .tex and the figures it includes.
+      # The check compiles that tarball alone in an empty directory, as arXiv will.
+      - name: Package and check the arXiv source
+        run: make arxiv-check
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: arxiv-${{ matrix.job }}
+          path: ${{ matrix.dir }}/${{ matrix.job }}.tar.gz
+          if-no-files-found: error
+
   # One push with every PDF, so the matrix jobs never race for the branch.
   publish:
     needs: compile
@@ -155,6 +166,12 @@ jobs:
           pattern: pdf-*
           merge-multiple: true
           path: pdfs
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: arxiv-*
+          merge-multiple: true
+          path: arxiv/arxiv
 
       # Only for the titles, which the index takes from each preprint's \title.
       - uses: actions/checkout@v6.1.0
@@ -208,3 +225,15 @@ jobs:
           git add *.pdf index.html .nojekyll
           git commit -q -m "preprints from ${SHA::7}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" paper
+
+      # The arXiv sources go to their own branch, which holds nothing else, as
+      # arxiv/<preprint>.tar.gz: ready to upload as they are.
+      - name: Publish to the arxiv branch
+        working-directory: arxiv
+        run: |
+          git init -q -b arxiv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add arxiv/*.tar.gz
+          git commit -q -m "arXiv sources from ${SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" arxiv
