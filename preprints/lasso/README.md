@@ -63,8 +63,10 @@ window and is dropped, which leaves 99 portfolios over 2514 days. SHA-256:
 
 `uv run fetch_french.py` rebuilds the file and says whether it matches. The library
 rebuilds its history each month from CRSP, so a later download can differ where CRSP
-has revised a return. The data are Kenneth French's; cite the Data Library if you
-use them.
+has revised a return. The data remain the property of Eugene F. Fama and Kenneth R.
+French and are **not** covered by this repository's MIT licence, which applies to the
+code and text only. They are included, unchanged, so that the note's results can be
+reproduced; if you use them, cite the Data Library.
 
 **S&P 500 stocks (downloaded).** The Yahoo Finance prices behind the example at scale
 are not redistributed here.
