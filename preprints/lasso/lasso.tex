@@ -57,8 +57,8 @@ independent quadratic-programming solvers, on factor models of up to 500 assets,
 Fama--French size and book-to-market portfolios, and on daily returns of 494
 S\&P~500 stocks. Called naively, the long-only path stops at the maximum-Sharpe
 portfolio. One shift of the response, by an amount computed in advance, lets a single
-call reach the minimum-variance portfolio. The script, its checks, the Fama--French
-returns and an R cross-check are published, with a locked environment, so that anyone
+call reach the minimum-variance portfolio. The script, its checks, scripts that fetch
+the data, and an R cross-check are published, with a locked environment, so that anyone
 can repeat them.
 \end{abstract}
 
@@ -446,9 +446,10 @@ Algorithm~1, $\nu_{\mathrm{last}}$ included, on a laptop.}
 \label{tab:robust}
 \end{table}
 
-\emph{Real returns, reproducible.} The daily value-weighted returns of the 100
+\emph{Real returns, a public source.} The daily value-weighted returns of the 100
 portfolios that Fama and French form on size and book-to-market \cite{french}, from
-January 2016 to December 2025, are published with the code. One portfolio misses 250
+January 2016 to December 2025, are free to download from their Data Library, and a
+script published with the code fetches them. One portfolio misses 250
 days and is dropped, which leaves 99 portfolios over 2514 days. With the centred returns
 as $X$ the last corner sits at $\nu_{\mathrm{last}}=-0.0118$, eleven times
 $\max_j|\mu_j|$ below zero. Algorithm~1 returns all 12 corners. They match the QP to
@@ -497,8 +498,7 @@ meets the optimality conditions of its cap and matches Clarabel there. Propositi
 says the nonnegative LASSO is the long-only frontier: every corner, and every point
 between corners, matches an active-set QP at the same tilt. Both make the frontier
 piecewise linear in its parameter, so a path finds its corners exactly where a grid of QP
-solves, cold- or warm-started, misses them. The Fama--French returns are committed with
-the code, so that real-data check reruns on every build. On the stock data the checks pass on the
+solves, cold- or warm-started, misses them. On the stock data the checks pass on the
 note's snapshot and on a later download, although the two differ in the number of
 corners and in $\nu_{\mathrm{last}}$. The checks were written by an author of
 \cite{perspective}, so they are not independent in the usual sense. The baseline solvers
@@ -526,12 +526,11 @@ $10^{-9}$, and leave the timings unchecked.
 
 The test problem and the factor models of Table~\ref{tab:robust} are simulated inside
 the script from fixed seeds, so they need no data. The portfolio returns of
-Section~\ref{sec:evidence} are in the repository as \texttt{data/french100\_daily.csv},
-cut from Kenneth French's Data Library \cite{french} (CRSP vintage of August 2026,
-SHA-256 \texttt{98298ef6\ldots3c43}), and \texttt{python/fetch\_french.py} rebuilds them. The
-library rebuilds its history each month from CRSP, so a later download can differ where
-CRSP revises a return. These data remain Fama and French's and are not covered by the
-repository's MIT license. The stock returns of
+Section~\ref{sec:evidence} come from Kenneth French's Data Library \cite{french} and,
+being copyrighted, are not redistributed. \texttt{python/fetch\_french.py} downloads them
+and writes \texttt{data/french100\_daily.csv}. The note used the CRSP vintage of August
+2026, SHA-256 \texttt{98298ef6\ldots3c43}. The library rebuilds its history each month from
+CRSP, so a later download can differ where CRSP revises a return. The stock returns of
 Section~\ref{sec:evidence} come from Yahoo Finance and are not redistributed.
 \texttt{python/fetch\_sp500.py} downloads them: the S\&P~500 constituents listed on Wikipedia,
 adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than

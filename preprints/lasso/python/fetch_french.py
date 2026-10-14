@@ -5,17 +5,18 @@
 #     "requests==2.34.2",
 # ]
 # ///
-"""Rebuild the Fama--French portfolio returns that the note's reproducible real-data check uses.
+"""Download the Fama--French portfolio returns that the note's real-data check uses.
 
 Downloads the daily returns of the 100 portfolios formed on size and book-to-market
 (10 x 10, value-weighted) from Kenneth French's Data Library, keeps 2016-01-01 to
 2025-12-31, drops any portfolio with a missing day in that window, and writes the returns,
 in percent as the library publishes them, to ``data/french100_daily.csv``.
 
-The note uses the snapshot committed next to this script, with the SHA-256 below. The
-library rebuilds its history every month from CRSP, so a fresh download can differ in
-the last digit where CRSP has revised a return; the script prints whether what it wrote
-is the note's snapshot.
+The data are copyrighted by Fama and French and must not be redistributed: the file is
+for local use, and git ignores it. The note used the CRSP vintage of August 2026, with
+the SHA-256 below. The library rebuilds its history every month from CRSP, so a fresh
+download can differ in the last digit where CRSP has revised a return; the script prints
+whether what it wrote is the note's snapshot.
 
     uv run python/fetch_french.py
 
