@@ -1441,10 +1441,11 @@ def test_real_data() -> None:
     """Algorithm 1 on S&P 500 returns, through centred returns (every 10th corner)."""
     snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
     rd = real_data(sp500_returns(), snapshot, every=10)
-    # The QP baseline matches the note's snapshot to 1e-10. A fresh fetch can be worse
-    # conditioned: on one from October 2026 the QP missed a corner by 3.4e-10 while the
-    # path's own KKT residual stayed below 4e-12, so the gap was the QP's.
-    assert rd.corner_gap <= (1e-10 if rd.snapshot else 1e-9), rd
+    # The QP baseline matches the note's snapshot to 1e-10. Fresh fetches are worse
+    # conditioned: on two from October 2026 the QP missed corners by up to 8.8e-10 while
+    # the path's own KKT residuals stayed below 4e-12, so the gap was the QP's. Allow a
+    # decade of headroom on data that are not the snapshot.
+    assert rd.corner_gap <= (1e-10 if rd.snapshot else 1e-8), rd
     assert rd.minvar_gap <= 1e-12, rd
     assert rd.kkt <= 1e-11, rd
     # The warm-started baseline is exact to rounding on the note's snapshot. On a fresh
