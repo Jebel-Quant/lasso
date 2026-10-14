@@ -17,7 +17,7 @@ library rebuilds its history every month from CRSP, so a fresh download can diff
 the last digit where CRSP has revised a return; the script prints whether what it wrote
 is the note's snapshot.
 
-    uv run fetch_french.py
+    uv run python/fetch_french.py
 
 Source: Kenneth R. French, Data Library,
 https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
@@ -37,7 +37,7 @@ URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/100_Portfolio
 SECTION = "Average Value Weighted Returns -- Daily"
 START, END = "2016-01-01", "2025-12-31"
 MISSING = -99.99  # the library's code for a missing return (it also uses -999)
-OUT = Path(__file__).parent / "data" / "french100_daily.csv"
+OUT = Path(__file__).resolve().parent.parent / "data" / "french100_daily.csv"
 SNAPSHOT_SHA256 = "98298ef6a28ead0ebd0b518bd8a309aa6ec4f10b23e7d1e5933802a8cbc03c43"
 
 

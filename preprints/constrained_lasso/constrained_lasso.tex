@@ -409,12 +409,12 @@ meet the LASSO's optimality conditions to $10^{-15}$ everywhere along the path.
 
 \section*{Code and data availability}
 
-The note's directory holds \texttt{make\_figures.py}, a single Python script that
-declares its own pinned dependencies, and \texttt{make\_figures.py.lock} next to it
+The note's directory holds \texttt{python/make\_figures.py}, a single Python script that
+declares its own pinned dependencies, and \texttt{python/make\_figures.py.lock} next to it
 fixes Python 3.12 and every package it pulls in, to the exact version and hash. It contains the CLA (the function \texttt{cla}),
 the two forms (\texttt{penalty\_form}, \texttt{budget\_form}) and every check.
-\texttt{uv run make\_figures.py} regenerates the figures and
-Table~\ref{tab:evidence}, and \texttt{uv run make\_figures.py test} runs the checks as
+\texttt{uv run python/make\_figures.py} regenerates the figures and
+Table~\ref{tab:evidence}, and \texttt{uv run python/make\_figures.py test} runs the checks as
 tests. The diabetes data ship with scikit-learn, and the other problems are simulated
 from fixed seeds.
 

@@ -21,7 +21,7 @@ not redistributed. A fresh fetch gives a slightly different set, because the ind
 constituents change and Yahoo revises adjusted prices, so the real-data numbers will
 differ a little from the note's. The script prints the SHA-256 of what it wrote.
 
-    uv run fetch_sp500.py
+    uv run python/fetch_sp500.py
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ import yfinance as yf
 START = "2021-06-01"
 END = "2026-06-01"
 MISSING_THRESHOLD = 0.05  # drop tickers missing more than 5% of trading days
-OUT = Path(__file__).parent / "data" / "sp500_pct_returns.parquet"
+OUT = Path(__file__).resolve().parent.parent / "data" / "sp500_pct_returns.parquet"
 SNAPSHOT_SHA256 = "b5faa5222555f28d77bad5404565297bb25bbe92b0b813f416cd2bebac79937e"
 
 

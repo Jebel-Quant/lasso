@@ -25,9 +25,9 @@ substitutions of the perspective paper: with :math:`\Sigma = X^\top X` and
 scikit-learn's ``lars_path`` -- which knows nothing of portfolios -- traces an
 efficient frontier.
 
-    uv run make_figures.py        # the five figures, and the numbers the note quotes
-    uv run make_figures.py test   # the same numbers as pytest checks, with tolerances
-    uv run make_figures.py export # the test problem as CSV, for R/long_short.R
+    uv run python/make_figures.py        # the five figures, and the numbers the note quotes
+    uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
+    uv run python/make_figures.py export # the test problem as CSV, for R/long_short.R
 
 Five figures (``figures/*.pdf``) and the numerical checks behind the note, all
 seeded and offline. The test problem is the one behind Figure 1 of the
@@ -56,7 +56,7 @@ from scipy.optimize import nnls
 from sklearn.linear_model import lars_path, lars_path_gram
 
 SEED = 42
-OUT = Path(__file__).parent / "figures"
+OUT = Path(__file__).resolve().parent.parent / "figures"  # the preprint folder; this script lives in python/
 
 # A support is read off a nonnegative weight vector; anything below this is a zero that
 # the solver happened to write as 1e-17.
@@ -698,7 +698,7 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
 # snapshot is committed, so this check runs everywhere; fetch_french.py rebuilds it.
 # The frozen S&P 500 snapshot: next to this script in the public repository
 # (github.com/Jebel-Quant/lasso, under preprints/lasso/), or in the CLA paper's directory of the working repository.
-_HERE = Path(__file__).parent
+_HERE = Path(__file__).resolve().parent.parent  # the preprint folder; this script lives in python/
 FRENCH = _HERE / "data" / "french100_daily.csv"
 FRENCH_SHA256 = "98298ef6a28ead0ebd0b518bd8a309aa6ec4f10b23e7d1e5933802a8cbc03c43"
 SNAPSHOT_SHA256 = "b5faa5222555f28d77bad5404565297bb25bbe92b0b813f416cd2bebac79937e"
@@ -1211,7 +1211,7 @@ def main() -> None:
         sp500_snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
         print_real_data(real_data(sp500_returns(), sp500_snapshot), "S&P 500", "stocks")
     else:
-        print(f"\nreal data skipped: {SP500} not found (fetch it with `uv run fetch_sp500.py`)")
+        print(f"\nreal data skipped: {SP500} not found (fetch it with `uv run python/fetch_sp500.py`)")
     print("\nthe margin delta in nu0 = nu_last - delta * max(|nu_last|, max|mu_j|):")
     mu, sigma = factor_problem()
     problems = {"test problem": (*as_regression(mu, sigma), sigma), "Fama-French": centred_problem(french_returns())}
@@ -1263,7 +1263,7 @@ def print_robustness() -> None:
 
 
 # --------------------------------------------------------------------------------------
-# Tests -- uv run make_figures.py test
+# Tests -- uv run python/make_figures.py test
 # --------------------------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def checks() -> dict[str, Check]:
@@ -1334,7 +1334,7 @@ def test_last_corner_closed_form() -> None:
 def test_robustness_across_sizes_and_seeds() -> None:
     """The long-only recipe holds on other sizes and seeds.
 
-    n <= 100 here, for speed; `uv run make_figures.py` prints the full table.
+    n <= 100 here, for speed; `uv run python/make_figures.py` prints the full table.
     """
     rows = robustness(sizes=(20, 50, 100))
     worst = max(rows, key=lambda r: r.corner_gap)
@@ -1355,7 +1355,7 @@ def test_french_data() -> None:
     assert rd.kkt <= 1e-11, rd
 
 
-@pytest.mark.skipif(not SP500.exists(), reason="no S&P 500 data; fetch it with `uv run fetch_sp500.py`")
+@pytest.mark.skipif(not SP500.exists(), reason="no S&P 500 data; fetch it with `uv run python/fetch_sp500.py`")
 def test_real_data() -> None:
     """Algorithm 1 on S&P 500 returns, through centred returns (every 10th corner)."""
     snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256

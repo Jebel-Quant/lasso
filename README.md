@@ -18,9 +18,9 @@ path, each with its LaTeX source and the code and data behind it.
 
 ## Reproducing the results
 
-Each preprint's numbers and figures come from one Python script, `make_figures.py`, run
+Each preprint's numbers and figures come from one Python script, `python/make_figures.py`, run
 with [uv](https://docs.astral.sh/uv/). Its dependencies are pinned in the script itself
-([PEP 723](https://peps.python.org/pep-0723/)), and `make_figures.py.lock` next to it
+([PEP 723](https://peps.python.org/pep-0723/)), and `python/make_figures.py.lock` next to it
 fixes Python 3.12 and every package to an exact version and hash, so a rerun uses the
 environment that produced the PDF. Everything is seeded and runs offline, except the
 download of the S&P 500 returns in `preprints/lasso/`, which are not redistributed; its
@@ -28,8 +28,8 @@ real-data check on the Fama-French portfolios uses data committed to the reposit
 
 ```sh
 cd preprints/lasso
-uv run make_figures.py          # draw the figures and print every number in the note
-uv run make_figures.py test     # check those numbers against tolerances
+uv run python/make_figures.py          # draw the figures and print every number in the note
+uv run python/make_figures.py test     # check those numbers against tolerances
 ```
 
 [`introduction.md`](introduction.md) explains the setup in full and how to add a
@@ -40,7 +40,8 @@ preprint.
 Each folder in `preprints/` holds one preprint: a single `.tex` file with a
 `\documentclass`, the Python behind its experiments, and a `Makefile` that is just
 `include ../Makefile`. The rules (`pdf`, `figures`, `test`, `clean`) live in
-[`preprints/Makefile`](preprints/Makefile). A `make_figures.py`, if present, writes the
+[`preprints/Makefile`](preprints/Makefile). The Python code sits in `python/`, each script
+next to its lockfile; `python/make_figures.py`, if present, writes the
 figures to `figures/`.
 
 ```sh

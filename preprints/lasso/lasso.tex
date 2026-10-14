@@ -114,7 +114,7 @@ the sample mean of 50 days of returns simulated from it. Its units are arbitrary
 its expected returns large against its risk, so Sharpe ratios reach $2.1$ per period, far
 above anything real assets offer. It serves to illustrate; Section~\ref{sec:evidence}
 adds real returns. The companion script
-\texttt{make\_figures.py} regenerates every figure and number in the note, and its tests
+\texttt{python/make\_figures.py} regenerates every figure and number in the note, and its tests
 check each against a tolerance. The statement on
 \hyperref[sec:availability]{code and data availability} at the end says where to find it.
 
@@ -491,10 +491,10 @@ $\nu_0$ computed in advance, and a \texttt{max\_iter} large enough for big probl
 \label{sec:availability}
 
 The software is at \url{https://github.com/Jebel-Quant/lasso}, in the directory
-\texttt{preprints/lasso/}, under the MIT license. \texttt{make\_figures.py} regenerates every
-figure and number in the note; \texttt{uv run make\_figures.py test} runs its checks. It
+\texttt{preprints/lasso/}, under the MIT license. \texttt{python/make\_figures.py} regenerates every
+figure and number in the note; \texttt{uv run python/make\_figures.py test} runs its checks. It
 is a single Python script that declares its own pinned dependencies, and
-\texttt{make\_figures.py.lock} next to it fixes Python 3.12 and every package it
+\texttt{python/make\_figures.py.lock} next to it fixes Python 3.12 and every package it
 pulls in, to the exact version and hash. The R snippet of
 Section~\ref{sec:longshort} is \texttt{R/long\_short.R}, with a check against
 \texttt{lars\_path}.
@@ -503,12 +503,12 @@ The test problem and the factor models of Table~\ref{tab:robust} are simulated i
 the script from fixed seeds, so they need no data. The portfolio returns of
 Section~\ref{sec:evidence} are in the repository as \texttt{data/french100\_daily.csv},
 cut from Kenneth French's Data Library \cite{french} (CRSP vintage of August 2026,
-SHA-256 \texttt{98298ef6\ldots3c43}), and \texttt{fetch\_french.py} rebuilds them. The
+SHA-256 \texttt{98298ef6\ldots3c43}), and \texttt{python/fetch\_french.py} rebuilds them. The
 library rebuilds its history each month from CRSP, so a later download can differ where
 CRSP revises a return. These data remain Fama and French's and are not covered by the
 repository's MIT license. The stock returns of
 Section~\ref{sec:evidence} come from Yahoo Finance and are not redistributed.
-\texttt{fetch\_sp500.py} downloads them: the S\&P~500 constituents listed on Wikipedia,
+\texttt{python/fetch\_sp500.py} downloads them: the S\&P~500 constituents listed on Wikipedia,
 adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than
 5\% of days missing. The note used the snapshot with SHA-256 \texttt{b5faa522\ldots9937e}.
 A later download differs slightly, because the constituents change and Yahoo revises
