@@ -46,6 +46,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 import cvxpy as cp
@@ -1263,41 +1264,56 @@ def machine() -> str:
     return f"{name or 'unknown CPU'}, {os.cpu_count()} threads, Python {platform.python_version()}"
 
 
-def timings() -> None:
-    """Print only the timings the note quotes, without the slow QP checks around them.
+TIMING_REPEATS = 5  # each timed step runs this often, and the fastest run counts
 
-    Run it on an otherwise idle machine: the numbers are wall-clock times.
+
+def fastest(step: Callable[[], object], repeats: int = TIMING_REPEATS) -> float:
+    """Seconds of the fastest of ``repeats`` runs of ``step``.
+
+    Other work on the machine can only slow a run down, so the fastest run is the
+    closest to what the step itself costs, and it varies far less than a single run.
     """
-    print(f"machine: {machine()}")
-    print("Table 1, median seconds of one run of Algorithm 1 over the seeds:")
+    seconds = []
+    for _ in range(repeats):
+        start = time.perf_counter()
+        step()
+        seconds.append(time.perf_counter() - start)
+    return min(seconds)
+
+
+def timings() -> None:
+    """Print the timings the note quotes, without the slow QP checks around them.
+
+    Each step is timed as the fastest of TIMING_REPEATS runs; see ``fastest``.
+    """
+    print(f"machine: {machine()}; each time the fastest of {TIMING_REPEATS} runs")
+    print("Table 1, median over the seeds of the time of Algorithm 1:")
     for n in ROBUST_SIZES:
         seconds = []
         for seed in ROBUST_SEEDS:
             f = factor_data(seed=seed, n_assets=n)
             mu, sigma = f.returns.mean(axis=0), np.diag(f.d) + (f.u * f.delta) @ f.u.T
             x, y = as_regression(mu, sigma)
-            start = time.perf_counter()
-            long_only_frontier(x, y, sigma)
-            seconds.append(time.perf_counter() - start)
-        print(f"  n = {n:4d}: {np.median(seconds):.4f}")
+            seconds.append(fastest(partial(long_only_frontier, x, y, sigma)))
+        print(f"  n = {n:4d}: {np.median(seconds) * 1e3:.1f} ms")
     for name, path in (("Fama-French", FRENCH), ("S&P 500", SP500)):
         if not path.exists():
             continue
         r = french_returns() if path == FRENCH else sp500_returns()
         x, y, sigma = centred_problem(r)
         mu = r.mean(axis=0)
-        start = time.perf_counter()
         w, tilts, _ = long_only_frontier(x, y, sigma)
-        path_seconds = time.perf_counter() - start
-        qp_seconds = []
-        for lam in tilts[:: max(1, len(tilts) // 10)]:
-            start = time.perf_counter()
-            tilted(mu, sigma, lam)
-            qp_seconds.append(time.perf_counter() - start)
-        _, warm_seconds = warm_grid(mu, sigma, np.geomspace(tilts.max(), tilts.min(), GRID))
+        path_seconds = fastest(partial(long_only_frontier, x, y, sigma))
+        # One QP: the median over ten corners spread along the path.
+        qp_seconds = np.median(
+            [fastest(partial(tilted, mu, sigma, lam)) for lam in tilts[:: max(1, len(tilts) // 10)]]
+        )
+        grid = np.geomspace(tilts.max(), tilts.min(), GRID)
+        warm_seconds = fastest(partial(warm_grid, mu, sigma, grid))
         print(
             f"{name}, {r.shape[1]} assets: one path {path_seconds:.2f} s ({w.shape[1]} corners); "
-            f"one QP {np.median(qp_seconds) * 1e3:.0f} ms; warm-started {GRID}-point grid {warm_seconds:.1f} s"
+            f"one QP {qp_seconds * 1e3:.0f} ms, so a {GRID}-point grid {GRID * qp_seconds:.1f} s; "
+            f"warm-started grid {warm_seconds:.1f} s"
         )
 
 
