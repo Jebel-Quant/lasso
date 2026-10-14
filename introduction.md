@@ -17,7 +17,9 @@ preprints/
   lasso/
     lasso.tex            the note: the one .tex file with a \documentclass
     Makefile             just `include ../Makefile`
-    make_figures.py      draws figures/*.pdf and prints every number the note quotes
+    python/
+      make_figures.py    draws figures/*.pdf and prints every number the note quotes
+      make_figures.py.lock  its locked environment (uv lock --script)
     README.md            what the code does and how to run it
   constrained_lasso/
     ...
@@ -25,14 +27,15 @@ preprints/
 
 Only two things are required. The folder must hold exactly one `.tex` file with a
 `\documentclass` line, and the PDF takes that file's name, so no two preprints may share
-one. A `make_figures.py` is optional. If it exists, it writes the figures into
+one. The Python code is optional and lives in `python/`, each script next to its
+lockfile. If `python/make_figures.py` exists, it writes the figures into
 `figures/`, which is ignored by git and rebuilt from the script.
 
 The shared rules in [`preprints/Makefile`](preprints/Makefile) are:
 
 ```sh
-make figures   # uv run make_figures.py
-make test      # uv run make_figures.py test
+make figures   # uv run python/make_figures.py
+make test      # uv run python/make_figures.py test
 make pdf       # pdflatex, three passes; run `make figures` first
 make clean     # remove the LaTeX auxiliary files
 ```
@@ -51,17 +54,18 @@ acts on all of them in parallel.
    include ../Makefile
    ```
 
-3. If the note has figures or computed numbers, add a `make_figures.py` that writes the
+3. If the note has figures or computed numbers, add a `python/make_figures.py` that writes the
    figures to `figures/` and prints the numbers. Give it a `test` mode that checks the
    same numbers as pytest tests with tolerances. Start the file with a PEP 723 block
-   pinning every dependency (see below).
+   pinning every dependency (see below), and lock it with
+   `uv lock --script python/make_figures.py`.
 4. Add a short `README.md` that says what the code does and how to run it, and link the
    preprint from the top-level [`README.md`](README.md).
 5. Check locally with `make figures && make pdf`, then open a pull request into `main`.
 
 There is nothing to register in CI. The workflow in
 [`.github/workflows/compile.yml`](.github/workflows/compile.yml) finds every folder in
-`preprints/` on its own. On each pull request it runs `make_figures.py` (if there is one)
+`preprints/` on its own. On each pull request it runs `python/make_figures.py` (if there is one)
 with uv and compiles the PDF; it fails if a folder has no main `.tex` file, or more than
 one. When the pull request is merged, the PDFs are published on the `paper` branch with
 an `index.html` that lists them by title, and GitHub Pages serves that branch at
@@ -80,7 +84,7 @@ seeded and run offline.
 ### PEP 723: dependencies inside the script
 
 [PEP 723](https://peps.python.org/pep-0723/) is a Python standard for putting a script's
-metadata in a comment block at the top of the script itself. Each `make_figures.py`
+metadata in a comment block at the top of the script itself. Each `python/make_figures.py`
 starts like this:
 
 ```python
@@ -110,7 +114,7 @@ Keeping the dependencies in the script has three advantages here:
 - **The versions are exact.** Every direct dependency is pinned with `==`, so the
   versions that produced the published figures are on record in the same commit that is
   stamped on the PDF. A preprint can go further and lock the transitive dependencies
-  too: `uv lock --script make_figures.py` writes `make_figures.py.lock` next to the
+  too: `uv lock --script python/make_figures.py` writes `make_figures.py.lock` next to the
   script, with an exact version and hash for every package, and `uv run` then uses it.
   Both preprints do this, with `requires-python = "==3.12.*"`.
 
@@ -124,7 +128,7 @@ merged.
 Astral. It reads the PEP 723 block, so a single command does the whole setup:
 
 ```sh
-uv run make_figures.py
+uv run python/make_figures.py
 ```
 
 uv finds or downloads a Python that satisfies `requires-python` (the repository's
@@ -146,13 +150,13 @@ those changes.
   fixed seed, and the computations need no network access, so a run gives the same
   numbers every time.
 - **Data that cannot be redistributed are fetched, and checked.** The S&P 500 returns in
-  `preprints/lasso/` come from Yahoo Finance and are not committed. `fetch_sp500.py`
+  `preprints/lasso/` come from Yahoo Finance and are not committed. `python/fetch_sp500.py`
   downloads them and prints the SHA-256 of the result, so you can tell whether you have
-  the snapshot the note used. Without that data, `make_figures.py` skips that example
+  the snapshot the note used. Without that data, `python/make_figures.py` skips that example
   and runs everything else.
 - **Where possible, real data are committed.** `preprints/lasso/` also checks the method
   on the Fama-French portfolio returns, committed as `data/french100_daily.csv` with
-  `fetch_french.py` to rebuild them, so a real-data check runs on every build.
+  `python/fetch_french.py` to rebuild them, so a real-data check runs on every build.
 - **The numbers are tested.** `make test` reruns the numbers the note quotes as pytest
   checks with tolerances and exits nonzero if any of them misses.
 

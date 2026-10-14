@@ -3,7 +3,7 @@
 # builds them all, `make -C lasso pdf` just one.
 #
 # A preprint's main source is the one .tex file in its folder with a \documentclass; the
-# PDF takes its name. A make_figures.py, if present, draws the figures into figures/;
+# PDF takes its name. A python/make_figures.py, if present, draws the figures into figures/;
 # run `make figures` before `make pdf`.
 
 LATEX     := pdflatex
@@ -35,7 +35,7 @@ ifneq ($(words $(MAIN)),1)
 $(error expected one .tex file with a \documentclass, found: $(MAIN))
 endif
 
-FIGURES := $(wildcard make_figures.py)
+FIGURES := $(wildcard python/make_figures.py)
 
 pdf: $(MAIN).pdf
 
