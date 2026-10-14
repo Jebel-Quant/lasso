@@ -60,6 +60,10 @@ portfolio; shifting the response once, by an amount computed in advance, lets a 
 call reach the minimum-variance portfolio. The script, its checks, scripts that fetch
 the data, and an R cross-check are published, with a locked environment, so that anyone
 can repeat them.
+
+\medskip\noindent
+\textbf{Keywords:} efficient frontier; critical line algorithm; LASSO; least angle
+regression; portfolio optimisation; reproducibility
 \end{abstract}
 
 \section{Introduction}
@@ -545,8 +549,8 @@ adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no mor
 5\% of days missing. The note used the snapshot with SHA-256 \texttt{b5faa522\ldots9937e}.
 A later download differs slightly, because the constituents change and Yahoo revises
 adjusted prices. On one, from October 2026, the path's KKT residuals stay below
-$4\times10^{-12}$, but the QP baseline drifts to $3.4\times10^{-10}$ at one corner, above the
-test's tolerance of $10^{-10}$.
+$4\times10^{-12}$, but the QP baseline drifts to $3.4\times10^{-10}$ at one corner, so the
+tests allow $10^{-9}$ for that gap on any download other than the note's snapshot.
 
 \section*{Acknowledgements}
 
@@ -558,23 +562,27 @@ I thank Trevor Hastie for many helpful discussions.
 F.~Black.
 \newblock Capital market equilibrium with restricted borrowing.
 \newblock \emph{The Journal of Business}, 45(3):444--455, 1972.
+\newblock \href{https://doi.org/10.1086/295472}{\texttt{doi:10.1086/295472}}.
 
 \bibitem{brodie2009}
 J.~Brodie, I.~Daubechies, C.~De~Mol, D.~Giannone, and I.~Loris.
 \newblock Sparse and stable {M}arkowitz portfolios.
 \newblock \emph{Proceedings of the National Academy of Sciences}, 106(30):12267--12272,
 2009.
+\newblock \href{https://doi.org/10.1073/pnas.0904287106}{\texttt{doi:10.1073/pnas.0904287106}}.
 
 \bibitem{efron2004}
 B.~Efron, T.~Hastie, I.~Johnstone, and R.~Tibshirani.
 \newblock Least angle regression.
 \newblock \emph{The Annals of Statistics}, 32(2):407--499, 2004.
+\newblock \href{https://doi.org/10.1214/009053604000000067}{\texttt{doi:10.1214/009053604000000067}}.
 
 \bibitem{fan2012}
 J.~Fan, J.~Zhang, and K.~Yu.
 \newblock Vast portfolio selection with gross-exposure constraints.
 \newblock \emph{Journal of the American Statistical Association}, 107(498):592--606,
 2012.
+\newblock \href{https://doi.org/10.1080/01621459.2012.682825}{\texttt{doi:10.1080/01621459.2012.682825}}.
 
 \bibitem{french}
 K.~R. French.
@@ -586,22 +594,26 @@ accessed October 2026.
 J.~Friedman, T.~Hastie, and R.~Tibshirani.
 \newblock Regularization paths for generalized linear models via coordinate descent.
 \newblock \emph{Journal of Statistical Software}, 33(1):1--22, 2010.
+\newblock \href{https://doi.org/10.18637/jss.v033.i01}{\texttt{doi:10.18637/jss.v033.i01}}.
 
 \bibitem{gaines2018}
 B.~R. Gaines, J.~Kim, and H.~Zhou.
 \newblock Algorithms for fitting the constrained lasso.
 \newblock \emph{Journal of Computational and Graphical Statistics}, 27(4):861--871, 2018.
+\newblock \href{https://doi.org/10.1080/10618600.2018.1473777}{\texttt{doi:10.1080/10618600.2018.1473777}}.
 
 \bibitem{goldfarb1983}
 D.~Goldfarb and A.~Idnani.
 \newblock A numerically stable dual method for solving strictly convex quadratic
 programs.
 \newblock \emph{Mathematical Programming}, 27(1):1--33, 1983.
+\newblock \href{https://doi.org/10.1007/BF02591962}{\texttt{doi:10.1007/BF02591962}}.
 
 \bibitem{lars}
 T.~Hastie and B.~Efron.
 \newblock \texttt{lars}: least angle regression, lasso and forward stagewise.
 \newblock R package version 1.3, 2022.
+\newblock \href{https://doi.org/10.32614/CRAN.package.lars}{\texttt{doi:10.32614/CRAN.package.lars}}.
 
 \bibitem{james2020}
 G.~M. James, C.~Paulson, and P.~Rusmevichientong.
@@ -609,11 +621,13 @@ G.~M. James, C.~Paulson, and P.~Rusmevichientong.
 website advertising.
 \newblock \emph{Journal of the American Statistical Association}, 115(529):107--122,
 2020.
+\newblock \href{https://doi.org/10.1080/01621459.2019.1609970}{\texttt{doi:10.1080/01621459.2019.1609970}}.
 
 \bibitem{kelly1956}
 J.~L. Kelly, Jr.
 \newblock A new interpretation of information rate.
 \newblock \emph{Bell System Technical Journal}, 35(4):917--926, 1956.
+\newblock \href{https://doi.org/10.1002/j.1538-7305.1956.tb03809.x}{\texttt{doi:10.1002/j.1538-7305.1956.tb03809.x}}.
 
 \bibitem{lawson1974}
 C.~L. Lawson and R.~J. Hanson.
@@ -624,16 +638,19 @@ C.~L. Lawson and R.~J. Hanson.
 H.~M. Markowitz.
 \newblock Portfolio selection.
 \newblock \emph{The Journal of Finance}, 7(1):77--91, 1952.
+\newblock \href{https://doi.org/10.1111/j.1540-6261.1952.tb01525.x}{\texttt{doi:10.1111/j.1540-6261.1952.tb01525.x}}.
 
 \bibitem{markowitz1956}
 H.~M. Markowitz.
 \newblock The optimization of a quadratic function subject to linear constraints.
 \newblock \emph{Naval Research Logistics Quarterly}, 3(1--2):111--133, 1956.
+\newblock \href{https://doi.org/10.1002/nav.3800030110}{\texttt{doi:10.1002/nav.3800030110}}.
 
 \bibitem{osborne2000}
 M.~R. Osborne, B.~Presnell, and B.~A. Turlach.
 \newblock A new approach to variable selection in least squares problems.
 \newblock \emph{IMA Journal of Numerical Analysis}, 20(3):389--403, 2000.
+\newblock \href{https://doi.org/10.1093/imanum/20.3.389}{\texttt{doi:10.1093/imanum/20.3.389}}.
 
 \bibitem{sklearn}
 F.~Pedregosa et al.
@@ -645,27 +662,32 @@ T.~Schmelzer and T.~Hastie.
 \newblock The Critical Line Algorithm and the constrained LASSO: one curve, two
 literatures.
 \newblock arXiv preprint arXiv:2609.25704, 2026.
+\newblock \href{https://doi.org/10.48550/arXiv.2609.25704}{\texttt{doi:10.48550/arXiv.2609.25704}}.
 
 \bibitem{sharpe1964}
 W.~F. Sharpe.
 \newblock Capital asset prices: a theory of market equilibrium under conditions of risk.
 \newblock \emph{The Journal of Finance}, 19(3):425--442, 1964.
+\newblock \href{https://doi.org/10.2307/2977928}{\texttt{doi:10.2307/2977928}}.
 
 \bibitem{stellato2020}
 B.~Stellato, G.~Banjac, P.~Goulart, A.~Bemporad, and S.~Boyd.
 \newblock {OSQP}: an operator splitting solver for quadratic programs.
 \newblock \emph{Mathematical Programming Computation}, 12(4):637--672, 2020.
+\newblock \href{https://doi.org/10.1007/s12532-020-00179-2}{\texttt{doi:10.1007/s12532-020-00179-2}}.
 
 \bibitem{tibshirani1996}
 R.~Tibshirani.
 \newblock Regression shrinkage and selection via the lasso.
 \newblock \emph{Journal of the Royal Statistical Society, Series B}, 58(1):267--288,
 1996.
+\newblock \href{https://doi.org/10.1111/j.2517-6161.1996.tb02080.x}{\texttt{doi:10.1111/j.2517-6161.1996.tb02080.x}}.
 
 \bibitem{tobin1958}
 J.~Tobin.
 \newblock Liquidity preference as behavior towards risk.
 \newblock \emph{The Review of Economic Studies}, 25(2):65--86, 1958.
+\newblock \href{https://doi.org/10.2307/2296205}{\texttt{doi:10.2307/2296205}}.
 
 \end{thebibliography}
 
