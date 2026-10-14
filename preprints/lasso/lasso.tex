@@ -38,7 +38,7 @@
 \newcommand{\R}{\mathbb{R}}
 
 \title{The Efficient Frontier from a LASSO Solver\\[6pt]
-{\normalsize A practical guide to the CLA--LASSO identity}}
+{\normalsize A numerical check of the CLA--LASSO identity}}
 \author{Thomas Schmelzer}
 \date{26 September 2026}
 
@@ -47,13 +47,17 @@
 \maketitle
 
 \begin{abstract}
-In a recent paper, Schmelzer and Hastie argue that Markowitz's Critical Line Algorithm
-and the LASSO path trace the same curve. Here we use that identity to compute efficient
-frontiers with a stock LASSO solver, \texttt{lars\_path} from \texttt{scikit-learn}. It
-handles long--short portfolios under a leverage cap, fixed leverage with varying risk
-appetite, and the classical long-only, fully invested frontier. Called naively, the last
-path stops at the maximum-Sharpe portfolio. One shift of the response, by an amount
-computed in advance, lets a single call reach the minimum-variance portfolio.
+Schmelzer and Hastie prove that Markowitz's Critical Line Algorithm and the LASSO path
+trace the same curve. This companion note checks that result numerically with a stock
+LASSO solver, \texttt{lars\_path} from \texttt{scikit-learn}, and no portfolio software.
+It covers long--short portfolios under a leverage cap, fixed leverage with varying risk
+appetite, and the classical long-only, fully invested frontier. Every corner the path
+returns meets its own optimality conditions to about $10^{-13}$ and agrees with
+independent quadratic-programming solvers, on factor models of up to 500 assets and on
+daily returns of 494 S\&P~500 stocks. Called naively, the long-only path stops at the
+maximum-Sharpe portfolio. One shift of the response, by an amount computed in advance,
+lets a single call reach the minimum-variance portfolio. The script, its checks and an R
+cross-check are published so that anyone can repeat them.
 \end{abstract}
 
 \section{Introduction}
@@ -64,8 +68,9 @@ portfolios}, where an asset enters or leaves. Markowitz's Critical Line Algorith
 \cite{markowitz1956} walks from one corner to the next. The LASSO \cite{tibshirani1996}
 behaves the same way as its penalty moves, and the LARS algorithm \cite{efron2004} walks
 its corners, which statisticians call knots. Schmelzer and Hastie \cite{perspective}
-prove that after a change of variables the two paths coincide. This note is the
-practical side of that result, in three settings:
+prove that after a change of variables the two paths coincide. This note checks that
+result numerically, by computing frontiers with a LASSO solver and testing them against
+independent solvers, in three settings:
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item long--short under a gross-exposure cap, where the plain LASSO path is the frontier
 (Section~\ref{sec:longshort});
@@ -471,8 +476,19 @@ LASSO with general linear constraints exist \cite{gaines2018,james2020}, but not
 along each segment the variance is quadratic in the parameter, so the portfolio at a
 given $\sigma$ comes from one scalar equation.
 
-The numbers above test the implementation. Theorem~1 itself is proved in
-\cite{perspective}, and this note adds what a practitioner needs to use it: the shift, a
+The numbers above are evidence for Theorem~1 and Proposition~3 of \cite{perspective},
+not a proof of them; the proofs are there. They test what each result predicts.
+Theorem~1 says the LASSO path is the frontier under a gross-exposure cap: every column
+meets the optimality conditions of its cap and matches Clarabel there. Proposition~3
+says the nonnegative LASSO is the long-only frontier: every corner, and every point
+between corners, matches an active-set QP at the same tilt. Both make the frontier
+piecewise linear in its parameter, so a path finds its corners exactly where a grid of QP
+solves, cold- or warm-started, misses them. On the stock data the checks pass on the
+note's snapshot and on a later download, although the two differ in the number of
+corners and in $\nu_{\mathrm{last}}$. The checks were written by an author of
+\cite{perspective}, so they are not independent in the usual sense. The baseline solvers
+are, and the script and its tolerances are published so that anyone can rerun them.
+Along the way the note adds what a practitioner needs to use the result: the shift, a
 $\nu_0$ computed in advance, and a \texttt{max\_iter} large enough for big problems.
 
 \section*{Code and data availability}
