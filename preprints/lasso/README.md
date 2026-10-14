@@ -14,6 +14,7 @@ lasso.tex           the note
 Makefile            builds lasso.pdf from lasso.tex (make figures first)
 make_figures.py     every figure and number in the note, and the checks as pytest tests
 fetch_sp500.py      downloads the S&P 500 returns of the real-data example
+*.py.lock           the locked environment of each script: Python 3.12 and every package
 data/test_problem/  the 20-asset test problem and its long-short path, as CSV
 R/long_short.R      the R snippet of Section 5, checked against lars_path
 ```
@@ -22,6 +23,10 @@ R/long_short.R      the R snippet of Section 5, checked against lars_path
 
 `make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/)
 script with pinned dependencies, so [uv](https://docs.astral.sh/uv/) needs nothing else.
+Each script has a lockfile next to it (`make_figures.py.lock`, `fetch_sp500.py.lock`)
+that fixes Python 3.12 and every transitive dependency to an exact version and hash;
+`uv run` uses it automatically, and `uv run --locked` fails if it is out of date.
+After changing a pin, refresh it with `uv lock --script make_figures.py`.
 Run it from this directory:
 
 ```sh
