@@ -14,10 +14,9 @@ lasso.tex           the note
 Makefile            builds lasso.pdf from lasso.tex (make figures first)
 python/
   make_figures.py   every figure and number in the note, and the checks as pytest tests
-  fetch_french.py   rebuilds data/french100_daily.csv, the portfolio returns of Section 8
+  fetch_french.py   downloads the Fama-French portfolio returns of Section 8 (not redistributed)
   fetch_sp500.py    downloads the S&P 500 returns of the real-data example at scale
   *.py.lock         the locked environment of each script: Python 3.12 and every package
-data/french100_daily.csv  Fama-French 100 size x book-to-market portfolios, daily, 2016-2025
 data/test_problem/  the 20-asset test problem and its long-short path, as CSV
 R/long_short.R      the R snippet of Section 5, checked against lars_path
 ```
@@ -34,6 +33,7 @@ After changing a pin, refresh it with `uv lock --script python/make_figures.py`.
 Run it from this directory:
 
 ```sh
+uv run python/fetch_french.py          # download the Fama-French data (not redistributed; see below)
 uv run python/fetch_sp500.py           # download the stock data (not redistributed; see below)
 uv run python/make_figures.py          # write figures/*.pdf and print every number the note quotes
 uv run python/make_figures.py test     # the same numbers as pytest checks, with tolerances
@@ -42,8 +42,8 @@ Rscript R/long_short.R          # needs the lars package: install.packages("lars
 make pdf                        # build lasso.pdf from lasso.tex and figures/ (pdflatex)
 ```
 
-Without the stock data, `python/make_figures.py` skips the S&P 500 example and its test and
-runs everything else, including the Fama-French check, whose data are committed. The full run takes about three minutes, almost all of it the
+Without the downloaded data, `python/make_figures.py` skips the Fama-French and S&P 500
+examples and their tests and runs everything else. The full run takes about three minutes, almost all of it the
 independent QP baselines. The tests take about twenty seconds and exit nonzero if any
 number misses its tolerance. Everything except the download is seeded and runs offline.
 
@@ -51,23 +51,24 @@ number misses its tolerance. Everything except the download is seeded and runs o
 
 Section 8 checks the method on two sets of real returns.
 
-**Fama-French portfolios (committed).** `data/french100_daily.csv` holds the daily
-value-weighted returns, in percent, of the 100 portfolios formed on size and
-book-to-market, from 2016-01-04 to 2025-12-31, cut from
+**Fama-French portfolios (downloaded).** The returns are copyrighted by Eugene F. Fama
+and Kenneth R. French and are **not** redistributed here, at their request.
+`uv run python/fetch_french.py` downloads them from
 [Kenneth French's Data Library](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html)
-(file built from the CRSP database of August 2026). `ME9 BM10` misses 250 days in the
+and writes `data/french100_daily.csv`, which git ignores: the daily value-weighted
+returns, in percent, of the 100 portfolios formed on size and book-to-market, from
+2016-01-04 to 2025-12-31. The note used the file built from the CRSP database of
+August 2026. `ME9 BM10` misses 250 days in the
 window and is dropped, which leaves 99 portfolios over 2514 days. SHA-256:
 
 ```
 98298ef6a28ead0ebd0b518bd8a309aa6ec4f10b23e7d1e5933802a8cbc03c43
 ```
 
-`uv run python/fetch_french.py` rebuilds the file and says whether it matches. The library
-rebuilds its history each month from CRSP, so a later download can differ where CRSP
-has revised a return. The data remain the property of Eugene F. Fama and Kenneth R.
-French and are **not** covered by this repository's MIT licence, which applies to the
-code and text only. They are included, unchanged, so that the note's results can be
-reproduced; if you use them, cite the Data Library.
+The script says whether what it wrote matches. The library rebuilds its history each
+month from CRSP, so a later download can differ where CRSP has revised a return. Keep
+the file for your own use, do not commit or share it, and cite the Data Library if you
+use the data.
 
 **S&P 500 stocks (downloaded).** The Yahoo Finance prices behind the example at scale
 are not redistributed here.

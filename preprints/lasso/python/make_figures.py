@@ -694,8 +694,8 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
 # Real data -- through the centred-returns route
 # --------------------------------------------------------------------------------------
 # The Fama--French 100 portfolios formed on size and book-to-market, value-weighted daily
-# returns in percent, 2016--2025, with the one portfolio that misses days dropped. The
-# snapshot is committed, so this check runs everywhere; fetch_french.py rebuilds it.
+# returns in percent, 2016--2025, with the one portfolio that misses days dropped. They
+# are copyrighted and not redistributed: fetch_french.py downloads them.
 # The frozen S&P 500 snapshot: next to this script in the public repository
 # (github.com/Jebel-Quant/lasso, under preprints/lasso/), or in the CLA paper's directory of the working repository.
 _HERE = Path(__file__).resolve().parent.parent  # the preprint folder; this script lives in python/
@@ -1205,8 +1205,11 @@ def main() -> None:
     print("\nnumbers quoted in the note (run with `test` to check them against tolerances):")
     for c in checks.values():
         print(f"  {c.name}: {c.measured:.2e}")
-    french_snapshot = hashlib.sha256(FRENCH.read_bytes()).hexdigest() == FRENCH_SHA256
-    print_real_data(real_data(french_returns(), french_snapshot), "Fama-French portfolios", "portfolios")
+    if FRENCH.exists():
+        french_snapshot = hashlib.sha256(FRENCH.read_bytes()).hexdigest() == FRENCH_SHA256
+        print_real_data(real_data(french_returns(), french_snapshot), "Fama-French portfolios", "portfolios")
+    else:
+        print(f"\nreal data skipped: {FRENCH} not found (fetch it with `uv run python/fetch_french.py`)")
     if SP500.exists():
         sp500_snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
         print_real_data(real_data(sp500_returns(), sp500_snapshot), "S&P 500", "stocks")
@@ -1214,7 +1217,9 @@ def main() -> None:
         print(f"\nreal data skipped: {SP500} not found (fetch it with `uv run python/fetch_sp500.py`)")
     print("\nthe margin delta in nu0 = nu_last - delta * max(|nu_last|, max|mu_j|):")
     mu, sigma = factor_problem()
-    problems = {"test problem": (*as_regression(mu, sigma), sigma), "Fama-French": centred_problem(french_returns())}
+    problems = {"test problem": (*as_regression(mu, sigma), sigma)}
+    if FRENCH.exists():
+        problems["Fama-French"] = centred_problem(french_returns())
     if SP500.exists():
         problems["S&P 500"] = centred_problem(sp500_returns())
     for name, (xp, yp, sp) in problems.items():
@@ -1343,13 +1348,11 @@ def test_robustness_across_sizes_and_seeds() -> None:
     assert max(r.kkt for r in rows) <= 1e-12
 
 
+@pytest.mark.skipif(not FRENCH.exists(), reason="no Fama-French data; fetch it with `uv run python/fetch_french.py`")
 def test_french_data() -> None:
-    """Algorithm 1 on the committed Fama--French returns, through centred returns.
-
-    The data ship with the repository, so this real-data check runs everywhere.
-    """
-    assert hashlib.sha256(FRENCH.read_bytes()).hexdigest() == FRENCH_SHA256, "not the note's snapshot"
-    rd = real_data(french_returns(), snapshot=True)
+    """Algorithm 1 on the Fama--French returns, through centred returns."""
+    snapshot = hashlib.sha256(FRENCH.read_bytes()).hexdigest() == FRENCH_SHA256
+    rd = real_data(french_returns(), snapshot)
     assert rd.corner_gap <= 1e-10, rd
     assert rd.minvar_gap <= 1e-12, rd
     assert rd.kkt <= 1e-11, rd

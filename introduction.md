@@ -172,12 +172,12 @@ those changes.
   downloads them and prints the SHA-256 of the result, so you can tell whether you have
   the snapshot the note used. Without that data, `python/make_figures.py` skips that example
   and runs everything else.
-- **Where possible, real data are committed.** `preprints/lasso/` also checks the method
-  on the Fama-French portfolio returns, committed as `data/french100_daily.csv` with
-  `python/fetch_french.py` to rebuild them, so a real-data check runs on every build. The
-  repository's MIT licence covers the code and text, not such data: say so in the
-  preprint's README, credit the source, and commit only what its owner allows to be
-  redistributed.
+- **Third-party data are not committed.** The repository is public, so committing data
+  publishes them. Even data that are free to download are usually copyrighted: Kenneth
+  French asked that the Fama-French portfolio returns not be redistributed here, so
+  `preprints/lasso/python/fetch_french.py` downloads them instead, like the S&P 500
+  returns. Commit data only if they are your own or their owner has said in writing that
+  they may be redistributed.
 - **The numbers are tested.** `make test` reruns the numbers the note quotes as pytest
   checks with tolerances and exits nonzero if any of them misses.
 
