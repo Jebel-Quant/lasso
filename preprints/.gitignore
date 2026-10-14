@@ -10,3 +10,8 @@ figures/
 *.log
 *.out
 *.toc
+
+# arXiv source tarball, and the trees make arxiv and make arxiv-check build it in
+/*/*.tar.gz
+arxiv-src/
+arxiv-build/
