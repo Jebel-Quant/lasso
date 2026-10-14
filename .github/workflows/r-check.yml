@@ -1,0 +1,65 @@
+# Run the R snippet of preprints/lasso (Section 5) on each pull request into main: R's lars
+# package must trace the same long-short path as scikit-learn's lars_path.
+#
+# The inputs in data/test_problem/ are rewritten first by `make_figures.py export`, in the
+# locked Python environment, so R is compared with what the current code produces rather
+# than with a committed copy. The committed CSVs agree with a fresh export only to the
+# last digits, which depend on the machine.
+#
+# Everything is pinned: the runner image, R itself, and lars through a dated snapshot of
+# CRAN, so a new CRAN release cannot change the result.
+name: r-check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - preprints/lasso/**
+      - .github/workflows/r-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Ubuntu 24.04 (noble) binaries as CRAN stood on that date; lars there is 1.3.
+  CRAN_SNAPSHOT: https://packagemanager.posit.co/cran/__linux__/noble/2026-09-01
+  LARS_VERSION: "1.3"
+
+jobs:
+  lars:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: preprints/lasso
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: astral-sh/setup-uv@v7.6.0
+        with:
+          cache-dependency-glob: |
+            preprints/lasso/python/make_figures.py
+            preprints/lasso/python/make_figures.py.lock
+
+      - name: Export the test problem
+        run: uv run --locked python/make_figures.py export
+
+      - uses: r-lib/actions/setup-r@v2.14.0
+        with:
+          r-version: 4.6.1
+          use-public-rspm: false
+
+      - name: Install lars from the CRAN snapshot
+        run: |
+          Rscript -e '
+            options(repos = c(CRAN = Sys.getenv("CRAN_SNAPSHOT")))
+            install.packages("lars")
+            stopifnot(packageVersion("lars") == Sys.getenv("LARS_VERSION"))
+          '
+
+      - name: Compare lars with lars_path
+        run: Rscript R/long_short.R
