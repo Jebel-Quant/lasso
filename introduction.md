@@ -149,8 +149,8 @@ Astral. It reads the PEP 723 block, so a single command does the whole setup:
 uv run python/make_figures.py
 ```
 
-uv finds or downloads a Python that satisfies `requires-python` (the repository's
-[`.python-version`](.python-version) asks for 3.12), creates an isolated environment
+uv finds or downloads a Python that satisfies the script's `requires-python` (3.12 in
+both preprints), creates an isolated environment
 with exactly the pinned packages, and runs the script in it. Nothing is installed into
 your system Python, and no virtual environment needs to be created or activated by hand.
 The environment is cached, so later runs start at once. The only prerequisite is uv
