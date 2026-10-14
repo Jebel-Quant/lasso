@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = "==3.12.*"
 # dependencies = [
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
@@ -26,8 +26,8 @@ Markowitz's general form, and knows nothing about regression. Two maps feed it:
   long-only budget, with one riskless "cash" asset as its slack. The parameter is the
   reciprocal of the l1 bound, and homogeneous constraints carry over unchanged.
 
-    uv run make_figures.py        # the three figures, and every number the note quotes
-    uv run make_figures.py test   # the same numbers as pytest checks, with tolerances
+    uv run python/make_figures.py        # the three figures, and every number the note quotes
+    uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
 
 Seeded and offline: the diabetes data ship with scikit-learn.
 """
@@ -47,7 +47,7 @@ from sklearn.datasets import load_diabetes
 from sklearn.linear_model import lars_path
 
 SEED = 7
-OUT = Path(__file__).parent / "figures"
+OUT = Path(__file__).resolve().parent.parent / "figures"  # the preprint folder; this script lives in python/
 
 # A position strictly inside its bounds by less than this is read as at the bound when the
 # starting vertex is taken off the LP solution.
