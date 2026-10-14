@@ -18,7 +18,7 @@ python/
   fetch_sp500.py    downloads the S&P 500 returns of the real-data example at scale
   *.py.lock         the locked environment of each script: Python 3.12 and every package
 data/test_problem/  the 20-asset test problem and its long-short path, as CSV
-R/long_short.R      the R snippet of Section 5, checked against lars_path
+R/long_short.R      the R snippet of Section 5, checked against lars_path (in CI too)
 ```
 
 ## Running it
@@ -49,6 +49,10 @@ independent QP baselines; `timings` skips those and measures only the costs the 
 quotes. The note gives them as ratios (one path against one QP, a grid of QPs against
 one path), because the seconds depend on the machine and the ratios do not. The tests take about twenty seconds and exit nonzero if any
 number misses its tolerance. Everything except the downloads is seeded and runs offline.
+
+The workflow [`r-check.yml`](../../.github/workflows/r-check.yml) runs the R check on every
+pull request that touches this preprint, with R 4.6.1 and lars 1.3 from a dated CRAN
+snapshot, on test-problem CSVs freshly exported by `make_figures.py export`.
 
 ## Data
 
