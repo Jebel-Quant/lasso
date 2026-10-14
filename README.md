@@ -40,7 +40,8 @@ preprint.
 Each folder in `preprints/` holds one preprint: a single `.tex` file with a
 `\documentclass`, the Python behind its experiments, and a `Makefile` that is just
 `include ../Makefile`. The rules (`pdf`, `figures`, `test`, `clean`) live in
-[`preprints/Makefile`](preprints/Makefile). The Python code sits in `python/`, each script
+[`preprints/Makefile`](preprints/Makefile), with `arxiv` and `arxiv-check` to package the
+arXiv source. The Python code sits in `python/`, each script
 next to its lockfile; `python/make_figures.py`, if present, writes the
 figures to `figures/`.
 
@@ -52,4 +53,7 @@ make -C preprints/lasso pdf    # build one
 Every pull request into `main` builds all the preprints. When it is merged, the PDFs are
 published on the [`paper`](../../tree/paper) branch, with an `index.html` that links each
 one by its title. GitHub Pages serves that branch at
-<https://jebel-quant.github.io/lasso/>.
+<https://jebel-quant.github.io/lasso/>. Each preprint's arXiv source, its `.tex` and the
+figures it includes, is published on the [`arxiv`](../../tree/arxiv) branch as
+`arxiv/<preprint>.tar.gz`, ready to upload; CI first compiles each tarball on its own, as
+arXiv will.
