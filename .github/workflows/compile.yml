@@ -1,6 +1,7 @@
 # Build every preprint under preprints/ on each pull request into main, and when one is
 # merged, publish the PDFs on the `paper` branch with an index.html that links them, and
-# each preprint's arXiv source tarball on the `arxiv` branch. GitHub Pages serves `paper`.
+# each preprint's arXiv source, as a tarball and a zip, on the `arxiv` branch. GitHub
+# Pages serves `paper`.
 #
 # Each folder in preprints/ holds one preprint. Its main source is the one .tex file there
 # with a \documentclass, and the PDF takes that file's name. A python/make_figures.py in its folder,
@@ -152,7 +153,9 @@ jobs:
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: arxiv-${{ matrix.job }}
-          path: ${{ matrix.dir }}/${{ matrix.job }}.tar.gz
+          path: |
+            ${{ matrix.dir }}/${{ matrix.job }}.tar.gz
+            ${{ matrix.dir }}/${{ matrix.job }}.zip
           if-no-files-found: error
 
   # One push with every PDF, so the matrix jobs never race for the branch.
@@ -251,7 +254,7 @@ jobs:
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" paper
 
       # The arXiv sources go to their own branch, which holds nothing else, as
-      # arxiv/<preprint>.tar.gz: ready to upload as they are.
+      # arxiv/<preprint>.tar.gz and arxiv/<preprint>.zip: ready to upload as they are.
       - name: Publish to the arxiv branch
         if: steps.tip.outputs.current == 'true'
         working-directory: arxiv
@@ -259,6 +262,6 @@ jobs:
           git init -q -b arxiv
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add arxiv/*.tar.gz
+          git add arxiv/*.tar.gz arxiv/*.zip
           git commit -q -m "arXiv sources from ${SHA::7}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" arxiv

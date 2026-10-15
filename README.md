@@ -55,5 +55,5 @@ published on the [`paper`](../../tree/paper) branch, with an `index.html` that l
 one by its title. GitHub Pages serves that branch at
 <https://jebel-quant.github.io/lasso/>. Each preprint's arXiv source, its `.tex` and the
 figures it includes, is published on the [`arxiv`](../../tree/arxiv) branch as
-`arxiv/<preprint>.tar.gz`, ready to upload; CI first compiles each tarball on its own, as
+`arxiv/<preprint>.tar.gz` and as `arxiv/<preprint>.zip`, ready to upload; CI first compiles each tarball on its own, as
 arXiv will.

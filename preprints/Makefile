@@ -53,14 +53,16 @@ test:
 
 # arXiv compiles the source itself, so a submission is the .tex and the figures it
 # includes, laid out as here, not the PDF. Only the figures the note includes go in:
-# figures/ can hold drawings the note no longer uses.
+# figures/ can hold drawings the note no longer uses. The same tree is packed twice, as a
+# tarball and as a zip, for whichever the upload form takes.
 ARXIV_SRC     := arxiv-src
 ARXIV_CHECK   := arxiv-build
 ARXIV_TARBALL := $(MAIN).tar.gz
+ARXIV_ZIP     := $(MAIN).zip
 INCLUDED      := $(addprefix figures/,$(shell grep -oE '\\includegraphics(\[[^]]*\])?\{[^}]*\}' \
                    $(MAIN).tex | sed -E 's/.*\{//; s/\}//' | sort -u))
 
-arxiv: $(ARXIV_TARBALL)
+arxiv: $(ARXIV_TARBALL) $(ARXIV_ZIP)
 
 $(ARXIV_TARBALL): $(MAIN).tex $(INCLUDED)
 	rm -rf $(ARXIV_SRC)
@@ -70,10 +72,15 @@ $(ARXIV_TARBALL): $(MAIN).tex $(INCLUDED)
 	tar czf $@ -C $(ARXIV_SRC) .
 	tar tzf $@
 
+$(ARXIV_ZIP): $(ARXIV_TARBALL)
+	rm -f $@
+	cd $(ARXIV_SRC) && zip -qr ../$@ .
+	unzip -l $@
+
 # Compile the tarball the way arXiv will: unpacked into an empty directory and built
 # there, so a file the packaging forgot fails here rather than after posting. The tail
 # of the log is printed if a run fails, since the error is among its last lines.
-arxiv-check: $(ARXIV_TARBALL)
+arxiv-check: $(ARXIV_TARBALL) $(ARXIV_ZIP)
 	rm -rf $(ARXIV_CHECK)
 	mkdir -p $(ARXIV_CHECK)
 	tar xzf $< -C $(ARXIV_CHECK)
@@ -86,6 +93,6 @@ arxiv-check: $(ARXIV_TARBALL)
 
 clean:
 	rm -f $(addprefix $(MAIN).,aux log out toc)
-	rm -rf $(ARXIV_SRC) $(ARXIV_CHECK) $(ARXIV_TARBALL)
+	rm -rf $(ARXIV_SRC) $(ARXIV_CHECK) $(ARXIV_TARBALL) $(ARXIV_ZIP)
 
 endif
