@@ -1,4 +1,2 @@
-# fetched by fetch_sp500.py, not redistributed
-data/sp500_pct_returns.parquet
 # fetched by fetch_french.py; copyrighted, not redistributed
 data/french100_daily.csv

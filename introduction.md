@@ -167,16 +167,15 @@ those changes.
 - **Seeded and offline.** Simulated data come from `numpy.random.default_rng` with a
   fixed seed, and the computations need no network access, so a run gives the same
   numbers every time.
-- **Data that cannot be redistributed are fetched, and checked.** The S&P 500 returns in
-  `preprints/lasso/` come from Yahoo Finance and are not committed. `python/fetch_sp500.py`
-  downloads them and prints the SHA-256 of the result, so you can tell whether you have
-  the snapshot the note used. Without that data, `python/make_figures.py` skips that example
-  and runs everything else.
+- **Data that cannot be redistributed are fetched, and checked.** The Fama-French returns
+  in `preprints/lasso/` are not committed. `python/fetch_french.py` downloads them and
+  prints the SHA-256 of the result, so you can tell whether you have the file the note
+  used. Without that data, `python/make_figures.py` skips that example and runs
+  everything else.
 - **Third-party data are not committed.** The repository is public, so committing data
   publishes them. Even data that are free to download are usually copyrighted: Kenneth
   French asked that the Fama-French portfolio returns not be redistributed here, so
-  `preprints/lasso/python/fetch_french.py` downloads them instead, like the S&P 500
-  returns. Commit data only if they are your own or their owner has said in writing that
+  `preprints/lasso/python/fetch_french.py` downloads them instead. Commit data only if they are your own or their owner has said in writing that
   they may be redistributed.
 - **The numbers are tested.** `make test` reruns the numbers the note quotes as pytest
   checks with tolerances and exits nonzero if any of them misses.
