@@ -7,9 +7,8 @@ path, each with its LaTeX source and the code and data behind it.
 
 - [`preprints/lasso/`](preprints/lasso) — *The Efficient Frontier from a LASSO Solver*
   ([arXiv:2609.37108](https://arxiv.org/abs/2609.37108)): one script that reproduces
-  every figure and number, scripts that fetch the Fama-French and S&P 500 returns it
-  checks against, and an R
-  check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
+  every figure and number, a script that fetches the Fama-French returns it checks
+  against, and an R check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
 - [`preprints/constrained_lasso/`](preprints/constrained_lasso) — *The Constrained LASSO
   by the Critical Line Algorithm*: the identity run the other way, computing
   constrained-LASSO paths with an unmodified CLA, and one script that reproduces every
@@ -23,8 +22,8 @@ with [uv](https://docs.astral.sh/uv/). Its dependencies are pinned in the script
 ([PEP 723](https://peps.python.org/pep-0723/)), and `python/make_figures.py.lock` next to it
 fixes Python 3.12 and every package to an exact version and hash, so a rerun uses the
 environment that produced the PDF. Everything is seeded and runs offline, except the
-downloads of the Fama-French and S&P 500 returns in `preprints/lasso/`, which are not
-redistributed; without them, the script skips those checks.
+download of the Fama-French returns in `preprints/lasso/`, which are not
+redistributed; without them, the script skips that check.
 
 ```sh
 cd preprints/lasso

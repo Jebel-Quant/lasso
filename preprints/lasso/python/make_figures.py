@@ -7,7 +7,6 @@
 #     "numpy==2.5.4",
 #     "osqp==1.1.3",
 #     "pandas==3.0.6",
-#     "pyarrow==26.0.0",
 #     "pytest==9.1.1",
 #     "qpsolvers==4.13.0",
 #     "quadprog==0.1.13",
@@ -696,28 +695,14 @@ def robustness(sizes: tuple[int, ...] = ROBUST_SIZES, seeds: tuple[int, ...] = R
 
 
 # --------------------------------------------------------------------------------------
-# Real data -- through the centred-returns route
+# Return data -- through the centred-returns route
 # --------------------------------------------------------------------------------------
 # The Fama--French 100 portfolios formed on size and book-to-market, value-weighted daily
 # returns in percent, 2016--2025, with the one portfolio that misses days dropped. They
 # are copyrighted and not redistributed: fetch_french.py downloads them.
-# The frozen S&P 500 snapshot: next to this script in the public repository
-# (github.com/Jebel-Quant/lasso, under preprints/lasso/), or in the CLA paper's directory of the working repository.
 _HERE = Path(__file__).resolve().parent.parent  # the preprint folder; this script lives in python/
 FRENCH = _HERE / "data" / "french100_daily.csv"
 FRENCH_SHA256 = "98298ef6a28ead0ebd0b518bd8a309aa6ec4f10b23e7d1e5933802a8cbc03c43"
-SNAPSHOT_SHA256 = "b5faa5222555f28d77bad5404565297bb25bbe92b0b813f416cd2bebac79937e"
-SP500 = next(
-    (
-        p
-        for p in (
-            _HERE / "data" / "sp500_pct_returns.parquet",
-            _HERE.parent / "cla" / "figures" / "data" / "sp500_pct_returns.parquet",
-        )
-        if p.exists()
-    ),
-    _HERE / "data" / "sp500_pct_returns.parquet",
-)
 GRID = 100  # tilts in the grid-of-QPs baseline the timing compares against
 
 
@@ -726,9 +711,8 @@ def warm_grid(mu: np.ndarray, sigma: np.ndarray, tilts: np.ndarray) -> tuple[np.
 
     The strongest grid baseline short of a path algorithm: OSQP is set up once, so its
     factorisation is reused, and each tilt changes only the linear term, with the solve
-    starting from the previous solution. Polishing recovers the active-set solution. At
-    tolerance 1e-5 it misses on some grid points of the S&P data by 1e-3; 1e-6 is the
-    loosest setting that comes back to rounding at every point of the note's snapshot.
+    starting from the previous solution. Polishing recovers the active-set solution, to
+    rounding at every grid point of the simulated stocks at tolerance 1e-6.
     """
     n = mu.shape[0]
     start = time.perf_counter()
@@ -754,7 +738,7 @@ def warm_grid(mu: np.ndarray, sigma: np.ndarray, tilts: np.ndarray) -> tuple[np.
 
 @dataclass
 class RealData:
-    """The long-only recipe on real returns, and what it costs next to a grid of QPs."""
+    """The long-only recipe on a return matrix, and what it costs next to a grid of QPs."""
 
     days: int
     assets: int
@@ -773,11 +757,23 @@ class RealData:
     kkt: float  # worst KKT residual over the corners and the minimum-variance end
 
 
-def sp500_returns() -> np.ndarray:
-    """Daily simple returns of the S&P 500 sample, days by stocks."""
-    import pandas as pd
+def stock_returns(seed: int = SEED, n_assets: int = 500, n_days: int = 1250, n_factors: int = 5) -> np.ndarray:
+    """Simulated daily returns of a stock universe, days by assets.
 
-    return pd.read_parquet(SP500).to_numpy()
+    About five years of 500 stocks from a five-factor model on a daily scale: a market
+    factor with 1% daily volatility and loadings around one, four style factors with 0.5%
+    and loadings around zero, idiosyncratic volatility between 1% and 3%, and expected
+    returns around 5 basis points a day. Unlike the test problem, mu and Sigma are both
+    estimated from the returns, as they would be from prices.
+    """
+    rng = np.random.default_rng(seed)
+    loadings = np.column_stack([rng.normal(1.0, 0.3, n_assets), rng.normal(0.0, 0.5, (n_assets, n_factors - 1))])
+    factor_vol = np.r_[0.01, np.full(n_factors - 1, 0.005)]
+    idiosyncratic_vol = rng.uniform(0.01, 0.03, n_assets)
+    expected = rng.normal(5e-4, 5e-4, n_assets)
+    factor_returns = rng.standard_normal((n_days, n_factors)) * factor_vol
+    idiosyncratic = rng.standard_normal((n_days, n_assets)) * idiosyncratic_vol
+    return expected + factor_returns @ loadings.T + idiosyncratic
 
 
 def french_returns() -> np.ndarray:
@@ -794,13 +790,13 @@ def centred_problem(r: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return x, np.linalg.lstsq(x.T, mu)[0], np.cov(r, rowvar=False)
 
 
-def real_data(r: np.ndarray, snapshot: bool, every: int = 1) -> RealData:
+def real_data(r: np.ndarray, snapshot: bool = True, every: int = 1) -> RealData:
     """Run Algorithm 1 on daily returns ``r`` (days by assets), X taken as the centred returns.
 
     mu is the sample mean and Sigma the sample covariance, so X^T X = Sigma exactly with
     no factorisation. The shift comes from the closed-form last corner. ``snapshot`` says
     whether ``r`` is the note's data, so that its numbers apply. ``every`` compares only
-    every so many corners with the QP (the tests use a subsample).
+    every so many corners and grid points with the QP (the tests use a subsample).
     """
     days, n = r.shape
     mu, sigma = r.mean(axis=0), np.cov(r, rowvar=False)
@@ -818,7 +814,7 @@ def real_data(r: np.ndarray, snapshot: bool, every: int = 1) -> RealData:
         gaps.append(float(np.abs(qp - w[:, k]).max()))
     grid = np.geomspace(tilts.max(), tilts.min(), GRID)
     w_grid, warm_seconds = warm_grid(mu, sigma, grid)
-    warm_gap = max(float(np.abs(w_grid[:, k] - tilted(mu, sigma, grid[k])).max()) for k in range(GRID))
+    warm_gap = max(float(np.abs(w_grid[:, k] - tilted(mu, sigma, grid[k])).max()) for k in range(0, GRID, every))
     return RealData(
         days=days,
         assets=n,
@@ -1215,18 +1211,13 @@ def main() -> None:
         print_real_data(real_data(french_returns(), french_snapshot), "Fama-French portfolios", "portfolios")
     else:
         print(f"\nreal data skipped: {FRENCH} not found (fetch it with `uv run python/fetch_french.py`)")
-    if SP500.exists():
-        sp500_snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
-        print_real_data(real_data(sp500_returns(), sp500_snapshot), "S&P 500", "stocks")
-    else:
-        print(f"\nreal data skipped: {SP500} not found (fetch it with `uv run python/fetch_sp500.py`)")
+    print_real_data(real_data(stock_returns()), "simulated stocks", "stocks")
     print("\nthe margin delta in nu0 = nu_last - delta * max(|nu_last|, max|mu_j|):")
     mu, sigma = factor_problem()
     problems = {"test problem": (*as_regression(mu, sigma), sigma)}
     if FRENCH.exists():
         problems["Fama-French"] = centred_problem(french_returns())
-    if SP500.exists():
-        problems["S&P 500"] = centred_problem(sp500_returns())
+    problems["simulated stocks"] = centred_problem(stock_returns())
     for name, (xp, yp, sp) in problems.items():
         cells = "  ".join(
             f"{d:g}: {k} corners, KKT {e:.1e}" if k else f"{d:g}: stops short" for d, k, e in margin_sweep(xp, yp, sp)
@@ -1237,9 +1228,9 @@ def main() -> None:
 
 
 def print_real_data(rd: RealData, name: str, unit: str) -> None:
-    """Print the numbers of a real-returns paragraph of Section 8."""
+    """Print the numbers of a returns paragraph of Section 8."""
     note = "" if rd.snapshot else " (NOT the note's snapshot: its numbers will differ)"
-    print(f"\nreal data: {name}, {rd.assets} {unit} x {rd.days} days, centred returns as X{note}")
+    print(f"\nreturns: {name}, {rd.assets} {unit} x {rd.days} days, centred returns as X{note}")
     print(
         f"  {rd.corners} corners; last corner at nu = {rd.nu_last:.4f} "
         f"({rd.nu_last / rd.mu_max:.0f} max|mu_j|); minimum variance holds "
@@ -1301,10 +1292,9 @@ def timings() -> None:
             x, y = as_regression(mu, sigma)
             seconds.append(fastest(partial(long_only_frontier, x, y, sigma)))
         print(f"  n = {n:4d}: {np.median(seconds) * 1e3:.1f} ms")
-    for name, path in (("Fama-French", FRENCH), ("S&P 500", SP500)):
-        if not path.exists():
-            continue
-        r = french_returns() if path == FRENCH else sp500_returns()
+    returns = {"Fama-French": french_returns} if FRENCH.exists() else {}
+    for name, load in {**returns, "simulated stocks": stock_returns}.items():
+        r = load()
         x, y, sigma = centred_problem(r)
         mu = r.mean(axis=0)
         w, tilts, _ = long_only_frontier(x, y, sigma)
@@ -1436,23 +1426,13 @@ def test_french_data() -> None:
     assert rd.kkt <= 1e-11, rd
 
 
-@pytest.mark.skipif(not SP500.exists(), reason="no S&P 500 data; fetch it with `uv run python/fetch_sp500.py`")
-def test_real_data() -> None:
-    """Algorithm 1 on S&P 500 returns, through centred returns (every 10th corner)."""
-    snapshot = hashlib.sha256(SP500.read_bytes()).hexdigest() == SNAPSHOT_SHA256
-    rd = real_data(sp500_returns(), snapshot, every=10)
-    # The QP baseline matches the note's snapshot to 1e-10. Fresh fetches are worse
-    # conditioned: on two from October 2026 the QP missed corners by up to 8.8e-10 while
-    # the path's own KKT residuals stayed below 4e-12, so the gap was the QP's. Allow a
-    # decade of headroom on data that are not the snapshot.
-    assert rd.corner_gap <= (1e-10 if rd.snapshot else 1e-8), rd
+def test_simulated_stocks() -> None:
+    """Algorithm 1 on 500 simulated stocks, through centred returns (every 10th corner)."""
+    rd = real_data(stock_returns(), every=10)
+    assert rd.corner_gap <= 1e-10, rd
     assert rd.minvar_gap <= 1e-12, rd
     assert rd.kkt <= 1e-11, rd
-    # The warm-started baseline is exact to rounding on the note's snapshot. On a fresh
-    # fetch OSQP's polish can miss a point by 1e-6, which is the baseline's floor, not
-    # the path's.
-    if rd.snapshot:
-        assert rd.warm_gap <= 1e-9, rd
+    assert rd.warm_gap <= 1e-9, rd
 
 
 def test_kkt_certificates(checks: dict[str, Check]) -> None:

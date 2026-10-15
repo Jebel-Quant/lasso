@@ -56,10 +56,10 @@ It covers long--short portfolios under a leverage cap, fixed leverage with varyi
 appetite, and the classical long-only, fully invested frontier. Every corner the path
 returns meets its own optimality conditions to about $10^{-13}$ and agrees with
 independent quadratic-programming solvers, on factor models of up to 500 assets, on the
-Fama--French size and book-to-market portfolios, and on daily returns of 494
-S\&P~500 stocks. A plain call stops the long-only path at the maximum-Sharpe
+Fama--French size and book-to-market portfolios, and on five years of simulated daily
+returns of 500 stocks. A plain call stops the long-only path at the maximum-Sharpe
 portfolio; shifting the response once, by an amount computed in advance, lets a single
-call reach the minimum-variance portfolio. The script, its checks, scripts that fetch
+call reach the minimum-variance portfolio. The script, its checks, a script that fetches
 the data, and an R cross-check are published, with a locked environment, so that anyone
 can repeat them.
 
@@ -126,7 +126,7 @@ covariance $\Sig=\operatorname{diag}(d)+U\operatorname{diag}(\delta)U\trans$, an
 the sample mean of 50 days of returns simulated from it. Its units are arbitrary and
 its expected returns large against its risk, so Sharpe ratios reach $2.1$ per period, far
 above anything real assets offer. It is for illustration only; Section~\ref{sec:evidence}
-adds real returns. The companion script
+adds real portfolio returns and a larger universe on a daily scale. The companion script
 \texttt{python/make\_figures.py} regenerates every figure and number in the note, and its tests
 check each against a tolerance. The statement on
 \hyperref[sec:availability]{code and data availability} at the end says where to find it.
@@ -340,13 +340,13 @@ nu0 = nu_last - max(abs(nu_last), np.abs(mu).max())
 
 \noindent
 A fixed $\nu_0$ would not work, because $\nu_{\mathrm{last}}$ varies widely: it is $-4.95$ on the test problem,
-$-11.9$ on one of the models of Table~\ref{tab:robust}, $-0.178$ on the stock data and
+$-11.9$ on one of the models of Table~\ref{tab:robust}, $-0.190$ on the stock data and
 $-0.0118$ on the portfolio data of Section~\ref{sec:evidence}, where $\mu$ is small. The margin $\delta$ in $\nu_0=\nu_{\mathrm{last}}-\delta
 \max(|\nu_{\mathrm{last}}|,\|\mu\|_\infty)$ has to be large enough that the end of the
 path does not merge with the last corner, and small enough not to cost accuracy, which
 falls roughly in proportion to $|\nu_0|$. On the stock data $\delta=10^{-4}$ loses the
-last corner; from $\delta=10^{-2}$ to $1$ all 94 are found with KKT residuals below
-$4\times10^{-13}$, and at $\delta=100$ the residual has grown to $2\times10^{-11}$. On the
+last corner; from $\delta=10^{-2}$ to $1$ all 116 are found with KKT residuals below
+$5\times10^{-13}$, and at $\delta=100$ the residual has grown to $3\times10^{-11}$. On the
 portfolio data even $\delta=10^{-2}$ loses the last corner, and $\delta=1$ finds all 12. The
 code takes $\delta=1$. The minimum-variance portfolio itself is the limit $\nu\to-\infty$; on the
 final segment it is $w_S\propto\Sig_{SS}^{-1}\mathbf 1$.
@@ -466,27 +466,28 @@ minimum-variance portfolio, which holds 7 of the portfolios, matches to
 $1.6\times10^{-15}$. Diversified portfolios are highly correlated, so the frontier turns
 only 12 times and a grid of QPs is cheap here.
 
-\emph{Stock returns.} The second data set tests the method at scale: daily returns of 494
-S\&P~500 stocks over 1213 days, from July 2021 to May 2026, taken from Yahoo Finance by
-a published script. With the centred returns as $X$ the last corner sits at
-$\nu_{\mathrm{last}}=-0.178$, about fifty times $\max_j|\mu_j|$ below zero. Algorithm~1
-returns all 94 corners in the time of one to three QP solves, so a 100-point grid of QPs
-costs tens of times as much as the path and still misses the corners. Warm-starting
-narrows the gap without closing it: OSQP \cite{stellato2020}, set up once so that its
-factorisation is reused, with each tilt changing only the linear term and each solve
-starting from the last, needs a third to a half of the cold grid's time at tolerance
-$10^{-6}$ and agrees with the cold QP to $4.1\times10^{-13}$ at every grid point. At
-$10^{-5}$ it is faster still but misses some points by $10^{-3}$. These ratios held on
-two different machines; absolute times depend on the machine and are not reported. Every
-corner has a KKT residual below $3.7\times10^{-13}$ and matches its QP to
-$5.4\times10^{-13}$, and the minimum-variance portfolio, which holds 53 stocks, matches
-to $1.2\times10^{-15}$.
+\emph{Stock returns.} The second data set tests the method at scale. It is simulated, so
+it needs no download and every rerun reproduces it: daily returns of 500 stocks over 1250
+days, about five years, from a five-factor model with a market factor of 1\% daily
+volatility, four style factors of 0.5\%, idiosyncratic volatility between 1\% and 3\%,
+and expected returns around five basis points a day. Unlike the test problem, $\mu$ and
+$\Sig$ are both estimated from the returns. With the centred returns as $X$ the last
+corner sits at $\nu_{\mathrm{last}}=-0.190$, about sixty times $\max_j|\mu_j|$ below zero.
+Algorithm~1 returns all 116 corners in the time of one to two QP solves, so a 100-point
+grid of QPs costs about sixty times as much as the path and still misses the corners.
+Warm-starting narrows the gap without closing it: OSQP \cite{stellato2020}, set up once so
+that its factorisation is reused, with each tilt changing only the linear term and each
+solve starting from the last, needs a sixth to a third of the cold grid's time at
+tolerance $10^{-6}$ and agrees with the cold QP to $3.7\times10^{-12}$ at every grid point.
+Absolute times depend on the machine and are not reported. Every corner has a KKT
+residual below $4.7\times10^{-13}$ and matches its QP to $8.6\times10^{-13}$, and the
+minimum-variance portfolio, which holds 63 stocks, matches to $5.8\times10^{-16}$.
 
 \section{When to use it}
 \label{sec:scope}
 
 The path beats a grid of QP solves, cold- or warm-started, on accuracy, since it finds
-the corners exactly. On speed it wins at scale, on the S\&P~500 stocks; on a problem as
+the corners exactly. On speed it wins at scale, on the 500 simulated stocks; on a problem as
 small as the Fama--French portfolios a grid of QPs costs about as much as the path. LARS is in R
 and \texttt{scikit-learn}, the positive LASSO only in \texttt{scikit-learn}, so corner
 portfolios need no portfolio software, and one call
@@ -512,9 +513,7 @@ meets the optimality conditions of its cap and matches Clarabel there. Propositi
 says the nonnegative LASSO is the long-only frontier: every corner, and every point
 between corners, matches an active-set QP at the same tilt. Both make the frontier
 piecewise linear in its parameter, so a path finds its corners exactly where a grid of QP
-solves, cold- or warm-started, misses them. On the stock data the path's own KKT residuals
-stay below $10^{-11}$ on the note's snapshot and on two later downloads, although
-these differ in the number of corners and in $\nu_{\mathrm{last}}$. The checks were written by an author of
+solves, cold- or warm-started, misses them. The checks were written by an author of
 \cite{perspective}, so they are not independent in the usual sense. The baseline solvers
 are, and the script and its tolerances are published so that anyone can rerun them.
 For practical use the note adds three details: the shift, a $\nu_0$ computed in
@@ -536,25 +535,27 @@ Section~\ref{sec:longshort} is \texttt{R/long\_short.R}, with a check against
 The lockfile fixes the software, not the hardware. Residuals and gaps near $10^{-13}$ come
 out with different last digits on another CPU or BLAS build, so a rerun will not match
 the printed values digit for digit. The tests therefore check them against tolerances
-between $10^{-12}$ and $10^{-9}$ on the note's data, and up to $10^{-8}$ on fresh downloads.
+between $10^{-12}$ and $10^{-9}$.
 Costs are given only as ratios, which carry over between
 machines; \texttt{uv run python/make\_figures.py timings} measures them.
 
-The test problem and the factor models of Table~\ref{tab:robust} are simulated inside
-the script from fixed seeds, so they need no data. The portfolio returns of
+The test problem, the factor models of Table~\ref{tab:robust} and the stock returns of
+Section~\ref{sec:evidence} are simulated inside the script from fixed seeds, so they need
+no data. The portfolio returns of
 Section~\ref{sec:evidence} come from Kenneth French's Data Library \cite{french} and,
 being copyrighted, are not redistributed. \texttt{python/fetch\_french.py} downloads them
 and writes \texttt{data/french100\_daily.csv}. The note used the CRSP vintage of August
 2026, SHA-256 \texttt{98298ef6\ldots3c43}. The library rebuilds its history each month from
-CRSP, so a later download can differ where CRSP revises a return. The stock returns of
-Section~\ref{sec:evidence} come from Yahoo Finance and are not redistributed.
-\texttt{python/fetch\_sp500.py} downloads them: the S\&P~500 constituents listed on Wikipedia,
-adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than
-5\% of days missing. The note used the snapshot with SHA-256 \texttt{b5faa522\ldots9937e}.
-A later download differs slightly, because the constituents change and Yahoo revises
-adjusted prices. On two from October 2026 the path's KKT residuals stay below
-$4\times10^{-12}$, but the QP baseline drifts by up to $9\times10^{-10}$ at some corners, so
-the tests allow $10^{-8}$ for that gap on any download other than the note's snapshot.
+CRSP, so a later download can differ where CRSP revises a return.
+
+\section*{Competing interests}
+
+The author works at Jebel Quant Research, which hosts the code of this note, and
+maintains \texttt{cvxcla}, an open-source Python implementation of the Critical Line
+Algorithm. The note's method needs neither: it runs on \texttt{scikit-learn} or R alone.
+Section~\ref{sec:scope} points to \texttt{cvxcla} for portfolios with more constraints,
+and the companion script checks its corners against it.
+The author declares no other competing interests.
 
 \section*{Acknowledgements}
 

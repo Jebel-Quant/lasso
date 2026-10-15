@@ -98,15 +98,17 @@ Rerunning the timings also turned up a claim that was too strong: on the smaller
 Fama-French problem a grid of QPs costs about as much as the path, so the note no
 longer says the path is always faster.
 
-**Data that change underneath you.** The note's S&P 500 example uses Yahoo Finance prices
+**Data that change underneath you.** The note's S&P 500 example used Yahoo Finance prices
 of the current index constituents. The snapshot behind the note had 494 stocks and 94
 corners, with the last corner at $\nu = -0.18$. A download on 2026-09-28 gave 492 stocks,
 95 corners and $\nu = -0.88$; one on 2026-10-14 gave 491 stocks. Constituents change and
-Yahoo revises adjusted prices. On the newest download, one corner matches its QP only to
+Yahoo revises adjusted prices. On the newest download, one corner matched its QP only to
 $3.4\times10^{-10}$, above the test's tolerance of $10^{-10}$, while the path's own optimality
-conditions still hold to $3.7\times10^{-12}$; the gap is the QP's. *What changed:* `fetch_sp500.py` prints the
-SHA-256 of what it wrote and whether it is the note's snapshot, and the README records
-what a fresh download gives, so a reader can tell drifted data from a bug.
+conditions still held to $3.7\times10^{-12}$; the gap was the QP's. *What changed:* `fetch_sp500.py` printed the
+SHA-256 of what it wrote and whether it was the note's snapshot, and the README recorded
+what a fresh download gave, so a reader could tell drifted data from a bug. Later the
+example was replaced altogether: the note now runs at scale on 500 stocks simulated from
+a seeded factor model, which every rerun reproduces exactly.
 
 **Free to download is not free to redistribute.** To give the note a real-data check that
 anyone could rerun, the Fama-French portfolio returns were committed to this public
