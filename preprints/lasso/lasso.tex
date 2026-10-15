@@ -468,7 +468,10 @@ only 12 times and a grid of QPs is cheap here.
 
 \emph{Stock returns.} The second data set tests the method at scale: daily returns of 494
 S\&P~500 stocks over 1213 days, from July 2021 to May 2026, taken from Yahoo Finance by
-a published script. With the centred returns as $X$ the last corner sits at
+a published script. The universe is fixed: the 503 constituents that Wikipedia listed on
+15 June 2026, kept in a file with the code. The prices are not, since Yahoo revises them
+and drops delisted names, so the snapshot cannot be reproduced exactly and a rerun gives
+slightly different numbers. With the centred returns as $X$ the last corner sits at
 $\nu_{\mathrm{last}}=-0.178$, about fifty times $\max_j|\mu_j|$ below zero. Algorithm~1
 returns all 94 corners in the time of one to three QP solves, so a 100-point grid of QPs
 costs tens of times as much as the path and still misses the corners. Warm-starting
@@ -547,13 +550,23 @@ and writes \texttt{data/french100\_daily.csv}. The note used the CRSP vintage of
 2026, SHA-256 \texttt{98298ef6\ldots3c43}. The library rebuilds its history each month from
 CRSP, so a later download can differ where CRSP revises a return. The stock returns of
 Section~\ref{sec:evidence} come from Yahoo Finance and are not redistributed.
-\texttt{python/fetch\_sp500.py} downloads them: the S\&P~500 constituents listed on Wikipedia,
-adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than
+\texttt{python/fetch\_sp500.py} downloads them: the 503 S\&P~500 constituents in
+\texttt{data/sp500\_constituents.csv}, as Wikipedia's list gave them on 15 June 2026
+(revision 1359528143), adjusted closing prices from 2021-06-01 to 2026-06-01, keeping names with no more than
 5\% of days missing. The note used the snapshot with SHA-256 \texttt{b5faa522\ldots9937e}.
-A later download differs slightly, because the constituents change and Yahoo revises
-adjusted prices. On two from October 2026 the path's KKT residuals stay below
+The note's 494 stocks are those 503 less nine listed too recently to pass that filter.
+A later download from the same list differs slightly, because Yahoo revises adjusted
+prices and drops delisted names. On two downloads from October 2026, taken from the then current
+constituents, the path's KKT residuals stay below
 $4\times10^{-12}$, but the QP baseline drifts by up to $9\times10^{-10}$ at some corners, so
 the tests allow $10^{-8}$ for that gap on any download other than the note's snapshot.
+
+\section*{Competing interests}
+
+The author works at Jebel Quant Research, which hosts the code of this note, and
+maintains \texttt{cvxcla}, an open-source Python implementation of the Critical Line
+Algorithm. The note's method needs neither: it runs on \texttt{scikit-learn} or R alone.
+The author declares no other competing interests.
 
 \section*{Acknowledgements}
 

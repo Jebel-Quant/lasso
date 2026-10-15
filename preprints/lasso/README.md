@@ -18,6 +18,7 @@ python/
   fetch_sp500.py    downloads the S&P 500 returns of the real-data example at scale
   *.py.lock         the locked environment of each script: Python 3.12 and every package
 data/test_problem/  the 20-asset test problem and its long-short path, as CSV
+data/sp500_constituents.csv  the fixed S&P 500 universe that fetch_sp500.py downloads
 R/long_short.R      the R snippet of Section 5, checked against lars_path (in CI too)
 ```
 
@@ -79,8 +80,9 @@ use the data.
 
 **S&P 500 stocks (downloaded).** The Yahoo Finance prices behind the example at scale
 are not redistributed here.
-`python/fetch_sp500.py` downloads them: it takes the current S&P 500 ticker list from
-Wikipedia, fetches adjusted closing prices with
+`python/fetch_sp500.py` downloads them: it reads the fixed list of 503 constituents in
+`data/sp500_constituents.csv` (ticker and company name, as Wikipedia's *List of S&P 500
+companies* gave them on 15 June 2026, revision 1359528143), fetches adjusted closing prices with
 [`yfinance`](https://github.com/ranaroussi/yfinance) from 2021-06-01 to 2026-06-01,
 drops names missing more than 5% of trading days, and writes the daily simple returns to
 `data/sp500_pct_returns.parquet`.
@@ -92,8 +94,11 @@ The note used a snapshot fetched this way: 494 stocks over 1213 trading days,
 b5faa5222555f28d77bad5404565297bb25bbe92b0b813f416cd2bebac79937e
 ```
 
-A fresh fetch differs a little, because the index constituents change and Yahoo revises
-adjusted prices. One on 2026-09-28 gave 492 stocks over the same 1213 days, 95 corners
+The note's 494 stocks are those 503 less nine listed too recently to pass the 5% filter.
+The ticker list is committed so that a rerun starts from the same universe, but a fresh
+fetch still differs a little: Yahoo revises adjusted prices and drops delisted names (one
+from the committed list on 2026-10-14 kept 487 stocks). One on 2026-09-28, from the then
+current constituents, gave 492 stocks over the same 1213 days, 95 corners
 instead of 94, and a last corner at nu = -0.88 instead of -0.18. All the checks still
 pass on it; the script prints whether what it wrote is the note's snapshot.
 
