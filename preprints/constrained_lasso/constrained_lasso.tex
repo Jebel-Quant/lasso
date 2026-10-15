@@ -411,7 +411,8 @@ meet the LASSO's optimality conditions to $10^{-15}$ everywhere along the path.
 
 The note's directory holds \texttt{python/make\_figures.py}, a single Python script that
 declares its own pinned dependencies, and \texttt{python/make\_figures.py.lock} next to it
-fixes Python 3.12 and every package it pulls in, to the exact version and hash. It contains the CLA (the function \texttt{cla}),
+fixes Python 3.12 and every package it pulls in, to the exact version and hash. It contains the CLA (the function \texttt{cla}, written for this note rather than taken from
+\texttt{cvxcla} \cite{cvxcla}),
 the two forms (\texttt{penalty\_form}, \texttt{budget\_form}) and every check.
 \texttt{uv run python/make\_figures.py} regenerates the figures and
 Table~\ref{tab:evidence}, and \texttt{uv run python/make\_figures.py test} runs the checks as
@@ -473,6 +474,11 @@ T.~Schmelzer and T.~Hastie.
 \newblock The Critical Line Algorithm and the constrained LASSO: one curve, two
 literatures.
 \newblock arXiv preprint arXiv:2609.25704, 2026.
+
+\bibitem{cvxcla}
+T.~Schmelzer.
+\newblock cvxcla: the Critical Line Algorithm with an operator interface in Python.
+\newblock SSRN preprint 7583179, 2026.
 
 \bibitem{lassonote}
 T.~Schmelzer.
