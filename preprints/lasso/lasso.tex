@@ -501,7 +501,8 @@ the budget $\mathbf 1\trans w=1$ of Section~\ref{sec:longonly}. The signs are ei
 free or all nonnegative. A dollar-neutral book adds the equality $\mathbf 1\trans\beta=0$,
 and a $130/30$ book needs the budget and the gross cap at once. Path algorithms for a
 LASSO with general linear constraints exist \cite{gaines2018,james2020}, but not in
-\texttt{scikit-learn}. A risk budget $w\trans\Sig w\le\sigma^2$ has no path of its own, but
+\texttt{scikit-learn}. The CLA takes such constraints and bounds on the weights directly,
+and \texttt{cvxcla} \cite{cvxcla} implements it. A risk budget $w\trans\Sig w\le\sigma^2$ has no path of its own, but
 along each segment the variance is quadratic in the parameter, so the portfolio at a
 given $\sigma$ comes from one scalar equation.
 
@@ -658,6 +659,12 @@ M.~R. Osborne, B.~Presnell, and B.~A. Turlach.
 F.~Pedregosa et al.
 \newblock Scikit-learn: machine learning in Python.
 \newblock \emph{Journal of Machine Learning Research}, 12:2825--2830, 2011.
+
+\bibitem{cvxcla}
+T.~Schmelzer.
+\newblock cvxcla: the Critical Line Algorithm with an operator interface in Python.
+\newblock SSRN preprint 7583179, 2026.
+\newblock \href{https://doi.org/10.2139/ssrn.7583179}{\texttt{doi:10.2139/ssrn.7583179}}.
 
 \bibitem{perspective}
 T.~Schmelzer and T.~Hastie.
