@@ -29,13 +29,15 @@ accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditio
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 python/
-  make_figures.py       the CLA, both forms, three figures, the table, and the checks as pytest tests
+  make_figures.py       the CLA, both forms, three figures, Table 1, and the checks as pytest tests
   make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
 ```
 
 `python/make_figures.py` writes `figures/path.pdf` (the diabetes path, CLA against LARS knots,
 Fig. 1), `figures/portfolio.pdf` (the same path as a long/short/cash portfolio, Fig. 2) and
-`figures/constrained.pdf` (box-constrained and zero-sum paths, Fig. 3).
+`figures/constrained.pdf` (box-constrained and zero-sum paths, Fig. 3), and the rows of
+Table 1 as `figures/evidence.tex`, which the note inputs, so the table always shows what
+the code computed.
 
 ## Running it
 
@@ -47,7 +49,7 @@ version and hash; `uv run` uses it automatically. After changing a pin, refresh 
 Run it from this directory:
 
 ```sh
-make figures    # write figures/*.pdf and print Table 1 (uv run python/make_figures.py)
+make figures    # write figures/*.pdf and figures/evidence.tex (uv run python/make_figures.py)
 make test       # the same numbers as pytest checks (uv run python/make_figures.py test)
 make pdf        # build constrained_lasso.pdf from constrained_lasso.tex and figures/
 ```

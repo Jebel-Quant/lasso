@@ -26,7 +26,7 @@ Markowitz's general form, and knows nothing about regression. Two maps feed it:
   long-only budget, with one riskless "cash" asset as its slack. The parameter is the
   reciprocal of the l1 bound, and homogeneous constraints carry over unchanged.
 
-    uv run python/make_figures.py        # the three figures, and every number the note quotes
+    uv run python/make_figures.py        # the three figures, Table 1 as figures/evidence.tex
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
 
 Seeded and offline: the diabetes data ship with scikit-learn.
@@ -561,15 +561,36 @@ def fig_constrained(out: Path) -> None:
     plt.close(fig)
 
 
+def sci(x: float) -> str:
+    """A number as the note prints it, ``$8.6\\times10^{-14}$``."""
+    mantissa, exponent = f"{x:.1e}".split("e")
+    return rf"${mantissa}\times10^{{{int(exponent)}}}$"
+
+
+def table_tex(rows: list[Row]) -> str:
+    """The body of Table 1, one LaTeX row per problem and form, for the note to input.
+
+    The closing rule comes with it: after an ``\\input`` inside a tabular, LaTeX no longer
+    accepts a ``\\bottomrule`` of the note's own.
+    """
+    return "".join(
+        f"{r.name:<15} & {r.form:<7} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
+        f"{sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
+        for r in rows
+    ) + "\\bottomrule\n"
+
+
 def main() -> None:
-    """Write the figures and print every number the note quotes."""
+    """Write the figures and Table 1, and print the table."""
     OUT.mkdir(exist_ok=True)
     style()
     fig_path(OUT / "path.pdf")
     fig_portfolio(OUT / "portfolio.pdf")
     fig_constrained(OUT / "constrained.pdf")
+    rows = table()
+    (OUT / "evidence.tex").write_text(table_tex(rows))
     print(f"{'problem':<16} {'form':<8} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} {'KKT':>9}")
-    for r in table():
+    for r in rows:
         print(f"{r.name:<16} {r.form:<8} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} "
               f"{r.gap:9.1e} {r.kkt:9.1e}")
 
@@ -615,6 +636,15 @@ def test_forms_agree() -> None:
             pa, bu = penalty_form(prob), budget_form(prob)
             assert len(pa.lam) == len(bu.lam)
             assert np.abs(pa.beta - bu.beta).max() < 1e-9 * np.abs(pa.beta).max()
+
+
+def test_table_tex(rows: list[Row]) -> None:
+    """Table 1 has one row per problem and form, with the numbers as the note prints them."""
+    *tex, rule = table_tex(rows).splitlines()
+    assert len(tex) == len(rows)
+    assert rule == r"\bottomrule"
+    assert sci(8.6e-14) == r"$8.6\times10^{-14}$"
+    assert all(line.endswith(r"\\") and line.count("&") == 7 for line in tex)
 
 
 def test_degenerate_start_refused() -> None:
