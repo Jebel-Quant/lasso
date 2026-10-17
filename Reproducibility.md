@@ -7,7 +7,7 @@ cheapest to clear.
 
 This note explains why the preprints here care about it, tells some stories of what goes
 wrong when nobody does, and shows that the same things went wrong here. How the
-repository is set up to prevent them is in [`introduction.md`](introduction.md).
+repository is set up to prevent them is in [`Introduction.md`](Introduction.md).
 
 ## Why it matters
 
@@ -121,7 +121,7 @@ The file was removed, and the git history was rewritten to purge it. Removing a 
 a public repository's history means rewriting commits and asking GitHub to purge what it
 caches, so the time to get this right is before the first commit. *What changed:*
 `fetch_french.py` downloads the data on demand and git ignores the result, and
-`introduction.md` now says third-party data are committed only with the owner's written
+`Introduction.md` now says third-party data are committed only with the owner's written
 permission.
 
 **A merge that quietly dropped a section.** While a conflict between two branches was being
@@ -157,7 +157,7 @@ the missing file, and CI runs the check on every pull request.
 
 ## What this repository does about it
 
-In short (details in [`introduction.md`](introduction.md)):
+In short (details in [`Introduction.md`](Introduction.md)):
 
 - **One command per preprint** reproduces every figure and number, and a `test` mode
   checks them against tolerances.
