@@ -1,7 +1,7 @@
 # Build every preprint under preprints/ on each pull request into main, and when one is
-# merged, publish the PDFs on the `paper` branch with an index.html that links them, and
-# each preprint's arXiv source, as a tarball and a zip, on the `arxiv` branch. GitHub
-# Pages serves `paper`.
+# merged, publish the PDFs on the `paper` branch with an index.html that links them (styled
+# with Tailwind, compiled at build time), and each preprint's arXiv source, as a tarball and
+# a zip, on the `arxiv` branch. GitHub Pages serves `paper`.
 #
 # Each folder in preprints/ holds one preprint. Its main source is the one .tex file there
 # with a \documentclass, and the PDF takes that file's name. A python/make_figures.py in its folder,
@@ -218,29 +218,48 @@ jobs:
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Preprints</title>
-          <style>
-            body { font: 17px/1.6 Georgia, serif; max-width: 38rem; margin: 4rem auto; padding: 0 1rem; color: #222; }
-            a { color: #1a4f8b; }
-            footer { margin-top: 3rem; font-size: 14px; color: #777; }
-            footer a { color: inherit; }
-          </style>
-          <h1>Preprints</h1>
-          <ul>
+          <link rel="stylesheet" href="style.css">
+          <body class="bg-white text-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
+          <main class="mx-auto my-16 max-w-[38rem] px-4 font-serif text-[17px] leading-relaxed">
+          <h1 class="mb-6 text-3xl font-bold">Preprints</h1>
+          <ul class="list-disc space-y-2 pl-6">
           HTML
             for pdf in *.pdf; do
               job=${pdf%.pdf}
               title=$(sed -n 's/^\\title{\([^\\}]*\).*/\1/p' ../src/preprints/*/"$job".tex | head -n 1)
               title=${title//--/–}
               title=${title//&/&amp;}; title=${title//</&lt;}; title=${title//>/&gt;}
-              echo "  <li><a href=\"$pdf\">${title:-$job}</a></li>"
+              echo "  <li><a class=\"text-[#1a4f8b] underline hover:no-underline dark:text-sky-300\" href=\"$pdf\">${title:-$job}</a></li>"
             done
             cat <<HTML
           </ul>
-          <footer>Built from <a href="https://github.com/$GITHUB_REPOSITORY/commit/$SHA">${SHA::7}</a> of <a href="https://github.com/$GITHUB_REPOSITORY">$GITHUB_REPOSITORY</a> on $(LC_ALL=C date -u '+%-d %b %Y').</footer>
+          <footer class="mt-12 text-sm text-neutral-500 [&_a]:underline">Built from <a href="https://github.com/$GITHUB_REPOSITORY/commit/$SHA">${SHA::7}</a> of <a href="https://github.com/$GITHUB_REPOSITORY">$GITHUB_REPOSITORY</a> on $(LC_ALL=C date -u '+%-d %b %Y').</footer>
+          </main>
+          </body>
           </html>
           HTML
           } > index.html
           touch .nojekyll
+
+      # The page is styled with Tailwind, compiled here into a static style.css holding
+      # only the classes index.html uses. The standalone CLI needs no Node; its version
+      # and checksum are pinned so the page cannot change under a fixed commit.
+      - name: Build the stylesheet with Tailwind
+        if: steps.tip.outputs.current == 'true'
+        working-directory: pdfs
+        env:
+          TAILWIND_VERSION: v4.1.13
+          TAILWIND_SHA256: b9ed9f8f640d3323711f9f68608aa266dff3adbc42e867c38ea2d009b973be11
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/tailwindcss" \
+            "https://github.com/tailwindlabs/tailwindcss/releases/download/$TAILWIND_VERSION/tailwindcss-linux-x64"
+          echo "$TAILWIND_SHA256  $RUNNER_TEMP/tailwindcss" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/tailwindcss"
+          cat > "$RUNNER_TEMP/input.css" <<CSS
+          @import "tailwindcss" source(none);
+          @source "$PWD/index.html";
+          CSS
+          "$RUNNER_TEMP/tailwindcss" -i "$RUNNER_TEMP/input.css" -o style.css --minify
 
       - name: Publish to the paper branch
         if: steps.tip.outputs.current == 'true'
@@ -249,7 +268,7 @@ jobs:
           git init -q -b paper
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add *.pdf index.html .nojekyll
+          git add *.pdf index.html style.css .nojekyll
           git commit -q -m "preprints from ${SHA::7}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" paper
 
