@@ -21,8 +21,9 @@ preprints/
       make_figures.py    draws figures/*.pdf and prints every number the note quotes
       make_figures.py.lock  its locked environment (uv lock --script)
       fetch_*.py         optional: scripts that fetch or rebuild data, each with its lock
+    R/                   optional: code in another language that checks the note's results
     data/                optional: data the scripts read
-    figures/             drawn by make_figures.py, ignored by git
+    figures/             figures and tables written by make_figures.py, ignored by git
     README.md            what the code does and how to run it
   constrained_lasso/
     ...
@@ -32,7 +33,9 @@ Only two things are required. The folder must hold exactly one `.tex` file with 
 `\documentclass` line, and the PDF takes that file's name, so no two preprints may share
 one. The Python code is optional and lives in `python/`, each script next to its
 lockfile. If `python/make_figures.py` exists, it writes the figures into
-`figures/`, which is ignored by git and rebuilt from the script.
+`figures/`, which is ignored by git and rebuilt from the script. It may also write a
+table there as a `.tex` file for the note to `\input`, so the numbers in the table come
+from the code rather than being typed in.
 
 The shared rules in [`preprints/Makefile`](preprints/Makefile) are:
 
@@ -40,9 +43,9 @@ The shared rules in [`preprints/Makefile`](preprints/Makefile) are:
 make figures      # uv run python/make_figures.py
 make test         # uv run python/make_figures.py test
 make pdf          # pdflatex, three passes; run `make figures` first
-make arxiv        # <name>.tar.gz: the .tex and the figures it includes, for arXiv
+make arxiv        # <name>.tar.gz and <name>.zip: the .tex and the figures it includes
 make arxiv-check  # make arxiv, then compile the tarball alone, as arXiv will
-make clean        # remove the LaTeX auxiliary files and the arXiv build
+make clean        # remove the LaTeX auxiliary files, the arXiv build and both archives
 ```
 
 Run inside one preprint's folder, a target acts on that preprint. Run in `preprints/`, it
@@ -76,7 +79,7 @@ with uv, compiles the PDF and runs `make arxiv-check`; it fails if a folder has 
 `.tex` file, or more than one. When the pull request is merged, the PDFs are published on the `paper` branch with
 an `index.html` that lists them by title, and GitHub Pages serves that branch at
 <https://jebel-quant.github.io/lasso/>. Each preprint's arXiv source goes to the `arxiv`
-branch (see [Submitting to arXiv](#submitting-to-arxiv)). The first page of every built PDF carries a stamp
+branch, as a tarball and as a zip (see [Submitting to arXiv](#submitting-to-arxiv)). The first page of every built PDF carries a stamp
 in its margin with the build date, the repository and the short commit hash. It is added
 at build time, so the `.tex` source stays clean, and it ties every PDF to the exact code
 that produced it.
@@ -195,13 +198,15 @@ image, `ubuntu-24.04`, rather than `ubuntu-latest`.
 ## Submitting to arXiv
 
 arXiv compiles the source itself, so what goes to it is the `.tex` and its figures, not
-the PDF. `make arxiv` packs them into `<name>.tar.gz`, with only the figures the `.tex`
-includes, in the same `figures/` layout. `make arxiv-check` then unpacks the tarball into
-an empty directory and compiles it there, as arXiv will, so a missing figure or an
-undefined reference shows up before posting.
+the PDF. `make arxiv` packs them, with only the figures and tables the `.tex` includes,
+in the same `figures/` layout, twice: as `<name>.tar.gz` and as `<name>.zip`, with the
+same files in each, so you can upload whichever the form takes. `make arxiv-check` then
+unpacks the tarball into an empty directory and compiles it there, as arXiv will, so a
+missing figure or an undefined reference shows up before posting.
 
-CI runs `make arxiv-check` on every pull request. When one is merged, it publishes the
-tarballs on the [`arxiv`](../../tree/arxiv) branch as `arxiv/<name>.tar.gz`, built from the
-same commit as the PDFs on `paper`. To post a new version, download the preprint's tarball
-from that branch and upload it to arXiv unchanged. Its figures are the ones CI drew, from
+CI runs `make arxiv-check` on every pull request. When one is merged, it publishes both
+archives on the [`arxiv`](../../tree/arxiv) branch as `arxiv/<name>.tar.gz` and
+`arxiv/<name>.zip`, built from the same commit as the PDFs on `paper`. To post a new
+version, download the preprint's tarball or zip from that branch and upload it to arXiv
+unchanged. Its figures are the ones CI drew, from
 the locked environment.
