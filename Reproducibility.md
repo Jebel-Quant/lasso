@@ -96,7 +96,10 @@ changed:* the note now gives costs as ratios (one path costs one to three QP sol
 grid of QPs costs tens of paths), which held on both machines, and drops the seconds.
 Rerunning the timings also turned up a claim that was too strong: on the smaller
 Fama-French problem a grid of QPs costs about as much as the path, so the note no
-longer says the path is always faster.
+longer says the path is always faster. The journal's reproduction later caught two
+ratios the note still had wrong: on the simulated stocks a grid cost 77 to 95 paths, not
+sixty, and on Fama-French 3 to 4, not about one. Ratios vary less than seconds between
+machines, but they do vary, so the note now gives ranges.
 
 **Data that change underneath you.** The note's S&P 500 example used Yahoo Finance prices
 of the current index constituents. The snapshot behind the note had 494 stocks and 94
