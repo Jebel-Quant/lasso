@@ -4,7 +4,8 @@
 #
 # A preprint's main source is the one .tex file in its folder with a \documentclass; the
 # PDF takes its name. A python/make_figures.py, if present, draws the figures into figures/;
-# run `make figures` before `make pdf` or `make arxiv`.
+# run `make figures` before `make pdf` or `make arxiv`. It may also write a table into
+# figures/ as a .tex file for the note to \input.
 
 LATEX     := pdflatex
 LATEXOPTS := -interaction=nonstopmode -halt-on-error
@@ -40,7 +41,7 @@ FIGURES := $(wildcard python/make_figures.py)
 pdf: $(MAIN).pdf
 
 # Plain article class and an inline bibliography, so no BibTeX pass.
-$(MAIN).pdf: $(MAIN).tex $(wildcard figures/*.pdf)
+$(MAIN).pdf: $(MAIN).tex $(wildcard figures/*.pdf figures/*.tex)
 	$(LATEX) $(LATEXOPTS) $<
 	$(LATEX) $(LATEXOPTS) $<
 	$(LATEX) $(LATEXOPTS) $<
@@ -53,14 +54,16 @@ test:
 
 # arXiv compiles the source itself, so a submission is the .tex and the figures it
 # includes, laid out as here, not the PDF. Only the figures the note includes go in:
-# figures/ can hold drawings the note no longer uses. The same tree is packed twice, as a
+# figures/ can hold drawings the note no longer uses. A table the script writes into
+# figures/ and the note \inputs goes in too. The same tree is packed twice, as a
 # tarball and as a zip, for whichever the upload form takes.
 ARXIV_SRC     := arxiv-src
 ARXIV_CHECK   := arxiv-build
 ARXIV_TARBALL := $(MAIN).tar.gz
 ARXIV_ZIP     := $(MAIN).zip
 INCLUDED      := $(addprefix figures/,$(shell grep -oE '\\includegraphics(\[[^]]*\])?\{[^}]*\}' \
-                   $(MAIN).tex | sed -E 's/.*\{//; s/\}//' | sort -u))
+                   $(MAIN).tex | sed -E 's/.*\{//; s/\}//' | sort -u)) \
+                 $(shell grep -oE '\\input\{figures/[^}]*\}' $(MAIN).tex | sed -E 's/.*\{//; s/\}//' | sort -u)
 
 arxiv: $(ARXIV_TARBALL) $(ARXIV_ZIP)
 
