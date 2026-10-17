@@ -473,8 +473,8 @@ volatility, four style factors of 0.5\%, idiosyncratic volatility between 1\% an
 and expected returns around five basis points a day. Unlike the test problem, $\mu$ and
 $\Sig$ are both estimated from the returns. With the centred returns as $X$ the last
 corner sits at $\nu_{\mathrm{last}}=-0.190$, about sixty times $\max_j|\mu_j|$ below zero.
-Algorithm~1 returns all 116 corners in the time of one to two QP solves, so a 100-point
-grid of QPs costs about sixty times as much as the path and still misses the corners.
+Algorithm~1 returns all 116 corners in the time of about one QP solve, so a 100-point
+grid of QPs costs 75 to 95 times as much as the path and still misses the corners.
 Warm-starting narrows the gap without closing it: OSQP \cite{stellato2020}, set up once so
 that its factorisation is reused, with each tilt changing only the linear term and each
 solve starting from the last, needs a sixth to a third of the cold grid's time at
@@ -488,7 +488,7 @@ minimum-variance portfolio, which holds 63 stocks, matches to $5.8\times10^{-16}
 
 The path beats a grid of QP solves, cold- or warm-started, on accuracy, since it finds
 the corners exactly. On speed it wins at scale, on the 500 simulated stocks; on a problem as
-small as the Fama--French portfolios a grid of QPs costs about as much as the path. LARS is in R
+small as the Fama--French portfolios its lead shrinks to a factor of three or four. LARS is in R
 and \texttt{scikit-learn}, the positive LASSO only in \texttt{scikit-learn}, so corner
 portfolios need no portfolio software, and one call
 shows that the knots of a LASSO path and the turning points of a frontier are the same
@@ -536,8 +536,8 @@ The lockfile fixes the software, not the hardware. Residuals and gaps near $10^{
 out with different last digits on another CPU or BLAS build, so a rerun will not match
 the printed values digit for digit. The tests therefore check them against tolerances
 between $10^{-12}$ and $10^{-9}$.
-Costs are given only as ratios, which carry over between
-machines; \texttt{uv run python/make\_figures.py timings} measures them.
+Costs are given only as ratios, which vary far less between
+machines than absolute times; \texttt{uv run python/make\_figures.py timings} measures them.
 
 The test problem, the factor models of Table~\ref{tab:robust} and the stock returns of
 Section~\ref{sec:evidence} are simulated inside the script from fixed seeds, so they need

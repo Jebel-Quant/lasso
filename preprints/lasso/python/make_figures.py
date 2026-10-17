@@ -1310,7 +1310,7 @@ def timings() -> None:
             f"one QP {qp_seconds * 1e3:.0f} ms, so a {GRID}-point grid {GRID * qp_seconds:.1f} s; "
             f"warm-started grid {warm_seconds:.1f} s"
         )
-        # The ratios are what the note quotes; unlike the seconds, they carry over between machines.
+        # The ratios are what the note quotes; they vary far less between machines than the seconds.
         print(
             f"  ratios: one path = {path_seconds / qp_seconds:.1f} QPs; the cold grid = "
             f"{GRID * qp_seconds / path_seconds:.0f} paths; the warm grid = "
