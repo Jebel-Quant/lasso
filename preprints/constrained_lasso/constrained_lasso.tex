@@ -66,12 +66,10 @@
 
 \begin{abstract}
 The LASSO was introduced, and is still mostly solved, with no constraint but its
-$\ell_1$ budget. A regression on compositional data needs its coefficients to sum to
-zero, and \texttt{lars\_path} in scikit-learn has no way to say so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
-Line Algorithm (CLA), unmodified, by posing the regression as a portfolio, in one of two
-ways: a \emph{penalty form}, whose parameter is $\lambda$ and which takes bounds and
-equality rows, and a \emph{budget form}, Markowitz's long-only, fully invested problem
-with a cash asset, which takes homogeneous rows such as $\one\trans\beta=0$. On every
+$\ell_1$ budget. Many regressions need more, such as bounds on the coefficients or
+coefficients that sum to zero, and \texttt{lars\_path} in scikit-learn has no way to say
+so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
+Line Algorithm (CLA), unmodified, by posing the regression as a portfolio. On every
 problem tested, up to 500 predictors, the CLA reproduces LARS, an interior-point solver
 and the package \texttt{cvxcla} to rounding error and meets the LASSO's optimality
 conditions to $10^{-15}$.
@@ -81,7 +79,7 @@ conditions to $10^{-15}$.
 regression; compositional data; portfolio optimisation; reproducibility
 \end{abstract}
 
-\section{A regression \texttt{lars\_path} cannot fit}
+\section{A constrained regression}
 \label{sec:example}
 
 Tibshirani \cite{tibshirani1996} introduced the LASSO as least squares with a single
@@ -111,12 +109,6 @@ coefficients sum to zero does the fit not depend on the units. Prior knowledge o
 adds signs: suppose earlier studies show that the even-numbered parts can only raise
 $y$, so $\beta_j\ge0$ for even $j$. In the simulation five parts have nonzero true
 coefficients, all of them consistent with those signs, and the goal is to find them.
-
-\texttt{lars\_path} cannot take the zero sum, so the most it can do is ignore it. At
-$\lambda=\exLambda$ the coefficients it returns sum to $\exPlainSum$, not zero, and the
-fitted model changes with the units of the data. A general convex solver on a grid of
-$\lambda$ is correct but blind: it gives points, not the path, and cannot tell where a
-variable enters between two of them.
 
 The Python package \texttt{c-lasso} \cite{classo} can solve the zero-sum part. It is
 built for the LASSO under $C\beta=0$, with log-contrast regression as its leading

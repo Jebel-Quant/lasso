@@ -467,15 +467,8 @@ def problems() -> dict[str, Lasso]:
 
 
 # --------------------------------------------------------------------------------------
-# The opening example: what lars_path gives on the zero-sum problem
+# The opening example
 # --------------------------------------------------------------------------------------
-def lars_at(x: np.ndarray, y: np.ndarray, lam: float) -> np.ndarray:
-    """Scikit-learn's LASSO path at one lambda, read off between its knots."""
-    alphas, _, coefs = lars_path(x, y, method="lasso")
-    knots = alphas * x.shape[0]  # scikit-learn scales the squared loss by 1/n
-    return np.array([np.interp(lam, knots[::-1], c[::-1]) for c in coefs])
-
-
 @dataclass
 class Example:
     """The opening example: the zero-sum LASSO with and without the known signs.
@@ -487,7 +480,6 @@ class Example:
     lam: float  # mid-segment, where the zero-sum LASSO selects exactly the true parts
     truth: np.ndarray  # indices of the parts with a nonzero true coefficient
     beta: np.ndarray  # (p,) the zero-sum LASSO there, from the CLA
-    plain: np.ndarray  # (p,) lars_path ignoring the constraint
     knots: int  # knots of the zero-sum path without the signs
     broken: int  # of those, the knots where some even-numbered part is negative
     wrong: int  # even-numbered parts that are negative somewhere on that path
@@ -511,7 +503,7 @@ def example() -> Example:
     beta = 0.5 * (path.beta[seg] + path.beta[seg + 1])
     negative = path.beta[:, signed_parts(prob.x.shape[1])] < -1e-12 * np.abs(path.beta).max()
     signed = budget_form(problems()["zero-sum, signs"])
-    return Example(lam, truth, beta, lars_at(prob.x, prob.y, lam), len(path.lam), int(negative.any(axis=1).sum()),
+    return Example(lam, truth, beta, len(path.lam), int(negative.any(axis=1).sum()),
                    int(negative.any(axis=0).sum()), len(signed.lam))
 
 
@@ -553,9 +545,7 @@ def print_scd14() -> None:
 def example_tex(ex: Example) -> str:
     """The example's numbers as LaTeX macros, for the note to input."""
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
-        "exLambda": f"{ex.lam:.1f}",
         "exParts": str(len(ex.beta)),
-        "exPlainSum": f"{ex.plain.sum():.2f}",
         "exKnots": str(ex.knots),
         "exBroken": str(ex.broken),
         "exWrong": NUMBERS[ex.wrong],
@@ -882,7 +872,6 @@ def main() -> None:
     fig_example(OUT / "example.pdf")
     ex = example()
     (OUT / "example.tex").write_text(example_tex(ex))
-    print(f"example at lambda = {ex.lam:.2f}: lars_path ignoring the constraint sums to {ex.plain.sum():.3f}")
     rows = table()
     (OUT / "evidence.tex").write_text(table_tex(rows))
     big = scale()
@@ -990,12 +979,11 @@ def test_table_tex(rows: list[Row]) -> None:
 
 
 def test_example() -> None:
-    """The opening example: the CLA finds the true parts, and lars_path breaks the constraint."""
+    """The opening example: the CLA finds the true parts and keeps the sum at zero."""
     ex = example()
     assert np.array_equal(support(ex.beta), ex.truth)
     assert abs(ex.beta.sum()) < 1e-12 * np.abs(ex.beta).max()
     assert np.abs(reference(problems()["zero-sum"], ex.lam) - ex.beta).max() < 1e-6 * np.abs(ex.beta).max()
-    assert abs(ex.plain.sum()) > 0.01
     # The truth meets the known signs; without them the path breaks them, with them it does not.
     even = signed_parts(len(COMPOSITION_TRUTH))
     assert (COMPOSITION_TRUTH[even] >= 0).all()
