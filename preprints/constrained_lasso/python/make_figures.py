@@ -474,19 +474,17 @@ def problems() -> dict[str, Lasso]:
 # --------------------------------------------------------------------------------------
 @dataclass
 class Example:
-    """The opening example: the zero-sum LASSO with and without the known signs.
+    """The opening example: the diabetes LASSO without and with a cap on every coefficient.
 
-    The signs are those of Zero-sum, signs: every even-numbered part has a nonnegative
-    coefficient, which the truth meets. c-lasso can impose the sum but not the signs.
+    The problem is Box. Least squares plays the collinear cholesterol measures off against
+    each other and gives HDL a positive coefficient; the cap stops both.
     """
 
-    lam: float  # mid-segment, where the zero-sum LASSO selects exactly the true parts
-    truth: np.ndarray  # indices of the parts with a nonzero true coefficient
-    beta: np.ndarray  # (p,) the zero-sum LASSO there, from the CLA
-    knots: int  # knots of the zero-sum path without the signs
-    broken: int  # of those, the knots where some even-numbered part is negative
-    wrong: int  # even-numbered parts that are negative somewhere on that path
-    signed: int  # knots of the path with the signs
+    cap: float  # u in |beta_j| <= u, half the largest least-squares coefficient
+    ols: dict[str, float]  # the least-squares coefficients the text quotes, by name
+    knots: int  # knots of the plain LASSO path
+    over: int  # of those, the knots where some coefficient passes the cap
+    capped: np.ndarray  # (k, p) the knots of the capped path
 
 
 def support(beta: np.ndarray) -> np.ndarray:
@@ -495,19 +493,14 @@ def support(beta: np.ndarray) -> np.ndarray:
 
 
 def example() -> Example:
-    """The compositional problem of Section 1, at the middle of its five-part segment."""
-    prob = problems()["zero-sum"]
-    path = budget_form(prob)
-    truth = np.flatnonzero(COMPOSITION_TRUTH)
-    seg = next(k for k in range(len(path.lam) - 1)
-               if np.array_equal(support(path.beta[k + 1]), truth) and np.array_equal(
-                   support(0.5 * (path.beta[k] + path.beta[k + 1])), truth))
-    lam = 0.5 * (path.lam[seg] + path.lam[seg + 1])
-    beta = 0.5 * (path.beta[seg] + path.beta[seg + 1])
-    negative = path.beta[:, signed_parts(prob.x.shape[1])] < -1e-12 * np.abs(path.beta).max()
-    signed = budget_form(problems()["zero-sum, signs"])
-    return Example(lam, truth, beta, len(path.lam), int(negative.any(axis=1).sum()),
-                   int(negative.any(axis=0).sum()), len(signed.lam))
+    """The diabetes LASSO of Section 1, plain and capped."""
+    x, y, names = diabetes()
+    box = problems()["box"]
+    ols = np.linalg.lstsq(x, y, rcond=None)[0]
+    plain = penalty_form(Lasso(x, y))
+    over = (np.abs(plain.beta) > box.upper * (1 + 1e-12)).any(axis=1)
+    return Example(float(box.upper[0]), {n: float(ols[names.index(n)]) for n in ("s1", "s2", "s3")},
+                   len(plain.lam), int(over.sum()), penalty_form(box).beta)
 
 
 # The real-data example: 16S counts of 60 genera in 151 samples, and the inflammation
@@ -548,11 +541,13 @@ def print_scd14() -> None:
 def example_tex(ex: Example) -> str:
     """The example's numbers as LaTeX macros, for the note to input."""
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
-        "exParts": str(len(ex.beta)),
+        "exCap": f"{ex.cap:.1f}",
+        "exTC": f"{ex.ols['s1']:.0f}",
+        "exLDL": f"{ex.ols['s2']:.0f}",
+        "exHDL": f"{ex.ols['s3']:.0f}",
         "exKnots": str(ex.knots),
-        "exBroken": str(ex.broken),
-        "exWrong": NUMBERS[ex.wrong],
-        "exSigned": str(ex.signed),
+        "exOver": NUMBERS[ex.over],
+        "exCapped": str(len(ex.capped)),
     }.items())
 
 
@@ -805,38 +800,39 @@ def scd14_tex() -> str:
 
 
 def fig_example(out: Path) -> None:
-    """The opening example, as the known signs see it: the even-numbered parts, near zero.
+    """The opening example: the diabetes LASSO path without and with the cap.
 
-    Left, the zero-sum LASSO alone, the model c-lasso fits; right, with the signs. The
-    shaded half-plane is what the signs rule out, and the parts the left path pushes into
-    it are drawn in orange. Part 0, the one even part in the truth, leaves the window.
+    Left, the plain LASSO, the path lars_path computes; right, every coefficient capped at
+    u. The shaded bands are what the cap rules out, and the coefficients the left path
+    takes into them are drawn in orange.
     """
-    probs = problems()
+    x, y, _ = diabetes()
+    box = problems()["box"]
+    u = box.upper[0]
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.9), sharey=True)
-    for ax, name, title in ((axes[0], "zero-sum", r"$\sum_j\beta_j=0$ only: what c-lasso fits"),
-                            (axes[1], "zero-sum, signs", r"and $\beta_j\geq0$ for even $j$: only the CLA")):
-        prob = probs[name]
-        path = budget_form(prob)
-        even = signed_parts(prob.x.shape[1])
-        wrong = even & (path.beta < -1e-12 * np.abs(path.beta).max()).any(axis=0)
+    for ax, prob, title in ((axes[0], Lasso(x, y), "no cap: what lars_path fits"),
+                            (axes[1], box, rf"$|\beta_j|\leq {u:.0f}$: the CLA")):
+        path = penalty_form(prob)
+        over = (np.abs(path.beta) > u * (1 + 1e-12)).any(axis=0)
         lam, _ = midpoints(path)
         lam = lam[lam > 1e-6 * path.lam[0]]
         ref = np.array([reference(prob, v) for v in lam])
-        ax.axhspan(-1.0, 0.0, color=GRID, alpha=0.5, lw=0, zorder=0)
+        for band in ((u, 900), (-900, -u)):
+            ax.axhspan(*band, color=GRID, alpha=0.5, lw=0, zorder=0)
         ax.axhline(0, color=MUTED, lw=0.6)
-        ax.plot(path.lam, path.beta[:, even & ~wrong], "-", color=BLUE, lw=1.1, zorder=2)
-        ax.plot(path.lam, path.beta[:, wrong], "-", color=ORANGE, lw=1.4, zorder=3)
-        ax.plot(lam, ref[:, even], "o", ms=3.4, mfc="none", mec=INK, mew=0.6, zorder=4)
+        ax.plot(path.lam, path.beta[:, ~over], "-", color=BLUE, lw=1.1, zorder=2)
+        ax.plot(path.lam, path.beta[:, over], "-", color=ORANGE, lw=1.4, zorder=3)
+        ax.plot(lam, ref, "o", ms=3.4, mfc="none", mec=INK, mew=0.6, zorder=4)
         ax.set_xscale("symlog", linthresh=path.lam[0] / 50)
         ax.set_xlim(path.lam[0] * 1.05, 0)
-        ax.set_ylim(-0.08, 0.25)
+        ax.set_ylim(-850, 850)
         ax.set_xlabel(r"penalty $\lambda$ (decreasing)")
         ax.set_title(title, fontsize=8, color=INK)
-    axes[0].set_ylabel(r"even-numbered $\beta_j$")
-    axes[0].text(0.03, 0.06, "ruled out by the signs", transform=axes[0].transAxes, fontsize=6.5, color=MUTED)
+    axes[0].set_ylabel(r"coefficient $\beta_j$")
+    axes[0].text(0.03, 0.94, "beyond the cap", transform=axes[0].transAxes, fontsize=6.5, color=MUTED, va="top")
     handles = [
-        plt.Line2D([], [], color=BLUE, lw=1.1, label="CLA path"),
-        plt.Line2D([], [], color=ORANGE, lw=1.4, label="negative, against the known sign"),
+        plt.Line2D([], [], color=BLUE, lw=1.1, label="exact path"),
+        plt.Line2D([], [], color=ORANGE, lw=1.4, label="passes the cap"),
         plt.Line2D([], [], ls="none", marker="o", ms=3.4, mfc="none", mec=INK, mew=0.6,
                    label="interior-point solve, mid-segment"),
     ]
@@ -889,7 +885,7 @@ def main() -> None:
         print(f"{r.name:<16} {r.form:<8} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} "
               f"{r.gap:9.1e} {r.engine:9.1e} {cvx:>9} {r.kkt:9.1e}")
     # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment.
-    saved = {"example": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
+    saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
     arrays = {}
     for name, prob in saved.items():
         path = budget_form(prob)
@@ -982,17 +978,14 @@ def test_table_tex(rows: list[Row]) -> None:
 
 
 def test_example() -> None:
-    """The opening example: the CLA finds the true parts and keeps the sum at zero."""
+    """The opening example: the plain path passes the cap and ends with HDL positive; capped, neither."""
     ex = example()
-    assert np.array_equal(support(ex.beta), ex.truth)
-    assert abs(ex.beta.sum()) < 1e-12 * np.abs(ex.beta).max()
-    assert np.abs(reference(problems()["zero-sum"], ex.lam) - ex.beta).max() < 1e-6 * np.abs(ex.beta).max()
-    # The truth meets the known signs; without them the path breaks them, with them it does not.
-    even = signed_parts(len(COMPOSITION_TRUTH))
-    assert (COMPOSITION_TRUTH[even] >= 0).all()
-    assert ex.broken > ex.knots // 2 and ex.wrong >= 3
-    signed = budget_form(problems()["zero-sum, signs"])
-    assert (signed.beta[:, even] >= -1e-12 * np.abs(signed.beta).max()).all()
+    _, _, names = diabetes()
+    hdl = names.index("s3")
+    assert ex.over > ex.knots // 2
+    assert ex.ols["s1"] < -ex.cap and ex.ols["s2"] > ex.cap and ex.ols["s3"] > 0
+    assert (np.abs(ex.capped) <= ex.cap * (1 + 1e-12)).all()
+    assert (ex.capped[:, hdl] <= 1e-9 * ex.cap).all()
 
 
 @pytest.mark.skipif(not SCD14.exists(), reason="no sCD14 data; fetch it with `uv run python/fetch_scd14.py`")

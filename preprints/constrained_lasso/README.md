@@ -7,11 +7,11 @@ the other way from the LASSO-solver note in [`../lasso/`](../lasso). That note c
 efficient frontiers with a LASSO solver. This one computes constrained-LASSO paths with a
 Critical Line Algorithm that knows nothing about regression.
 
-The note opens with a regression that scikit-learn's `lars_path` cannot fit: a LASSO on
-log-compositions whose coefficients must sum to zero. `lars_path` takes no constraint but
-`positive`. `c-lasso` can fit it, with a small ridge term, but takes only `Cβ = 0`: no
-signs, no caps, no nonzero right-hand side. The CLA computes the exact constrained path
-under all of these.
+The note opens with the diabetes LASSO, capped: every coefficient must satisfy
+`|β_j| ≤ u`. Without the cap, least squares plays the cholesterol measures off against
+each other and gives HDL a positive coefficient. scikit-learn's `lars_path` takes no
+constraint but `positive`, so it cannot cap. The CLA computes the exact path under
+caps, signs and equality constraints, among them the zero sum of compositional data.
 
 The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
 general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
@@ -59,7 +59,7 @@ julia/
   LICENSE.classopath    ConstrainedLasso.jl's MIT licence
 ```
 
-`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, Fig. 1), `figures/path.pdf` and
+`python/make_figures.py` writes `figures/example.pdf` (the diabetes path without and with the cap, Fig. 1), `figures/path.pdf` and
 `figures/portfolio.pdf` (the diabetes path against the LARS knots, and the same path as a
 long/short/cash portfolio, the two panels of Fig. 2), and from the real data
 `figures/scd14.pdf` (Fig. 3). It also writes the rows of

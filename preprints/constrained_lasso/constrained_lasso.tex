@@ -95,58 +95,48 @@ parameter, so the whole \emph{path} is a finite list of \emph{knots}. scikit-lea
 \texttt{lars\_path} \cite{sklearn} takes $X$, $y$ and one option, \texttt{positive},
 for nonnegative coefficients. There is no place for any other constraint.
 
-Many regressions need one. Here is an example in the style of Lin et al.\
-\cite{lin2014}. Each of $n=60$ samples is a composition of $p=\exParts$ parts, such as
-the relative abundances of bacteria in a gut sample, and $z_{ij}$ is the log of the
-share of part $j$ in sample $i$. The model is
-\[
-y_i=\sum_j\beta_j z_{ij}+\varepsilon_i,\qquad\sum_j\beta_j=0 .
-\]
-The constraint is what makes the model meaningful. A composition is only known up to
-scale: measuring a sample in other units multiplies all its parts by some $c$, which
-adds $\log c$ to every $z_{ij}$ and $\log c\sum_j\beta_j$ to the fit. Only when the
-coefficients sum to zero does the fit not depend on the units. Prior knowledge often
-adds signs: suppose earlier studies show that the even-numbered parts can only raise
-$y$, so $\beta_j\ge0$ for even $j$. In the simulation five parts have nonzero true
-coefficients, all of them consistent with those signs, and the goal is to find them.
+Many regressions need one. The diabetes data that LARS was introduced with
+\cite{efron2004} are an example: $n=442$ patients, ten standardised baseline variables
+and, as the response, a measure of disease progression a year later. Six of the
+variables are blood serum measurements, and three of them are closely related measures
+of cholesterol: total cholesterol (\texttt{s1}), LDL (\texttt{s2}) and HDL
+(\texttt{s3}). Least squares plays them off against each other. It gives total
+cholesterol a coefficient of $\exTC$ and LDL one of $\exLDL$, two large effects of
+opposite sign that mostly cancel, and it gives HDL, the cholesterol known to protect,
+a coefficient of $\exHDL$, as if more of it made the disease progress faster. The LASSO
+path ends at the least-squares fit, so it gets there too. A cap on every coefficient,
+$|\beta_j|\le u$, stops the offsetting; we take $u=\exCap$, half the largest
+least-squares coefficient.
 
-The Python package \texttt{c-lasso} \cite{classo} can solve the zero-sum part. It is
-built for the LASSO under $C\beta=0$, with log-contrast regression as its leading
-example, and it has a path algorithm. That algorithm adds a small ridge term, so its
-path is close to the exact one but not equal to it; Section~\ref{sec:evidence} measures
-the gap. But $C\beta=0$ is all it takes. Constraints just as natural are out of its
-range: a sign on some of the coefficients, as here, a cap $|\beta_j|\le u$ on their
-size, or an equality with a nonzero right-hand side, such as a fit that must pass
-through a given point. Figure~\ref{fig:example} shows what the signs are worth. Without
-them the zero-sum LASSO gives \exWrong{} even-numbered parts a negative coefficient,
-against what is known, at \exBroken{} of its \exKnots{} knots; with them no part
-crosses its sign, and the path has \exSigned{} knots. This note computes the exact path
-under all of these constraints. It does not cover general
+Figure~\ref{fig:example} shows what the cap does. Without it the path passes the cap at
+\exOver{} of its \exKnots{} knots and ends with HDL positive. With it no coefficient
+passes the cap, and HDL stays negative along the whole path, although no sign is
+imposed. The capped path has \exCapped{} knots. This note computes the exact path under
+caps, signs on some of the coefficients and equality constraints $A\beta=b$, among them
+the zero sum of a regression on compositional data. It does not cover general
 inequality rows $C\beta\le h$, which fall outside both of its encodings
 (Section~\ref{sec:limits}).
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{example.pdf}
-\caption{The opening example, as the known signs see it: the coefficients of the
-even-numbered parts, near zero. Left: the zero-sum LASSO alone, the model
-\texttt{c-lasso} fits; the parts it pushes into the shaded half-plane, which the signs
-rule out, are in orange. Right: the same with $\beta_j\ge0$ for even $j$, which only the
-CLA computes here. Lines: the exact path from the CLA in the budget form. Circles: an
-interior-point solve at the midpoint of every segment. Part~0, the one even part in the
-truth, leaves the window at the top.}
+\caption{The opening example: the diabetes LASSO path without and with the cap
+$|\beta_j|\le u=\exCap$. The shaded bands are beyond the cap. Left: the plain LASSO, the
+path \texttt{lars\_path} computes; the coefficients that pass the cap are in orange.
+Right: every coefficient capped. Lines: the exact path from the CLA in the penalty form.
+Circles: an interior-point solve at the midpoint of every segment.}
 \label{fig:example}
 \end{figure}
 
 Both panels are exact paths, knot by knot. They were computed by an algorithm that
 knows nothing about regression: the Critical Line Algorithm (CLA) that Markowitz
-\cite{markowitz1956} wrote for portfolios. In the open-source package \texttt{cvxcla}
-\cite{cvxcla} the left one is one call, which traces homogeneous equality constraints
-with the rescaling of Section~\ref{sec:budget}, and the right one runs on its CLA through
-Algorithm~1:
+\cite{markowitz1956} wrote for portfolios, run through Algorithm~1 on the CLA of the
+open-source package \texttt{cvxcla} \cite{cvxcla}. That package also computes the right
+panel in one call, with the cap as $2p$ inequality rows:
 \begin{lstlisting}
 from cvxcla import Lasso
-knots = Lasso(Z, y, a=np.ones((1, p))).path   # each knot: lam, beta, active
+caps = Lasso(X, y, g=np.vstack([np.eye(p), -np.eye(p)]), h=np.full(2 * p, u))
+knots = caps.path   # each knot: lam, beta, active
 \end{lstlisting}
 
 \paragraph{Why a portfolio algorithm} Schmelzer and Hastie \cite{perspective} prove that
@@ -184,7 +174,9 @@ Exact paths of the constrained LASSO are not new. Gaines, Kim and Zhou
 \cite{gaines2018} derive a path algorithm for it from its optimality conditions, which
 tracks the active set and the multipliers of the linear constraints as $\lambda$
 decreases, and it takes inequality rows as well as equalities, so it is the more
-general of the two. Started at the right knot, its implementation follows the same path
+general of the two. For $C\beta=0$ alone the Python package \texttt{c-lasso}
+\cite{classo} has a path algorithm as well, which adds a small ridge term, so its path
+is close to the exact one but not equal to it. Started at the right knot, its implementation follows the same path
 as the CLA to rounding error; as shipped, it starts off the path and stays there, on
 every problem of Table~\ref{tab:evidence} (Section~\ref{sec:evidence}). The CLA does the
 same bookkeeping:
@@ -198,10 +190,11 @@ encodings below need a nondegenerate start and leave out general inequality rows
 (Section~\ref{sec:limits}). The work is in the encoding, and there are two:
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
-parameter, and takes coefficient bounds and general equality constraints $A\beta=b$;
+parameter, and takes coefficient bounds and general equality constraints $A\beta=b$.
+It is the form that solves the example;
 \item the \emph{budget form} (Section~\ref{sec:budget}) keeps the $\ell_1$ budget, as
 Markowitz's long-only, fully invested problem with a cash asset. It takes homogeneous
-constraints such as $\one\trans\beta=0$, and it is the form that solves the example.
+constraints such as $\one\trans\beta=0$, which the penalty form cannot start from.
 \end{enumerate}
 Neither reduction is deep. Each is a few lines on top of a CLA of about a hundred lines,
 and together they reproduce LARS, an interior-point solver and \texttt{cvxcla} to
@@ -365,7 +358,7 @@ of the LASSO path; to its right the portfolio is the least-squares fit diluted b
 \section{The budget form}
 \label{sec:budget}
 
-The penalty form cannot solve the opening example: with $b=0$ its start is degenerate
+The penalty form cannot take a zero sum: with $A\beta=0$ its start is degenerate
 (Section~\ref{sec:limits}). The second encoding starts instead from Tibshirani's
 original statement, the budget $\|\beta\|_1\le t$, and divides by $t$. The split
 coefficients then add up to at most one, which is Markowitz's own setting: a long-only
@@ -476,15 +469,19 @@ have $n=442$ patients and $p=10$ standardised baseline variables, and the respon
 centred. \emph{Nonnegative} requires every coefficient to be at least zero, the one
 constraint \texttt{lars\_path} accepts. \emph{Wide} is a Gaussian design with $n=40$ and
 $p=100$, with 8 nonzero coefficients and noise of standard deviation $0.5$. \emph{Box}
-caps every diabetes coefficient at $|\beta_j|\le u=396.1$, half the largest
-least-squares coefficient. At $\lambda=0$ the variables \texttt{bmi} and \texttt{s5}
+is the opening example of Section~\ref{sec:example}: it caps every diabetes coefficient
+at $|\beta_j|\le u=\exCap$, half the largest least-squares coefficient. At $\lambda=0$ the variables \texttt{bmi} and \texttt{s5}
 sit at the cap, while \texttt{s1}, whose least-squares coefficient is the largest, ends
 well inside it. \emph{Pinned} requires the fitted value for
 the first patient to equal the observed one, one nonhomogeneous equality row. Its
 starting vertex puts all weight on \texttt{bmi}, the largest entry of that patient's
-covariate vector, and holds still until $\lambda=4053$. \emph{Zero-sum} is the opening
-example of Section~\ref{sec:example}, and \emph{Zero-sum, signs} adds nonnegativity on
-the even-numbered parts. \emph{sCD14} is the same model on real data, from a study of
+covariate vector, and holds still until $\lambda=4053$. \emph{Zero-sum} is a regression
+on compositional data in the style of Lin et al.\ \cite{lin2014}. Each of $n=60$
+samples is a composition of $p=30$ parts, the predictors are the logs of the shares,
+and the coefficients must sum to zero: a composition is only known up to scale, and
+only a zero sum makes the fit independent of the units. Five parts have nonzero true
+coefficients. \emph{Zero-sum, signs} adds nonnegativity on the even-numbered parts,
+which the truth meets. \emph{sCD14} is the same model on real data, from a study of
 the gut microbiome in HIV infection \cite{noguerajulian2016}, as distributed with the R
 package \texttt{coda4microbiome} \cite{calle2023}: the counts of \rdGenera{} bacterial
 genera in \rdSamples{} stool samples, and as the response the level of sCD14, a marker
@@ -584,7 +581,7 @@ as inequality rows. As shipped it reproduces none of the \gaProblems{}: its knot
 between \gaShippedMin{} and \gaShippedMax{} from the exact path, relative to the largest
 coefficient. The fault is in its start, not its path-following. It takes the first knot
 from a linear program that does not involve $y$, which under $\one\trans\beta=0$ starts
-the opening example at $\lambda=\gaStart$ instead of $\gaLamMax$; and it calls a
+\emph{Zero-sum} at $\lambda=\gaStart$ instead of $\gaLamMax$; and it calls a
 coefficient active there when an interior-point solve puts it above $10^{-4}$, an
 absolute threshold that on the diabetes data, whose loss is of order $10^6$, admits
 \gaSpurious{} of the \gaCoeffs{}. Started instead at the exact first knot, where that is
@@ -647,14 +644,12 @@ behind Table~\ref{tab:evidence}, so the note makes no numerical claim for them.
 \section{Conclusion}
 
 The LASSO is usually stated, and solved, with no constraint but its $\ell_1$ budget, and
-standard path software such as \texttt{lars\_path} cannot take another. The zero-sum
-constraint of compositional data is enough to rule it out, and the package built for
-that model, \texttt{c-lasso}, solves it only up to a small ridge term and takes no
-bounds, signs or nonzero right-hand sides. The identity of \cite{perspective} closes the
+standard path software such as \texttt{lars\_path} cannot take another. A cap on the
+coefficients is enough to rule it out. The identity of \cite{perspective} closes the
 gap. A constrained LASSO is a portfolio problem, and the Critical Line Algorithm, in
 the form Markowitz wrote it, computes its exact path, through the penalty form or the
 budget form. The case for it is exactness and the range of constraints, not speed:
-\texttt{c-lasso} and \texttt{cvxcla} are faster on the problems they take. On every
+\texttt{cvxcla} is faster on the problems it takes. On every
 problem tested, up to $p=500$, the forms agree with LARS,
 \texttt{cvxcla} and each other to rounding error, and they meet the LASSO's optimality
 conditions to $10^{-15}$ everywhere along the path.
