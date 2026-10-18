@@ -779,7 +779,7 @@ def fig_path(out: Path) -> None:
     norm = np.abs(path.beta).sum(axis=1)
     norm_l = np.abs(coefs).sum(axis=0)
 
-    fig, ax = plt.subplots(figsize=(4.8, 3.1))
+    fig, ax = plt.subplots(figsize=(3.4, 2.7))
     for v in norm:
         ax.axvline(v, color=GRID, lw=0.5, zorder=0)
     ax.axhline(0, color=MUTED, lw=0.6)
@@ -826,7 +826,7 @@ def fig_portfolio(out: Path) -> None:
     short = np.append(short, np.clip(-beta_end, 0, None).sum() / tail)
     cash = np.append(cash, 1 - np.abs(beta_end).sum() / tail)
 
-    fig, ax = plt.subplots(figsize=(4.8, 2.6))
+    fig, ax = plt.subplots(figsize=(3.4, 2.7))
     ax.stackplot(budget, long_, short, cash, colors=[BLUE, ORANGE, GRID], edgecolor="white", lw=0.6,
                  labels=["long book", "short book", "cash"])
     ax.axvline(budget[-2], color=MUTED, lw=0.6, ls="--")
@@ -978,19 +978,6 @@ def fig_example(out: Path) -> None:
     plt.close(fig)
 
 
-def fig_constrained(out: Path) -> None:
-    """The box-constrained diabetes path."""
-    prob = problems()["box"]
-    fig, ax = plt.subplots(figsize=(4.8, 3.1))
-    path_panel(ax, prob, penalty_form(prob))
-    for v in (prob.upper[0], -prob.upper[0]):
-        ax.axhline(v, color=MUTED, lw=0.6, ls="--")
-    path_legend(fig)
-    fig.tight_layout(rect=(0, 0.09, 1, 1))
-    fig.savefig(out)
-    plt.close(fig)
-
-
 def sci(x: float) -> str:
     """A number as the note prints it, ``$8.6\\times10^{-14}$``."""
     mantissa, exponent = f"{x:.1e}".split("e")
@@ -1016,7 +1003,6 @@ def main() -> None:
     style()
     fig_path(OUT / "path.pdf")
     fig_portfolio(OUT / "portfolio.pdf")
-    fig_constrained(OUT / "constrained.pdf")
     fig_example(OUT / "example.pdf")
     ex = example()
     (OUT / "example.tex").write_text(example_tex(ex))

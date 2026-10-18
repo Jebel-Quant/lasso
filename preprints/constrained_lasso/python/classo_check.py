@@ -21,6 +21,11 @@ c-lasso's ``Path-Alg`` on the same problems, measures how far its answers lie fr
 exact path, and writes the numbers the note quotes to ``figures/classo.tex``. c-lasso
 also imports pandas and matplotlib without declaring them, hence the two pins above.
 
+Path-Alg computes the breakpoints of a slightly regularised problem: it adds
+``eps_L2 * I``, with ``eps_L2 = 1e-3``, to ``X^T X``, a default of ``parameters_for_update``
+that no public setting reaches. That ridge term is all of its distance to the exact path,
+so the script runs it twice, as shipped and with the ridge lowered to ``RIDGE`` by hand.
+
 The line ``# run: after figures`` above makes ``make figures`` run this script after
 ``make_figures.py``, here and in CI.
 
@@ -35,10 +40,12 @@ from pathlib import Path
 
 import numpy as np
 from classo import classo_problem
+from classo import path_alg
 
 FIGURES = Path(__file__).resolve().parent.parent / "figures"
 POINTS = 100  # the grid c-lasso reports its path on
 REPEATS = 5  # each run timed this often, and the fastest counts
+RIDGE = 1e-12  # eps_L2 for the second run, in place of the shipped 1e-3
 
 
 def classo_path(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
@@ -76,23 +83,40 @@ def gap(lam: np.ndarray, beta: np.ndarray, knots: np.ndarray, exact: np.ndarray)
     return float(np.abs(beta - ref).max() / np.abs(exact).max())
 
 
+def with_ridge(eps: float) -> None:
+    """Set the ridge term Path-Alg adds to X^T X, which c-lasso fixes as a default argument."""
+    init = path_alg.parameters_for_update.__init__
+    init.__defaults__ = (eps, *init.__defaults__[1:])
+
+
+def sci(x: float) -> str:
+    """A number as the note prints it, ``$6.2\\times10^{-5}$``."""
+    mantissa, exponent = f"{x:.1e}".split("e")
+    return rf"${mantissa}\times10^{{{int(exponent)}}}$"
+
+
 def main() -> None:
-    """Run c-lasso on every path make_figures.py saved, and write the note's numbers."""
+    """Run c-lasso on every path make_figures.py saved, as shipped and without its ridge."""
     data = np.load(FIGURES / "zero_sum_paths.npz")
-    gaps = {}
+    shipped, unridged = {}, {}
     for name in sorted({key.split(".")[0] for key in data.files}):
-        x, y = data[f"{name}.x"], data[f"{name}.y"]
+        x, y, knots, exact = data[f"{name}.x"], data[f"{name}.y"], data[f"{name}.lam"], data[f"{name}.beta"]
         lam, beta, seconds = classo_path(x, y)
-        gaps[name] = gap(lam, beta, data[f"{name}.lam"], data[f"{name}.beta"])
-        print(f"{name}: c-lasso Path-Alg, {len(lam)} grid points in {seconds * 1e3:.1f} ms, "
-              f"largest gap to the exact path {gaps[name]:.1e}")
-        # c-lasso is close to the path but not exact; flag it if that ever changes.
-        assert 1e-9 < gaps[name] < 1e-2, gaps[name]
-    worst = max(gaps.values())
-    mantissa, exponent = f"{worst:.1e}".split("e")
+        shipped[name] = gap(lam, beta, knots, exact)
+        with_ridge(RIDGE)
+        lam, beta, _ = classo_path(x, y)
+        unridged[name] = gap(lam, beta, knots, exact)
+        with_ridge(1e-3)
+        print(f"{name}: c-lasso Path-Alg, {len(lam)} grid points in {seconds * 1e3:.1f} ms, largest gap to "
+              f"the exact path {shipped[name]:.1e}, and {unridged[name]:.1e} with the ridge at {RIDGE:.0e}")
+        # As shipped c-lasso is close to the path but off it by its ridge; without the
+        # ridge it is on it. Flag it if either ever changes.
+        assert 1e-9 < shipped[name] < 1e-2, shipped[name]
+        assert unridged[name] < 1e-10, unridged[name]
     (FIGURES / "classo.tex").write_text(
         rf"\newcommand{{\clPoints}}{{{POINTS}}}" + "\n"
-        + rf"\newcommand{{\clGap}}{{${mantissa}\times10^{{{int(exponent)}}}$}}" + "\n"
+        + rf"\newcommand{{\clGap}}{{{sci(max(shipped.values()))}}}" + "\n"
+        + rf"\newcommand{{\clGapUnridged}}{{{sci(max(unridged.values()))}}}" + "\n"
     )
 
 

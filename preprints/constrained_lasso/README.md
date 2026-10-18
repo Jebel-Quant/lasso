@@ -45,7 +45,7 @@ LASSO's selection.
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 python/
-  make_figures.py       the CLA, both forms, five figures, Tables 2 and 3, both examples, and the checks as pytest tests
+  make_figures.py       the CLA, both forms, three figures, Tables 2 and 3, both examples, and the checks as pytest tests
   make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
   fetch_scd14.py        downloads the sCD14 data from CRAN into data/scd14.csv (git ignores data/)
   classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
@@ -54,10 +54,10 @@ python/
 ```
 
 `python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, and
-`lars_path`'s answers for every reference part, Fig. 1), `figures/path.pdf` (the diabetes
-path, CLA against LARS knots, Fig. 2), `figures/portfolio.pdf` (the same path as a
-long/short/cash portfolio, Fig. 3) and `figures/constrained.pdf` (the box-constrained path,
-Fig. 4), and from the real data `figures/scd14.pdf` (Fig. 5). It also writes the rows of
+`lars_path`'s answers for every reference part, Fig. 1), `figures/path.pdf` and
+`figures/portfolio.pdf` (the diabetes path against the LARS knots, and the same path as a
+long/short/cash portfolio, the two panels of Fig. 2), and from the real data
+`figures/scd14.pdf` (Fig. 3). It also writes the rows of
 Table 2 as `figures/evidence.tex`, the zero-sum problems at scale (up to 500 parts) as
 Table 3 in `figures/scale.tex`, and the numbers the text quotes as `figures/example.tex`
 and `figures/scd14.tex`, which the note inputs, so the text and the table always show
