@@ -1,6 +1,6 @@
-# The constrained LASSO by the Critical Line Algorithm: source and code
+# The constrained LASSO is a portfolio: source and code
 
-The LaTeX source of the note *The Constrained LASSO by the Critical Line Algorithm*
+The LaTeX source of the note *The Constrained LASSO is a Portfolio*
 (Schmelzer, 2026), and the code behind its figures and numbers. It runs the CLA–LASSO
 identity of Schmelzer and Hastie ([arXiv:2609.25704](https://arxiv.org/abs/2609.25704))
 the other way from the LASSO-solver note in [`../lasso/`](../lasso). That note computes

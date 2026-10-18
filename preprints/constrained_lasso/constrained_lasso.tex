@@ -54,8 +54,8 @@
 \newcommand{\F}{\mathcal{F}}
 \newcommand{\B}{\mathcal{B}}
 
-\title{The Constrained LASSO by the Critical Line Algorithm\\[6pt]
-{\normalsize Two ways to hand a regression to a portfolio optimiser}}
+\title{The Constrained LASSO is a Portfolio\\[6pt]
+{\normalsize A numerical test of its identity with the Critical Line Algorithm}}
 \author{Thomas Schmelzer\\[2pt]
 {\small Jebel Quant Research, Abu Dhabi}\\[1pt]
 {\small ORCID \href{https://orcid.org/0009-0009-9771-3501}{0009-0009-9771-3501}}}
@@ -66,14 +66,19 @@
 \maketitle
 
 \begin{abstract}
-The LASSO was introduced, and is still mostly solved, with no constraint but its
-$\ell_1$ budget. Many regressions need more, such as bounds on the coefficients or
-coefficients that sum to zero, and \texttt{lars\_path} in scikit-learn has no way to say
-so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
-Line Algorithm (CLA), unmodified, by posing the regression as a portfolio. On every
-problem tested, the CLA reproduces LARS to rounding error and an interior-point solver
-to the solver's accuracy, and on problems of up to 500 predictors it meets the LASSO's
-optimality conditions at the level of rounding, within $5\times10^{-15}$.
+Schmelzer and Hastie showed that the solution path of the constrained LASSO and the
+path of Markowitz's Critical Line Algorithm (CLA) are the same curve: a regression with
+linear constraints is a portfolio problem, and the knots of its path are the CLA's
+turning points. This note tests that identity numerically. It poses constrained
+regressions as portfolios in two ways, a penalty form and a budget form, and hands them
+to a released CLA that is not modified for regression. The test problems include
+coefficient caps on the diabetes data, inequality rows, and zero-sum regressions on
+simulated and real compositional data. On every one, the paths reproduce LARS to
+rounding error and an interior-point solver to the solver's accuracy, and on problems of
+up to 500 predictors they meet the LASSO's optimality conditions at the level of
+rounding, within $5\times10^{-15}$. Two independent path algorithms agree with the CLA
+once their ridge term or their start is corrected. The note also sets out the
+constraints the two forms cannot take.
 
 \medskip\noindent
 \textbf{Keywords:} constrained LASSO; critical line algorithm; solution path; least angle
@@ -115,8 +120,8 @@ Figure~\ref{fig:example} shows what the cap does. Without it the path passes the
 passes the cap, and HDL stays negative along the whole path, although no sign is
 imposed. That does not hang on the choice of $u$: every whole-number cap up to
 \exKeepHi{} keeps HDL negative along the whole path, and only looser caps let it turn
-positive. The capped path has \exCapped{} knots. This note computes the exact path under
-caps, signs on some of the coefficients, equality constraints $A\beta=b$, among them
+positive. The capped path has \exCapped{} knots. The encodings of this note give the
+exact path under caps, signs on some of the coefficients, equality constraints $A\beta=b$, among them
 the zero sum of a regression on compositional data, and inequality rows $C\beta\le h$
 with $h>0$, such as a cap on the net effect of a group of coefficients. It does not
 cover homogeneous inequality rows, such as the ordering constraints of a monotone fit,
@@ -145,15 +150,22 @@ knots = Lasso(X, y, lower=-u * np.ones(p), upper=u * np.ones(p)).path
 The same call takes signs (a bound of zero), equality rows \texttt{a, b} and inequality
 rows \texttt{g, h}, in combination, and picks the encoding that takes them.
 
-\paragraph{Why a portfolio algorithm} Schmelzer and Hastie \cite{perspective} prove that
+\paragraph{What this note tests} Schmelzer and Hastie \cite{perspective} prove that
 the CLA and the constrained LASSO \cite{james2020,gaines2018} trace the same curve.
 Read a regression as a portfolio problem, as in Table~\ref{tab:dictionary}: the
 coefficients are positions, $X\trans X$ is the covariance of the assets, $X\trans y$ is
 their expected return and $\lambda$ is a risk tolerance. Portfolio managers have always
 needed constraints, such as a budget, position limits and sector exposures, so
-Markowitz built them into the CLA from the start. Once a LASSO is posed as a portfolio,
-its constraints come along at no cost. A companion note \cite{lassonote} used the same
-identity the other way, computing efficient frontiers with a LASSO solver.
+Markowitz built them into the CLA from the start. If the identity holds, a LASSO posed
+as a portfolio brings its constraints along at no cost, and an implementation of the
+CLA, written and tested for portfolios, should return the knots of the constrained
+LASSO without a line of it changed. This note checks that claim. The identity and the
+dictionary are from \cite{perspective}; what is new here is the evidence that they hold
+in floating point and run through software that exists. $\ell_1$ penalties have been
+put on Markowitz portfolios before \cite{brodie2009}, but there the LASSO serves the
+portfolio. Here the portfolio algorithm serves the LASSO. A companion note
+\cite{lassonote} used the identity the other way, computing efficient
+frontiers with a LASSO solver.
 
 \begin{table}[t]
 \centering
@@ -182,10 +194,12 @@ that contains it. Zhou and Lange \cite{zhou2013} trace the solution of a quadrat
 program under linear equality and inequality constraints as an exact penalty on the
 constraints grows. The generalised lasso of Tibshirani and Taylor \cite{tibshirani2011},
 with penalty $\lambda\|D\beta\|_1$, has an exact path through its dual. Gaines, Kim and Zhou
-\cite{gaines2018} derive a path algorithm for it from its optimality conditions, which
-tracks the active set and the multipliers of the linear constraints as $\lambda$
-decreases. It takes homogeneous inequality rows as well, and inequality rows under a
-zero sum, so it is the more general of the two. For $C\beta=0$ alone the Python package \texttt{c-lasso}
+\cite{gaines2018} derive a path algorithm for the constrained LASSO itself from its
+optimality conditions, which tracks the active set and the multipliers of the linear
+constraints as $\lambda$ decreases. It takes homogeneous inequality rows as well, and
+inequality rows under a zero sum, so it covers more constraints than the encodings
+here. Since it is derived independently of the CLA, it is also an independent check on
+the identity. For $C\beta=0$ alone the Python package \texttt{c-lasso}
 \cite{classo} has a path algorithm as well, which adds a small ridge term, so its path
 is close to the exact one but not equal to it. On \emph{Zero-sum} and \emph{sCD14}, the
 problems of Table~\ref{tab:evidence} it takes, the ridge is the whole of the difference:
@@ -193,12 +207,12 @@ with the ridge turned down by hand, it follows the same path as the CLA to round
 error (Section~\ref{sec:evidence}). The CLA does the same bookkeeping:
 both are active-set methods that follow one family of quadratic programs, which is what
 the identity of \cite{perspective} leads one to expect. What differs is where the
-algorithm comes from. Here it is not derived for the LASSO at all. Markowitz's
-algorithm runs unchanged, so any implementation of it, written and tested for
-portfolios, becomes an exact path solver for the constrained LASSO with a few lines of
-encoding, and seventy years of work on the CLA carry over. The price is generality: the
-encodings below need a nondegenerate start and leave out homogeneous inequality rows
-(Section~\ref{sec:limits}). The work is in the encoding, and there are two:
+algorithm comes from. Here it is not derived for the LASSO at all: Markowitz's
+algorithm runs unchanged, and agreement with these methods, with LARS and with an
+interior-point solver is the test of the identity. The price of leaving the CLA
+untouched is generality: the encodings below need a nondegenerate start and leave out
+homogeneous inequality rows (Section~\ref{sec:limits}). The work is in the encoding,
+and there are two:
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
 parameter, and takes coefficient bounds, general equality constraints $A\beta=b$ and
@@ -207,8 +221,8 @@ inequality rows $C\beta\le h$ with $h>0$. It is the form that solves the example
 Markowitz's long-only, fully invested problem with a cash asset. It takes homogeneous
 constraints such as $\one\trans\beta=0$, which the penalty form cannot start from.
 \end{enumerate}
-Neither reduction is deep. Each is a few lines on top of a released CLA, and together
-they reproduce LARS to rounding error and an interior-point solver to its accuracy
+Neither reduction is deep, and that is the point: if the identity holds, a few lines of
+encoding on top of a released CLA should be enough. Together they reproduce LARS to rounding error and an interior-point solver to its accuracy
 (Section~\ref{sec:evidence}).
 Section~\ref{sec:limits} sets out where both forms stop. Readers who know the CLA can
 skip Section~\ref{sec:cla}.
@@ -674,16 +688,23 @@ something this note claims.
 
 \section{Conclusion}
 
-The LASSO is usually stated, and solved, with no constraint but its $\ell_1$ budget, and
-standard path software such as \texttt{lars\_path} cannot take another. A cap on the
-coefficients is enough to rule it out. The identity of \cite{perspective} closes the
-gap. A constrained LASSO is a portfolio problem, and the Critical Line Algorithm, in
-the form Markowitz wrote it, computes its exact path, through the penalty form or the
-budget form. The case for it is exactness and the range of constraints:
-on every problem tested the paths agree with LARS to rounding error and with an
-interior-point solver to its accuracy, and on problems of up to $p=500$ they meet the
-LASSO's optimality conditions at the level of rounding, within $5\times10^{-15}$,
-everywhere along the path.
+Schmelzer and Hastie \cite{perspective} prove that a constrained LASSO is a portfolio
+problem, and that its path is the path of the Critical Line Algorithm. This note puts
+that identity to a numerical test. Posed as a portfolio, in the penalty form or the
+budget form, a constrained regression goes to a released CLA, written for portfolios
+and not changed for regression, and the knots of its path come back. They agree with
+LARS to rounding error where LARS applies and with an interior-point solver to its
+accuracy elsewhere, and on problems of up to $p=500$ they meet the LASSO's optimality
+conditions at the level of rounding, within $5\times10^{-15}$, everywhere along the
+path. Two path algorithms derived for the LASSO, those of \texttt{c-lasso} and of
+Gaines et al., trace the same path once their ridge term or their start is corrected.
+
+The test reaches as far as the encodings do. Homogeneous inequality rows, and
+inequality rows under a zero sum, are out of reach of both forms
+(Section~\ref{sec:limits}), and there the identity is not tested here. Within that
+range it holds, with a practical consequence: standard path software such as
+\texttt{lars\_path} cannot take even a cap on the coefficients, and a CLA that takes
+general linear rows can.
 
 \section*{Code and data availability}
 
