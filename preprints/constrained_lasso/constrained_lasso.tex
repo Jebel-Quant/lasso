@@ -458,7 +458,8 @@ $\lambda=\gamma$. With $b\ne0$ the start must be a unique vertex
 \item Between two knots $\beta$ is affine in $\lambda$, so any other point on the path is
 an interpolation.
 \end{enumerate}
-In \texttt{cvxcla}, \texttt{Lasso(X, y, a=A)} traces $A\beta=0$ by step~2,
+In \texttt{cvxcla}, steps~2--3 run on \texttt{CLA} as released; \texttt{Lasso(X, y, a=A)}
+traces $A\beta=0$ by step~2,
 \texttt{nonneg=True} gives $\beta\ge0$, and \texttt{g=G, h=h} gives $G\beta\le h$ with
 $h>0$.
 \end{minipage}}
@@ -497,7 +498,7 @@ interior-point solve at the midpoint of every segment (circles).}
 \label{fig:real}
 \end{figure}
 
-Every path is checked in up to four ways. Where LARS applies it is the reference, compared
+Every path is checked in up to five ways. Where LARS applies it is the reference, compared
 knot by knot in both $\lambda$ and $\beta$. Elsewhere the reference is an interior-point
 solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midpoint of every segment,
 where the path is affine in $\lambda$ and so known exactly from its two ends. This
@@ -507,25 +508,26 @@ Third, at every knot and every midpoint we evaluate the optimality conditions of
 $r=G\beta-c+A\trans\kappa$ they are $r_j=-\lambda\operatorname{sign}\beta_j$ on the
 interior of the support, $|r_j|\le\lambda$ at zero, the one-sided versions at a cap, and
 primal feasibility. The largest violation, relative to $\|c\|_\infty$, is the last
-column of the table. Fourth, where it applies, we compare knot by knot with
-\texttt{cvxcla.Lasso} \cite{cvxcla}, a separate implementation: a LASSO homotopy for
-sign constraints and rows $G\beta\le h$ with $h>0$, and a rescaled CLA for $A\beta=0$.
-It takes six of the eight problems; it has no nonhomogeneous rows, as in
-\emph{Pinned}, and no signs on some coefficients only, as in \emph{Zero-sum, signs}.
+column of the table. Fourth, both forms run unchanged on the released
+\texttt{cvxcla.CLA} 2.4.0 \cite{cvxcla}, which takes the $q$ and the early stop they
+need, and it returns the same knots on every problem. Fifth, we compare with
+\texttt{cvxcla.Lasso}, a separate implementation (a homotopy, and a rescaled CLA for
+$A\beta=0$), on the six problems it takes: not \emph{Pinned} or \emph{Zero-sum, signs}.
 
 \begin{table}[t]
 \centering
-\small
-\begin{tabular}{llrrrlccc}
+\small\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrlcccc}
 \toprule
-problem & form & $n$ & $p$ & knots & reference & gap & \texttt{cvxcla} & KKT \\
+problem & form & $n$ & $p$ & knots & ref. & gap & \texttt{CLA} & \texttt{Lasso} & KKT \\
 \midrule
 \input{figures/evidence.tex}
 \end{tabular}
 \caption{The CLA against LARS (knot by knot) and against an interior-point solver (IPM,
 at segment midpoints). \emph{Gap}: largest discrepancy, relative to the largest
-coefficient. \emph{\texttt{cvxcla}}: largest knot discrepancy against
-\texttt{cvxcla.Lasso} \cite{cvxcla}, where it takes the problem. \emph{KKT}: largest violation of the optimality conditions of
+coefficient. \emph{\texttt{CLA}}, \emph{\texttt{Lasso}}: largest knot discrepancy against
+the same form run on \texttt{cvxcla.CLA} 2.4.0 \cite{cvxcla}, unchanged, and against
+\texttt{cvxcla.Lasso}, where it takes the problem. \emph{KKT}: largest violation of the optimality conditions of
 \eqref{eq:lasso} over all knots and midpoints, relative to $\|c\|_\infty$. Each
 problem goes through every form that accepts it.}
 \label{tab:evidence}

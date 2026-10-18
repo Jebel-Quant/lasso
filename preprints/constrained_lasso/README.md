@@ -30,8 +30,9 @@ comes back to 1e-13. The constrained cases match an interior-point solver to its
 accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
 
 Where it takes the problem (six of the eight), [`cvxcla`](https://github.com/cvxgrp/cvxcla)'s
-`Lasso`, a separate implementation pinned to 2.3.4, returns the same knots to 1e-13; the
-script checks this as a fourth column of Table 2.
+`Lasso`, a separate implementation, returns the same knots to 1e-13, and both forms run
+unchanged on its released `CLA` (cvxcla 2.4.0, pinned) on all eight problems; Table 2
+reports both.
 
 The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
 HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
