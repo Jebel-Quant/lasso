@@ -7,6 +7,12 @@ the other way from the LASSO-solver note in [`../lasso/`](../lasso). That note c
 efficient frontiers with a LASSO solver. This one computes constrained-LASSO paths with a
 Critical Line Algorithm that knows nothing about regression.
 
+The note opens with a regression that scikit-learn's `lars_path` cannot fit: a LASSO on
+log-compositions whose coefficients must sum to zero. `lars_path` takes no constraint but
+`positive`, and the usual workaround, regressing on log-ratios against a reference part,
+leaves that part unpenalised, so each of the 30 possible references gives a different
+answer. The CLA computes the exact constrained path.
+
 The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
 general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
 `γ = ∞` down to 0. Two encodings feed it a LASSO:
@@ -23,33 +29,57 @@ On the diabetes data, a p > n design and compositional data with `Σβ = 0`, eve
 comes back to 1e-13. The constrained cases match an interior-point solver to its own
 accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
 
+Where it takes the problem (six of the eight), [`cvxcla`](https://github.com/cvxgrp/cvxcla)'s
+`Lasso`, a separate implementation pinned to 2.3.4, returns the same knots to 1e-13; the
+script checks this as a fourth column of Table 2.
+
+The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
+HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
+2016, as shipped with the R package coda4microbiome). On each of the first ten segments
+of the zero-sum path, at most one of the 60 possible reference genera gives the zero-sum
+LASSO's selection.
+
 ## Contents
 
 ```
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 python/
-  make_figures.py       the CLA, both forms, three figures, Table 1, and the checks as pytest tests
+  make_figures.py       the CLA, both forms, five figures, Tables 2 and 3, both examples, and the checks as pytest tests
   make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
+  fetch_scd14.py        downloads the sCD14 data from CRAN into data/scd14.csv (git ignores data/)
+  classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
+  classo_check.py.lock  its locked environment
+  fetch_scd14.py.lock   its locked environment
 ```
 
-`python/make_figures.py` writes `figures/path.pdf` (the diabetes path, CLA against LARS knots,
-Fig. 1), `figures/portfolio.pdf` (the same path as a long/short/cash portfolio, Fig. 2) and
-`figures/constrained.pdf` (box-constrained and zero-sum paths, Fig. 3), and the rows of
-Table 1 as `figures/evidence.tex`, which the note inputs, so the table always shows what
-the code computed.
+`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, and
+`lars_path`'s answers for every reference part, Fig. 1), `figures/path.pdf` (the diabetes
+path, CLA against LARS knots, Fig. 2), `figures/portfolio.pdf` (the same path as a
+long/short/cash portfolio, Fig. 3) and `figures/constrained.pdf` (the box-constrained path,
+Fig. 4), and from the real data `figures/scd14.pdf` (Fig. 5). It also writes the rows of
+Table 2 as `figures/evidence.tex`, the zero-sum problems at scale (up to 500 parts) as
+Table 3 in `figures/scale.tex`, and the numbers the text quotes as `figures/example.tex`
+and `figures/scd14.tex`, which the note inputs, so the text and the table always show
+what the code computed.
 
 ## Running it
 
 `python/make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/) script
-with pinned dependencies, seeded and offline (the diabetes data ship with scikit-learn).
+with pinned dependencies, seeded and offline once the data are there (the diabetes data
+ship with scikit-learn). The sCD14 data are not ours and are not committed:
+`python/fetch_scd14.py` downloads coda4microbiome 0.2.4 from CRAN, checks its SHA-256 and
+writes `data/scd14.csv`. It carries the line `# fetch: on build`, so `make figures` runs
+it first, here and in CI; it does nothing when the file is already there. Without the
+file, `make_figures.py` skips the real data and its test, but the note needs them.
 `python/make_figures.py.lock` fixes Python 3.12 and every transitive dependency to an exact
 version and hash; `uv run` uses it automatically. After changing a pin, refresh it with
 `uv lock --script python/make_figures.py`.
 Run it from this directory:
 
 ```sh
-make figures    # write figures/*.pdf and figures/evidence.tex (uv run python/make_figures.py)
+make figures    # fetch the data if needed, run make_figures.py, then classo_check.py
 make test       # the same numbers as pytest checks (uv run python/make_figures.py test)
+uv run python/make_figures.py timings   # the cost ratios of the note, and the machine
 make pdf        # build constrained_lasso.pdf from constrained_lasso.tex and figures/
 ```

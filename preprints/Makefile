@@ -6,10 +6,20 @@
 # PDF takes its name. A python/make_figures.py, if present, draws the figures into figures/;
 # run `make figures` before `make pdf` or `make arxiv`. It may also write a table into
 # figures/ as a .tex file for the note to \input.
+#
+# A python/fetch_*.py script downloads data into data/. One that carries the line
+# `# fetch: on build` runs on every `make data`, and so before every `make figures`, here
+# and in CI: use it only for data that may be downloaded freely and do not change. Data
+# whose owner forbids redistribution, such as the Fama-French returns, are fetched by
+# hand, and the scripts that use them skip what needs them.
+#
+# A python/*.py script that carries the line `# run: after figures` runs after
+# make_figures.py in every `make figures`, in its own locked environment: for a check
+# whose dependencies cannot share make_figures.py's, reading what it wrote to figures/.
 
 LATEX     := pdflatex
 LATEXOPTS := -interaction=nonstopmode -halt-on-error
-TARGETS   := pdf figures test arxiv arxiv-check clean
+TARGETS   := pdf data figures test arxiv arxiv-check clean
 
 .PHONY: $(TARGETS)
 
@@ -37,6 +47,8 @@ $(error expected one .tex file with a \documentclass, found: $(MAIN))
 endif
 
 FIGURES := $(wildcard python/make_figures.py)
+FETCH   := $(shell grep -l '^\# fetch: on build$$' python/fetch_*.py 2>/dev/null)
+AFTER   := $(shell grep -l '^\# run: after figures$$' python/*.py 2>/dev/null)
 
 pdf: $(MAIN).pdf
 
@@ -46,8 +58,12 @@ $(MAIN).pdf: $(MAIN).tex $(wildcard figures/*.pdf figures/*.tex)
 	$(LATEX) $(LATEXOPTS) $<
 	$(LATEX) $(LATEXOPTS) $<
 
-figures:
+data:
+	$(foreach script,$(FETCH),uv run $(script) &&) true
+
+figures: data
 	$(if $(FIGURES),uv run $(FIGURES))
+	$(foreach script,$(AFTER),uv run $(script) &&) true
 
 test:
 	$(if $(FIGURES),uv run $(FIGURES) test)

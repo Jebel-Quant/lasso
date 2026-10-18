@@ -1,9 +1,10 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = "==3.12.*"
 
 [manifest]
 requirements = [
+    { name = "cvxcla", specifier = "==2.3.4" },
     { name = "cvxpy", specifier = "==1.9.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
     { name = "numpy", specifier = "==2.5.4" },
@@ -91,6 +92,32 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ac/f0/b75a10e9d0616b97a30de277b6dfe83f1879880854c7330337309530eb48/contourpy-1.4.0-cp312-cp312-win32.whl", hash = "sha256:5450f091ac1be0be3ad3a2a3b3f23b5e443e78c670ced4fd347d626f92a28fd2", size = 347345, upload-time = "2026-09-11T19:03:06.192Z" },
     { url = "https://files.pythonhosted.org/packages/50/a9/dab08786bb4d77ef9a046b3c1be923be4e73c5d07d91f5a54e8ea9b09e41/contourpy-1.4.0-cp312-cp312-win_amd64.whl", hash = "sha256:6e697d94e69f499ff6bebb899cae97a58d5d14f0e1fe9568b43a0248d2f9af8c", size = 234083, upload-time = "2026-09-11T19:03:08.122Z" },
     { url = "https://files.pythonhosted.org/packages/47/b9/3ba509755a970dbde5948e7142ac21f266be72f38017cc4087a05fdceee1/contourpy-1.4.0-cp312-cp312-win_arm64.whl", hash = "sha256:0c7a4c2716a4e98342221954416a836cca77c996c14ddbf22b5f01d5d93ca09c", size = 559521, upload-time = "2026-09-11T19:03:10.047Z" },
+]
+
+[[package]]
+name = "cvx-linalg"
+version = "1.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/99/85/9315f75dfb1f901f8c224c5d9bdff455c5c4a3a7ae4c5847126e29ddd93f/cvx_linalg-1.1.2.tar.gz", hash = "sha256:4c1497147af11986a34bfeb5e2972052730952e167679ef0aea6d7b630ba7c56", size = 43880, upload-time = "2026-10-01T07:27:22.565Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/1c/9be411ebfce2a73c09644cdc459456ac876ea3c1599b0ebe000ba7ba07ca/cvx_linalg-1.1.2-py3-none-any.whl", hash = "sha256:a852a5a73566cd92fca8d36c0230c19e9e14cde30c6e60097293aef446785b49", size = 57279, upload-time = "2026-10-01T07:27:21.299Z" },
+]
+
+[[package]]
+name = "cvxcla"
+version = "2.3.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cvx-linalg" },
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7f/1a/d611812acf54e1e3fcaac01dcadc69998f2fe0b783826010e60ca40343e2/cvxcla-2.3.4.tar.gz", hash = "sha256:6d38323bc2a68a2cc1aa5c4e4c81ff7ed6b7f3ef3598c1e1d9921826d39dcb22", size = 5180568, upload-time = "2026-10-02T17:29:10.049Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/5b/54fe4954206975eec84b83a8f5f12d18a9db063fc648cae253c239cf55fd/cvxcla-2.3.4-py3-none-any.whl", hash = "sha256:054f7fbc695168cb62fc8f5007008caa151f5828430785f5154345f2d26a707f", size = 83217, upload-time = "2026-10-02T17:29:08.481Z" },
 ]
 
 [[package]]

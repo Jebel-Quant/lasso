@@ -99,6 +99,22 @@ jobs:
       - name: Rebuild TeX's generated files
         run: sudo mktexlsr && sudo updmap-sys && sudo fmtutil-sys --byfmt pdflatex
 
+      # The dependencies are pinned inline in each python/*.py script (PEP 723) and locked
+      # in the .py.lock next to it, so key uv's cache on both.
+      - uses: astral-sh/setup-uv@v7.6.0
+        if: hashFiles(format('{0}/python/*.py', matrix.dir)) != ''
+        with:
+          cache-dependency-glob: |
+            ${{ matrix.dir }}/python/*.py
+            ${{ matrix.dir }}/python/*.py.lock
+
+      # A python/fetch_*.py with the line `# fetch: on build` downloads data that may be
+      # fetched freely and do not change; `make data` runs those. It comes before the
+      # figure cache, whose key hashes data/.
+      - name: Fetch the data
+        if: hashFiles(format('{0}/python/fetch_*.py', matrix.dir)) != ''
+        run: make data
+
       # make_figures.py can spend minutes computing a note's numbers before it draws, so
       # reuse the figures until the preprint's Python or its data change.
       - name: Restore the figures
@@ -109,18 +125,10 @@ jobs:
           path: ${{ matrix.dir }}/figures
           key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/**/*.py.lock', matrix.dir), format('{0}/data/**', matrix.dir)) }}
 
-      # The dependencies are pinned inline in python/make_figures.py (PEP 723) and locked
-      # in python/make_figures.py.lock next to it, so key uv's cache on both.
-      - uses: astral-sh/setup-uv@v7.6.0
-        if: steps.figures.outcome == 'success' && steps.figures.outputs.cache-hit != 'true'
-        with:
-          cache-dependency-glob: |
-            ${{ matrix.dir }}/python/make_figures.py
-            ${{ matrix.dir }}/python/make_figures.py.lock
-
+      # make figures runs make_figures.py, then any script marked `# run: after figures`.
       - name: Draw the figures
         if: steps.figures.outcome == 'success' && steps.figures.outputs.cache-hit != 'true'
-        run: uv run python/make_figures.py
+        run: make figures
 
       - name: Compile with the stamp
         env:
