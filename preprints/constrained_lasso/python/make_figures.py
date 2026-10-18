@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "cvxcla==2.4.0",
+#     "cvxcla==2.4.2",
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
 #     "numpy==2.5.4",
@@ -16,8 +16,9 @@ r"""The constrained LASSO, traced by the Critical Line Algorithm.
 
 Companion code for ``constrained_lasso.tex``. The note runs the other way from
 ``../lasso``: there a LASSO solver computes efficient frontiers, here a Critical Line
-Algorithm computes LASSO paths. The CLA below is written out in full (``cla``), in
-Markowitz's general form, and knows nothing about regression. Two maps feed it:
+Algorithm computes LASSO paths. The CLA is the released one of ``cvxcla``, in
+Markowitz's general form, and knows nothing about regression; this script holds no CLA
+of its own. Two maps feed it:
 
 * ``penalty_form``: the penalty is a cost of one unit of return per unit of gross
   position, so the CLA's risk-tolerance parameter *is* the LASSO's lambda. Bounds on the
@@ -53,20 +54,13 @@ import numpy as np
 import pytest
 from cvxcla import CLA as CvxclaCLA
 from cvxcla import Lasso as CvxclaLasso
-from scipy.optimize import linprog, nnls
+from cvxcla.errors import DegenerateProblemError
+from scipy.optimize import nnls
 from sklearn.datasets import load_diabetes
 from sklearn.linear_model import lars_path
 
 SEED = 7
 OUT = Path(__file__).resolve().parent.parent / "figures"  # the preprint folder; this script lives in python/
-
-# A position strictly inside its bounds by less than this is read as at the bound when the
-# starting vertex is taken off the LP solution.
-VERTEX_TOL = 1e-9
-
-# Two events closer than this, relative to the current parameter, are one event: the
-# variable that has just changed state is not allowed to fire again at the same point.
-EVENT_TOL = 1e-10
 
 # The baseline is an interior-point solve asked for everything it has; around 1e-8 relative
 # is its floor, not the path's.
@@ -74,7 +68,7 @@ CONIC = {"solver": cp.CLARABEL, "tol_gap_abs": 1e-12, "tol_gap_rel": 1e-12, "tol
 
 
 # --------------------------------------------------------------------------------------
-# The Critical Line Algorithm
+# The Critical Line Algorithm, from cvxcla
 # --------------------------------------------------------------------------------------
 @dataclass
 class Turns:
@@ -93,123 +87,21 @@ def cla(
     lower: np.ndarray,
     upper: np.ndarray,
     q: np.ndarray | None = None,
-    start: np.ndarray | None = None,
     stop: int | None = None,
 ) -> Turns:
-    r"""Trace :math:`\min \tfrac12 x^\top\Sigma x - (q+\gamma\mu)^\top x` from gamma = inf to 0.
+    r"""Trace :math:`\min \tfrac12 x^\top\Sigma x - (q+\gamma\mu)^\top x` from gamma = inf to 0, by cvxcla.
 
-    Subject to :math:`Ax=b` and :math:`l\le x\le u`. This is Markowitz's Critical Line
-    Algorithm in its general form, with the benchmark term ``q`` (``q = Sigma @ x_bar``
-    makes the objective the tracking variance against ``x_bar``; ``q = 0`` is the classical
-    problem). On each segment the free block solves the bordered system
-
-        [ Sigma_FF  A_F' ] [x_F]   [ q_F - Sigma_FB x_B ]       [ mu_F ]
-        [ A_F       0    ] [nu ] = [ b   - A_B x_B      ] + gamma [ 0    ]
-
-    so that x_F and nu are affine in gamma, and so is the gradient
-    g = Sigma x - q - gamma mu + A' nu on the blocked coordinates. Lowering gamma, the
-    segment ends where a free coordinate reaches a bound, or where a blocked coordinate's
-    gradient changes sign and it wants to move off its bound.
-
-    ``start`` is the solution at gamma = inf, the vertex maximising mu'x; when omitted it
-    is computed by linear programming. Its free set must be exactly as large as A has
-    rows, the nondegenerate case, or the bordered system is singular and the run stops.
-
-    ``stop`` names a coordinate whose leaving its bound ends the run. It also wins a tie:
-    when it fires at the same parameter as other events, to rounding, it is taken.
-    """
-    n = len(mu)
-    q = np.zeros(n) if q is None else q
-    m = a.shape[0]
-    if start is None:
-        lp = linprog(-mu, A_eq=a if m else None, b_eq=b if m else None,
-                     bounds=list(zip(lower, np.where(np.isinf(upper), None, upper), strict=True)),
-                     method="highs")
-        assert lp.status == 0, lp.message
-        start = lp.x
-    x = start.copy()
-    free = (x > lower + VERTEX_TOL) & (x < upper - VERTEX_TOL)
-    x[~free] = np.where(np.abs(x[~free] - lower[~free]) <= np.abs(x[~free] - upper[~free]),
-                        lower[~free], upper[~free])
-    if free.sum() != m:
-        msg = f"degenerate start: {free.sum()} free coordinates for {m} equality rows"
-        raise ValueError(msg)
-
-    gammas, xs, nus = [np.inf], [x.copy()], []
-    gamma, last, floor = np.inf, -1, 0.0
-    while True:
-        f, blk = np.flatnonzero(free), np.flatnonzero(~free)
-        k = np.block([[sigma[np.ix_(f, f)], a[:, f].T], [a[:, f], np.zeros((m, m))]])
-        rhs0 = np.concatenate([q[f] - sigma[np.ix_(f, blk)] @ x[blk], b - a[:, blk] @ x[blk]])
-        rhs1 = np.concatenate([mu[f], np.zeros(m)])
-        sol = np.linalg.solve(k, np.column_stack([rhs0, rhs1])) if len(rhs0) else np.zeros((0, 2))
-        alpha, delta = sol[: len(f), 0], sol[: len(f), 1]
-        nu0, nu1 = sol[len(f) :, 0], sol[len(f) :, 1]
-        if len(nus) < len(xs):  # the multipliers at the turning point just recorded
-            nus.append(nu1 if np.isinf(gamma) else nu0 + gamma * nu1)
-
-        # Gradient on the blocked coordinates, g0 + gamma g1.
-        g0 = sigma[np.ix_(blk, f)] @ alpha + sigma[np.ix_(blk, blk)] @ x[blk] - q[blk] + a[:, blk].T @ nu0
-        g1 = sigma[np.ix_(blk, f)] @ delta - mu[blk] + a[:, blk].T @ nu1
-
-        cand: list[tuple[float, int]] = []
-        with np.errstate(divide="ignore", invalid="ignore"):
-            # A free coordinate moves by -delta per unit decrease of gamma.
-            hit_lo = np.where(delta > 0, (lower[f] - alpha) / delta, -np.inf)
-            hit_up = np.where(delta < 0, (upper[f] - alpha) / delta, -np.inf)
-            # At a lower bound g >= 0 must hold, at an upper bound g <= 0.
-            at_lo = np.isclose(x[blk], lower[blk])
-            leave = np.where(at_lo, g1 > 0, g1 < 0)
-            off = np.where(leave, -g0 / g1, -np.inf)
-        cand += [(t, i) for t, i in zip(np.maximum(hit_lo, hit_up), f, strict=True)]
-        cand += [(t, j) for t, j in zip(off, blk, strict=True)]
-        ceiling = np.inf if np.isinf(gamma) else gamma * (1 - EVENT_TOL)
-        cand = [(t, i) for t, i in cand if np.isfinite(t) and floor < t < ceiling and i != last]
-        gamma, last = max(cand, default=(0.0, -1))
-        mine = [t for t, i in cand if i == stop]
-        if mine and mine[0] >= gamma * (1 - 1e-8):
-            gamma, last = mine[0], stop
-        # A coordinate whose twin is free has a gradient that vanishes only at gamma = 0, and
-        # rounding can put that root at 1e-16 instead. Roots that small, relative to the
-        # first event, are zero.
-        floor = floor or EVENT_TOL * gamma
-
-        x[f] = alpha + gamma * delta
-        xs.append(x.copy())
-        gammas.append(gamma)
-        if last < 0 or last == stop:
-            nus.append(nu0 + gamma * nu1)
-            break
-        if free[last]:  # a free coordinate reached a bound
-            x[last] = lower[last] if delta[f == last][0] > 0 else upper[last]
-        free[last] = not free[last]
-    return Turns(gamma=np.array(gammas), x=np.array(xs), nu=np.array(nus).reshape(len(xs), m))
-
-
-def cvxcla_cla(
-    sigma: np.ndarray,
-    mu: np.ndarray,
-    a: np.ndarray,
-    b: np.ndarray,
-    lower: np.ndarray,
-    upper: np.ndarray,
-    q: np.ndarray | None = None,
-    stop: int | None = None,
-) -> Turns:
-    """The same trace by the released CLA of cvxcla, unchanged, in the shape ``cla`` returns.
-
-    cvxcla takes, since 2.4.0, the benchmark term ``q`` and the early ``stop`` the two forms
-    need, finds the starting vertex itself, and records the equality multipliers with
-    the same convention as ``cla``: their slope at gamma = inf, their value below.
+    Subject to :math:`Ax=b` and :math:`l\le x\le u`: Markowitz's Critical Line Algorithm
+    in its general form, as ``cvxcla.CLA`` releases it, unchanged. It takes the benchmark
+    term ``q`` and the early ``stop`` the two forms need (since 2.4.0), finds the starting
+    vertex itself and declines a degenerate one. ``stop`` names a coordinate whose
+    leaving its bound ends the run. The equality multipliers are recorded as their slope
+    at gamma = inf and their value below.
     """
     trace = CvxclaCLA(mean=mu, covariance=sigma, lower_bounds=lower, upper_bounds=upper, a=a, b=b, q=q,
                       stop=stop).turning_points
     return Turns(gamma=np.array([t.lamb for t in trace]), x=np.array([t.weights for t in trace]),
                  nu=np.array([t.nu for t in trace]).reshape(len(trace), a.shape[0]))
-
-
-# The CLA a form runs on: this note's ``cla`` when None, or ``cvxcla_cla``.
-Engine = Callable[..., Turns] | None
 
 
 # --------------------------------------------------------------------------------------
@@ -254,7 +146,7 @@ def split(prob: Lasso) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return s, cap, keep
 
 
-def penalty_form(prob: Lasso, engine: Engine = None) -> LassoPath:
+def penalty_form(prob: Lasso) -> LassoPath:
     r"""The LASSO as a CLA whose parameter is lambda itself.
 
     With :math:`\beta = S z`, :math:`z\ge0` the positive and negative parts, the
@@ -266,13 +158,13 @@ def penalty_form(prob: Lasso, engine: Engine = None) -> LassoPath:
     """
     gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
     s, cap, _ = split(prob)
-    turns = (engine or cla)(s.T @ gram @ s, -np.ones(s.shape[1]), prob.a @ s, prob.b,
+    turns = cla(s.T @ gram @ s, -np.ones(s.shape[1]), prob.a @ s, prob.b,
                 np.zeros(s.shape[1]), cap, q=s.T @ c)
     keep = np.isfinite(turns.gamma)  # the gamma = inf vertex is the gamma_1 knot again
     return LassoPath(lam=turns.gamma[keep], beta=turns.x[keep] @ s.T, kappa=turns.nu[keep], turns=turns)
 
 
-def budget_form(prob: Lasso, engine: Engine = None) -> LassoPath:
+def budget_form(prob: Lasso) -> LassoPath:
     r"""The LASSO as a classical CLA: long only, fully invested, with a cash asset.
 
     Put :math:`\beta = t\,S w` with :math:`w\ge0` and :math:`1^\top w + w_0 = 1`, the
@@ -294,11 +186,11 @@ def budget_form(prob: Lasso, engine: Engine = None) -> LassoPath:
     rows = np.vstack([np.ones(k + 1), np.hstack([prob.a @ s, np.zeros((m, 1))])])
     # Cash leaving its bound is the budget going slack, lambda = 0: the LASSO path is over,
     # and past it the twin coordinates' gradients vanish identically, so the run stops there.
-    turns = (engine or cla)(sigma, mu, rows, np.append(1.0, np.zeros(m)), np.zeros(k + 1), np.full(k + 1, np.inf),
+    turns = cla(sigma, mu, rows, np.append(1.0, np.zeros(m)), np.zeros(k + 1), np.full(k + 1, np.inf),
                 stop=k)
     # beta = t S w = S w / gamma, which is 0 at gamma = inf (t = 0). Multiplying the CLA's
     # stationarity row by t: lambda is t times the budget multiplier, and at gamma = inf
-    # the slope cla records there is exactly that limit.
+    # the slope cvxcla records there is exactly that limit.
     t = np.where(np.isinf(turns.gamma), 0.0, 1.0 / turns.gamma)
     beta = turns.x[:, :k] @ s.T * t[:, None]
     nu = np.where(np.isinf(turns.gamma)[:, None], turns.nu, turns.nu * t[:, None])
@@ -485,7 +377,7 @@ class Example:
     knots: int  # knots of the plain LASSO path
     over: int  # of those, the knots where some coefficient passes the cap
     capped: np.ndarray  # (k, p) the knots of the capped path
-    keeps: tuple[int, int]  # the whole caps around u under which HDL stays nonpositive
+    keeps: int  # every whole cap from 1 to this keeps HDL nonpositive along the whole path
 
 
 def support(beta: np.ndarray) -> np.ndarray:
@@ -502,17 +394,18 @@ def example() -> Example:
     over = (np.abs(plain.beta) > box.upper * (1 + 1e-12)).any(axis=1)
     hdl, p = names.index("s3"), x.shape[1]
 
-    def keeps(u: float) -> bool:
-        beta = penalty_form(Lasso(x, y, lower=np.full(p, -u), upper=np.full(p, u))).beta
-        return bool(beta[:, hdl].max() <= 1e-9 * u)
+    def keeps(u: int) -> bool:
+        prob = Lasso(x, y, lower=np.full(p, -float(u)), upper=np.full(p, float(u)))
+        path = penalty_form(prob)
+        assert certify(prob, path) < 1e-10, u  # a sign read off a path that is not exact means nothing
+        return bool(path.beta[:, hdl].max() <= 1e-9 * u)
 
-    lo = hi = int(box.upper[0])
-    while keeps(lo - 1):
-        lo -= 1
+    hi = 1
     while keeps(hi + 1):
         hi += 1
+    assert keeps(1)
     return Example(float(box.upper[0]), {n: float(ols[names.index(n)]) for n in ("s1", "s2", "s3")},
-                   len(plain.lam), int(over.sum()), penalty_form(box).beta, (lo, hi))
+                   len(plain.lam), int(over.sum()), penalty_form(box).beta, hi)
 
 
 # The real-data example: 16S counts of 60 genera in 151 samples, and the inflammation
@@ -560,8 +453,7 @@ def example_tex(ex: Example) -> str:
         "exKnots": str(ex.knots),
         "exOver": NUMBERS[ex.over],
         "exCapped": str(len(ex.capped)),
-        "exKeepLo": str(ex.keeps[0]),
-        "exKeepHi": str(ex.keeps[1]),
+        "exKeepHi": str(ex.keeps),
     }.items())
 
 
@@ -645,7 +537,6 @@ class Row:
     knots: int
     reference: str
     gap: float
-    engine: float  # knot gap against the same form run on cvxcla's CLA
     cvxcla: float | None  # knot gap against cvxcla's Lasso, None where it takes no such problem
     kkt: float
 
@@ -668,10 +559,7 @@ def table() -> list[Row]:
                 ref, gap = "LARS", against_lars(prob, path, positive=name == "nonnegative")
             else:
                 ref, gap = "IPM", against_solver(prob, path)
-            theirs = fn(prob, engine=cvxcla_cla)
-            assert len(theirs.lam) == len(path.lam), (name, form)
-            engine = float(np.abs(theirs.beta - path.beta).max() / np.abs(path.beta).max())
-            rows.append(Row(name, form, *prob.x.shape, len(path.lam), ref, gap, engine,
+            rows.append(Row(name, form, *prob.x.shape, len(path.lam), ref, gap,
                             against_cvxcla(prob, path), certify(prob, path)))
     return rows
 
@@ -870,7 +758,7 @@ def table_tex(rows: list[Row]) -> str:
     """
     return "".join(
         f"{r.name:<15} & {r.form:<7} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
-        f"{sci(r.gap):<19} & {sci(r.engine):<19} & {'---' if r.cvxcla is None else sci(r.cvxcla):<19} & "
+        f"{sci(r.gap):<19} & {'---' if r.cvxcla is None else sci(r.cvxcla):<19} & "
         f"{sci(r.kkt)}\\\\\n"
         for r in rows
     ) + "\\bottomrule\n"
@@ -893,11 +781,11 @@ def main() -> None:
     for r in big:
         print(f"  n = {r.n:4d}, p = {r.p:3d}: {r.knots:3d} knots, cvxcla {r.cvxcla:.1e}, KKT {r.kkt:.1e}")
     print(f"{'problem':<16} {'form':<8} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} "
-          f"{'CLA 2.4':>9} {'Lasso':>9} {'KKT':>9}")
+          f"{'Lasso':>9} {'KKT':>9}")
     for r in rows:
         cvx = "---" if r.cvxcla is None else f"{r.cvxcla:.1e}"
         print(f"{r.name:<16} {r.form:<8} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} "
-              f"{r.gap:9.1e} {r.engine:9.1e} {cvx:>9} {r.kkt:9.1e}")
+              f"{r.gap:9.1e} {cvx:>9} {r.kkt:9.1e}")
     # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment.
     saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
     arrays = {}
@@ -967,12 +855,6 @@ def test_forms_agree() -> None:
             assert np.abs(pa.beta - bu.beta).max() < 1e-9 * np.abs(pa.beta).max()
 
 
-def test_cvxcla_cla(rows: list[Row]) -> None:
-    """Both forms run unchanged on cvxcla's released CLA, on every problem, to the same knots."""
-    for r in rows:
-        assert r.engine < 1e-10, r
-
-
 def test_cvxcla(rows: list[Row]) -> None:
     """cvxcla's Lasso returns the same knots wherever it takes the problem."""
     expected = {"plain", "nonnegative", "wide", "box", "zero-sum"} | ({"sCD14"} if SCD14.exists() else set())
@@ -988,7 +870,7 @@ def test_table_tex(rows: list[Row]) -> None:
     assert len(tex) == len(rows)
     assert rule == r"\bottomrule"
     assert sci(8.6e-14) == r"$8.6\times10^{-14}$"
-    assert all(line.endswith(r"\\") and line.count("&") == 9 for line in tex)
+    assert all(line.endswith(r"\\") and line.count("&") == 8 for line in tex)
 
 
 def test_example() -> None:
@@ -1000,8 +882,8 @@ def test_example() -> None:
     assert ex.ols["s1"] < -ex.cap and ex.ols["s2"] > ex.cap and ex.ols["s3"] > 0
     assert (np.abs(ex.capped) <= ex.cap * (1 + 1e-12)).all()
     assert (ex.capped[:, hdl] <= 1e-9 * ex.cap).all()
-    # The sign is not an accident of u: a wide band of caps keeps it, though not a loose one.
-    assert ex.keeps[0] < ex.cap / 4 and 1.5 * ex.cap < ex.keeps[1] < abs(ex.ols["s1"])
+    # The sign is not an accident of u: every cap up to well past it keeps it, though not a loose one.
+    assert 1.5 * ex.cap < ex.keeps < abs(ex.ols["s1"])
 
 
 @pytest.mark.skipif(not SCD14.exists(), reason="no sCD14 data; fetch it with `uv run python/fetch_scd14.py`")
@@ -1023,8 +905,8 @@ def test_scale() -> None:
 
 
 def test_degenerate_start_refused() -> None:
-    """With b = 0 the penalty form starts on a degenerate vertex, and says so."""
-    with pytest.raises(ValueError, match="degenerate start"):
+    """With b = 0 the penalty form starts on a degenerate vertex, and cvxcla declines it."""
+    with pytest.raises(DegenerateProblemError, match="degenerate"):
         penalty_form(problems()["zero-sum"])
 
 

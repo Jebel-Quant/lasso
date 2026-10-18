@@ -13,8 +13,8 @@ each other and gives HDL a positive coefficient. scikit-learn's `lars_path` take
 constraint but `positive`, so it cannot cap. The CLA computes the exact path under
 caps, signs and equality constraints, among them the zero sum of compositional data.
 
-The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
-general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
+The CLA is the released `CLA` of [`cvxcla`](https://github.com/cvxgrp/cvxcla) (2.4.2,
+pinned); this folder holds no CLA of its own. It is Markowitz's in its general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
 `γ = ∞` down to 0. Two encodings feed it a LASSO:
 
 - **Penalty form.** Split β into positive and negative parts, `Σ = S'GS`, `μ = −1`,
@@ -29,10 +29,9 @@ On the diabetes data, a p > n design and compositional data with `Σβ = 0`, eve
 comes back to 1e-13. The constrained cases match an interior-point solver to its own
 accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
 
-Where it takes the problem (six of the eight), [`cvxcla`](https://github.com/cvxgrp/cvxcla)'s
-`Lasso`, a separate implementation, returns the same knots to 1e-13, and both forms run
-unchanged on its released `CLA` (cvxcla 2.4.0, pinned) on all eight problems; Table 2
-reports both.
+Where it takes the problem (six of the eight), `cvxcla`'s `Lasso`, a separate route (a
+homotopy, and a rescaled CLA for `Aβ = 0`), returns the same knots to 1e-13; Table 2
+reports it.
 
 The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
 HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
@@ -46,7 +45,7 @@ LASSO's selection.
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 python/
-  make_figures.py       the CLA, both forms, three figures, Tables 2 and 3, both examples, and the checks as pytest tests
+  make_figures.py       both forms (on cvxcla's CLA), three figures, Tables 2 and 3, both examples, and the checks as pytest tests
   make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
   fetch_scd14.py        downloads the sCD14 data from CRAN into data/scd14.csv (git ignores data/)
   classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
