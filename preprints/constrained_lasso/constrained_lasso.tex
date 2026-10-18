@@ -130,9 +130,11 @@ Circles: an interior-point solve at the midpoint of every segment.}
 
 Both panels are exact paths, knot by knot. They were computed by an algorithm that
 knows nothing about regression: the Critical Line Algorithm (CLA) that Markowitz
-\cite{markowitz1956} wrote for portfolios, run through Algorithm~1 on the CLA of the
-open-source package \texttt{cvxcla} \cite{cvxcla}. That package also computes the right
-panel in one call, with the cap as $2p$ inequality rows:
+\cite{markowitz1956} wrote for portfolios, in the implementation of
+Section~\ref{sec:cla}, through Algorithm~1. The CLA of the open-source package
+\texttt{cvxcla} \cite{cvxcla}, run the same way, gives the same knots
+(Section~\ref{sec:evidence}), and that package also computes the right panel in one call,
+with the cap as $2p$ inequality rows:
 \begin{lstlisting}
 from cvxcla import Lasso
 caps = Lasso(X, y, g=np.vstack([np.eye(p), -np.eye(p)]), h=np.full(2 * p, u))
@@ -506,7 +508,9 @@ comparison is only as sharp as the solver, which reaches about $10^{-8}$ relativ
 Third, at every knot and every midpoint we evaluate the optimality conditions of
 \eqref{eq:lasso} directly, without reference to either form. With
 $r=G\beta-c+A\trans\kappa$ they are $r_j=-\lambda\operatorname{sign}\beta_j$ on the
-interior of the support, $|r_j|\le\lambda$ at zero, the one-sided versions at a cap, and
+interior of the support; $|r_j|\le\lambda$ at zero, or only $r_j\ge-\lambda$ under
+$\beta_j\ge0$ and $r_j\le\lambda$ under $\beta_j\le0$; $r_j\le-\lambda$ at a cap $u_j>0$
+and $r_j\ge\lambda$ at a floor $l_j<0$; and
 primal feasibility. The largest violation, relative to $\|c\|_\infty$, is the last
 column of the table. Fourth, both forms run unchanged on the released
 \texttt{cvxcla.CLA} 2.4.0 \cite{cvxcla}, which takes the $q$ and the early stop they
