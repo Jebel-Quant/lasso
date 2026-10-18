@@ -309,22 +309,25 @@ def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray, kappa: np.ndarray) -
     r"""Largest violation of the LASSO's optimality conditions, relative to lambda_max.
 
     Read off the original problem, not either CLA form: with
-    :math:`r = G\beta - c + A^\top\kappa`, a coordinate strictly inside its box needs
-    :math:`r_j = -\lambda\,\mathrm{sign}\,\beta_j` if nonzero and :math:`|r_j|\le\lambda`
-    if zero; one at its upper bound needs :math:`r_j \le -\lambda`, at its lower bound
-    :math:`r_j\ge\lambda`. Primal feasibility is included.
+    :math:`r = G\beta - c + A^\top\kappa`, a nonzero coordinate strictly inside its box
+    needs :math:`r_j = -\lambda\,\mathrm{sign}\,\beta_j`, one at a cap :math:`u_j>0` needs
+    :math:`r_j \le -\lambda` and one at a floor :math:`l_j<0` needs :math:`r_j\ge\lambda`.
+    A zero coordinate needs :math:`r_j\ge-\lambda` and :math:`r_j\le\lambda`, less the
+    side a sign constraint (:math:`l_j=0` or :math:`u_j=0`) takes away. Primal
+    feasibility is included.
     """
     gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
     r = gram @ beta - c + prob.a.T @ kappa
     tol = 1e-9 * max(1.0, np.abs(beta).max())
-    at_up, at_lo = beta >= prob.upper - tol, beta <= prob.lower + tol
-    zero = (np.abs(beta) <= tol) & ~at_up & ~at_lo
+    zero = np.abs(beta) <= tol
+    at_up, at_lo = ~zero & (beta >= prob.upper - tol), ~zero & (beta <= prob.lower + tol)
     inner = ~zero & ~at_up & ~at_lo
     viol = np.concatenate([
         np.abs(r[inner] + lam * np.sign(beta[inner])),
-        np.maximum(np.abs(r[zero]) - lam, 0),
-        np.maximum(r[at_up & ~zero] + lam, 0),
-        np.maximum(-r[at_lo & ~zero] - lam, 0),
+        np.maximum(r[at_up] + lam, 0),
+        np.maximum(lam - r[at_lo], 0),
+        np.maximum(r[zero & (prob.lower < 0)] - lam, 0),
+        np.maximum(-r[zero & (prob.upper > 0)] - lam, 0),
         np.abs(prob.a @ beta - prob.b),
         np.maximum(beta - prob.upper, 0),
         np.maximum(prob.lower - beta, 0),
