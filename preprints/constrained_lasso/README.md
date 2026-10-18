@@ -7,19 +7,24 @@ the other way from the LASSO-solver note in [`../lasso/`](../lasso). That note c
 efficient frontiers with a LASSO solver. This one computes constrained-LASSO paths with a
 Critical Line Algorithm that knows nothing about regression.
 
-The note opens with a regression that scikit-learn's `lars_path` cannot fit: a LASSO on
-log-compositions whose coefficients must sum to zero. `lars_path` takes no constraint but
-`positive`. `c-lasso` can fit it, with a small ridge term, but takes only `Cβ = 0`: no
-signs, no caps, no nonzero right-hand side. The CLA computes the exact constrained path
-under all of these.
+The note opens with the diabetes LASSO, capped: every coefficient must satisfy
+`|β_j| ≤ u`. Without the cap, least squares plays the cholesterol measures off against
+each other and gives HDL a positive coefficient. scikit-learn's `lars_path` takes no
+constraint but `positive`, so it cannot cap. The CLA computes the exact path under
+caps, signs, equality constraints, among them the zero sum of compositional data, and
+inequality rows `Cβ ≤ h` with `h > 0`.
 
-The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
-general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
-`γ = ∞` down to 0. Two encodings feed it a LASSO:
+Every path comes from one call, `cvxcla.Lasso` ([`cvxcla`](https://github.com/cvxgrp/cvxcla)
+2.5.0, pinned). This folder holds no CLA and no encoding of its own; it states the
+problems, calls `cvxcla`, and checks the paths without it. `cvxcla.Lasso` runs the CLA in
+Markowitz's general form, `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `Gx ≤ h`,
+`l ≤ x ≤ u`, traced from `γ = ∞` down to 0, through one of the two encodings the note
+describes:
 
 - **Penalty form.** Split β into positive and negative parts, `Σ = S'GS`, `μ = −1`,
   `q = S'X'y`. The parameter `γ` is λ itself. Coefficient bounds become position limits,
-  and equality rows `Aβ = b` become budget rows (nondegenerate start needed, so `b ≠ 0`).
+  equality rows `Aβ = b` become budget rows (nondegenerate start needed, so `b ≠ 0`), and
+  inequality rows `Cβ ≤ h` (with `h > 0`) become rows `CSz ≤ h`.
 - **Budget form.** Rescale the ℓ1 ball to the simplex, `β = t·Sw`, and add a riskless cash
   asset for the unused budget. This is Markowitz's long-only, fully invested problem with
   `γ = 1/t`. Homogeneous constraints (`Aβ = 0`, sign constraints) carry over, and the path
@@ -29,10 +34,9 @@ On the diabetes data, a p > n design and compositional data with `Σβ = 0`, eve
 comes back to 1e-13. The constrained cases match an interior-point solver to its own
 accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
 
-Where it takes the problem (six of the eight), [`cvxcla`](https://github.com/cvxgrp/cvxcla)'s
-`Lasso`, a separate implementation, returns the same knots to 1e-13, and both forms run
-unchanged on its released `CLA` (cvxcla 2.4.0, pinned) on all eight problems; Table 2
-reports both.
+The note's own CLA was removed in favour of `cvxcla`'s. That switch exposed a bug in it:
+under tight caps it returned paths that broke the optimality conditions without saying
+so. The checks above are what caught it, and they are what the paths rest on now.
 
 The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
 HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
@@ -46,7 +50,7 @@ LASSO's selection.
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 python/
-  make_figures.py       the CLA, both forms, three figures, Tables 2 and 3, both examples, and the checks as pytest tests
+  make_figures.py       both forms (on cvxcla's CLA), three figures, Tables 2 and 3, both examples, and the checks as pytest tests
   make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
   fetch_scd14.py        downloads the sCD14 data from CRAN into data/scd14.csv (git ignores data/)
   classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
@@ -59,9 +63,8 @@ julia/
   LICENSE.classopath    ConstrainedLasso.jl's MIT licence
 ```
 
-`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, Fig. 1), `figures/path.pdf` and
-`figures/portfolio.pdf` (the diabetes path against the LARS knots, and the same path as a
-long/short/cash portfolio, the two panels of Fig. 2), and from the real data
+`python/make_figures.py` writes `figures/example.pdf` (the diabetes path without and with the cap, Fig. 1), `figures/path.pdf`
+(the diabetes path against the LARS knots, Fig. 2), and from the real data
 `figures/scd14.pdf` (Fig. 3). It also writes the rows of
 Table 2 as `figures/evidence.tex`, the zero-sum problems at scale (up to 500 parts) as
 Table 3 in `figures/scale.tex`, and the numbers the text quotes as `figures/example.tex`

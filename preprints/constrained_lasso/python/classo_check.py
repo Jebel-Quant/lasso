@@ -15,8 +15,8 @@
 c-lasso (Simpson, Combettes and Mueller, 2021) is the Python package built for the
 LASSO under ``C beta = 0``. Its last release, 1.0.11, uses ``np.infty``, which NumPy 2
 removed, so it runs here in its own environment, pinned to NumPy 1.26, and talks to
-``make_figures.py`` through a file: that script writes the exact paths of the opening
-example and of the sCD14 data to ``figures/zero_sum_paths.npz``, and this one runs
+``make_figures.py`` through a file: that script writes the exact paths of the Zero-sum
+problem and of the sCD14 data to ``figures/zero_sum_paths.npz``, and this one runs
 c-lasso's ``Path-Alg`` on the same problems, measures how far its answers lie from the
 exact path, and writes the numbers the note quotes to ``figures/classo.tex``. c-lasso
 also imports pandas and matplotlib without declaring them, hence the two pins above.

@@ -41,6 +41,7 @@
 \input{figures/scd14.tex}
 \input{figures/classo.tex}
 \input{figures/gaines.tex}
+\input{figures/monotone.tex}
 
 \newtheorem{proposition}{Proposition}
 \theoremstyle{remark}
@@ -66,22 +67,19 @@
 
 \begin{abstract}
 The LASSO was introduced, and is still mostly solved, with no constraint but its
-$\ell_1$ budget. A regression on compositional data needs its coefficients to sum to
-zero, and \texttt{lars\_path} in scikit-learn has no way to say so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
-Line Algorithm (CLA), unmodified, by posing the regression as a portfolio, in one of two
-ways: a \emph{penalty form}, whose parameter is $\lambda$ and which takes bounds and
-equality rows, and a \emph{budget form}, Markowitz's long-only, fully invested problem
-with a cash asset, which takes homogeneous rows such as $\one\trans\beta=0$. On every
-problem tested, up to 500 predictors, the CLA reproduces LARS, an interior-point solver
-and the package \texttt{cvxcla} to rounding error and meets the LASSO's optimality
-conditions to $10^{-15}$.
+$\ell_1$ budget. Many regressions need more, such as bounds on the coefficients or
+coefficients that sum to zero, and \texttt{lars\_path} in scikit-learn has no way to say
+so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
+Line Algorithm (CLA), unmodified, by posing the regression as a portfolio. On every
+problem tested, up to 500 predictors, the CLA reproduces LARS and an interior-point
+solver to rounding error and meets the LASSO's optimality conditions to $10^{-15}$.
 
 \medskip\noindent
 \textbf{Keywords:} constrained LASSO; critical line algorithm; solution path; least angle
 regression; compositional data; portfolio optimisation; reproducibility
 \end{abstract}
 
-\section{A regression \texttt{lars\_path} cannot fit}
+\section{A constrained regression}
 \label{sec:example}
 
 Tibshirani \cite{tibshirani1996} introduced the LASSO as least squares with a single
@@ -97,65 +95,54 @@ parameter, so the whole \emph{path} is a finite list of \emph{knots}. scikit-lea
 \texttt{lars\_path} \cite{sklearn} takes $X$, $y$ and one option, \texttt{positive},
 for nonnegative coefficients. There is no place for any other constraint.
 
-Many regressions need one. Here is an example in the style of Lin et al.\
-\cite{lin2014}. Each of $n=60$ samples is a composition of $p=\exParts$ parts, such as
-the relative abundances of bacteria in a gut sample, and $z_{ij}$ is the log of the
-share of part $j$ in sample $i$. The model is
-\[
-y_i=\sum_j\beta_j z_{ij}+\varepsilon_i,\qquad\sum_j\beta_j=0 .
-\]
-The constraint is what makes the model meaningful. A composition is only known up to
-scale: measuring a sample in other units multiplies all its parts by some $c$, which
-adds $\log c$ to every $z_{ij}$ and $\log c\sum_j\beta_j$ to the fit. Only when the
-coefficients sum to zero does the fit not depend on the units. Prior knowledge often
-adds signs: suppose earlier studies show that the even-numbered parts can only raise
-$y$, so $\beta_j\ge0$ for even $j$. In the simulation five parts have nonzero true
-coefficients, all of them consistent with those signs, and the goal is to find them.
+Many regressions need one. The diabetes data that LARS was introduced with
+\cite{efron2004} are an example: $n=442$ patients, ten standardised baseline variables
+and, as the response, a measure of disease progression a year later. Six of the
+variables are blood serum measurements, and three of them are closely related measures
+of cholesterol: total cholesterol (\texttt{s1}), LDL (\texttt{s2}) and HDL
+(\texttt{s3}). Least squares plays them off against each other. It gives total
+cholesterol a coefficient of $\exTC$ and LDL one of $\exLDL$, two large effects of
+opposite sign that mostly cancel, and it gives HDL, whose low levels are a risk factor
+for diabetes \cite{wilson2007}, a coefficient of $\exHDL$, as if more of it made the
+disease progress faster. The LASSO
+path ends at the least-squares fit, so it gets there too. A cap on every coefficient,
+$|\beta_j|\le u$, stops the offsetting; we take $u=\exCap$, half the largest
+least-squares coefficient.
 
-\texttt{lars\_path} cannot take the zero sum, so the most it can do is ignore it. At
-$\lambda=\exLambda$ the coefficients it returns sum to $\exPlainSum$, not zero, and the
-fitted model changes with the units of the data. A general convex solver on a grid of
-$\lambda$ is correct but blind: it gives points, not the path, and cannot tell where a
-variable enters between two of them.
-
-The Python package \texttt{c-lasso} \cite{classo} can solve the zero-sum part. It is
-built for the LASSO under $C\beta=0$, with log-contrast regression as its leading
-example, and it has a path algorithm. That algorithm adds a small ridge term, so its
-path is close to the exact one but not equal to it; Section~\ref{sec:evidence} measures
-the gap. But $C\beta=0$ is all it takes. Constraints just as natural are out of its
-range: a sign on some of the coefficients, as here, a cap $|\beta_j|\le u$ on their
-size, or an equality with a nonzero right-hand side, such as a fit that must pass
-through a given point. Figure~\ref{fig:example} shows what the signs are worth. Without
-them the zero-sum LASSO gives \exWrong{} even-numbered parts a negative coefficient,
-against what is known, at \exBroken{} of its \exKnots{} knots; with them no part
-crosses its sign, and the path has \exSigned{} knots. This note computes the exact path
-under all of these constraints. It does not cover general
-inequality rows $C\beta\le h$, which fall outside both of its encodings
-(Section~\ref{sec:limits}).
+Figure~\ref{fig:example} shows what the cap does. Without it the path passes the cap at
+\exOver{} of its \exKnots{} knots and ends with HDL positive. With it no coefficient
+passes the cap, and HDL stays negative along the whole path, although no sign is
+imposed. That does not hang on the choice of $u$: every whole-number cap up to
+\exKeepHi{} keeps HDL negative along the whole path, and only looser caps let it turn
+positive. The capped path has \exCapped{} knots. This note computes the exact path under
+caps, signs on some of the coefficients, equality constraints $A\beta=b$, among them
+the zero sum of a regression on compositional data, and inequality rows $C\beta\le h$
+with $h>0$, such as a cap on the net effect of a group of coefficients. It does not
+cover homogeneous inequality rows, such as the ordering constraints of a monotone fit,
+or inequality rows under a zero sum (Section~\ref{sec:limits}).
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{example.pdf}
-\caption{The opening example, as the known signs see it: the coefficients of the
-even-numbered parts, near zero. Left: the zero-sum LASSO alone, the model
-\texttt{c-lasso} fits; the parts it pushes into the shaded half-plane, which the signs
-rule out, are in orange. Right: the same with $\beta_j\ge0$ for even $j$, which only the
-CLA computes here. Lines: the exact path from the CLA in the budget form. Circles: an
-interior-point solve at the midpoint of every segment. Part~0, the one even part in the
-truth, leaves the window at the top.}
+\caption{The opening example: the diabetes LASSO path without and with the cap
+$|\beta_j|\le u=\exCap$. The shaded bands are beyond the cap. Left: the plain LASSO, the
+path \texttt{lars\_path} computes; the coefficients that pass the cap are in orange.
+Right: every coefficient capped. Lines: the exact path, by the CLA in the penalty form.
+Circles: an interior-point solve at the midpoint of every segment.}
 \label{fig:example}
 \end{figure}
 
 Both panels are exact paths, knot by knot. They were computed by an algorithm that
 knows nothing about regression: the Critical Line Algorithm (CLA) that Markowitz
-\cite{markowitz1956} wrote for portfolios. In the open-source package \texttt{cvxcla}
-\cite{cvxcla} the left one is one call, which traces homogeneous equality constraints
-with the rescaling of Section~\ref{sec:budget}, and the right one runs on its CLA through
-Algorithm~1:
+\cite{markowitz1956} wrote for portfolios, run unchanged through one of the two
+encodings of this note. The open-source package \texttt{cvxcla} \cite{cvxcla} carries
+them out (Algorithm~1), and the right panel is one call:
 \begin{lstlisting}
 from cvxcla import Lasso
-knots = Lasso(Z, y, a=np.ones((1, p))).path   # each knot: lam, beta, active
+knots = Lasso(X, y, lower=-u * np.ones(p), upper=u * np.ones(p)).path
 \end{lstlisting}
+The same call takes signs (a bound of zero), equality rows \texttt{a, b} and inequality
+rows \texttt{g, h}, in combination, and picks the encoding that takes them.
 
 \paragraph{Why a portfolio algorithm} Schmelzer and Hastie \cite{perspective} prove that
 the CLA and the constrained LASSO \cite{james2020,gaines2018} trace the same curve.
@@ -191,8 +178,10 @@ knot of the LASSO path & turning point of the CLA \\
 Exact paths of the constrained LASSO are not new. Gaines, Kim and Zhou
 \cite{gaines2018} derive a path algorithm for it from its optimality conditions, which
 tracks the active set and the multipliers of the linear constraints as $\lambda$
-decreases, and it takes inequality rows as well as equalities, so it is the more
-general of the two. Started at the right knot, its implementation follows the same path
+decreases. It takes homogeneous inequality rows as well, and inequality rows under a
+zero sum, so it is the more general of the two. For $C\beta=0$ alone the Python package \texttt{c-lasso}
+\cite{classo} has a path algorithm as well, which adds a small ridge term, so its path
+is close to the exact one but not equal to it. Started at the right knot, its implementation follows the same path
 as the CLA to rounding error; as shipped, it starts off the path and stays there, on
 every problem of Table~\ref{tab:evidence} (Section~\ref{sec:evidence}). The CLA does the
 same bookkeeping:
@@ -202,18 +191,19 @@ algorithm comes from. Here it is not derived for the LASSO at all. Markowitz's
 algorithm runs unchanged, so any implementation of it, written and tested for
 portfolios, becomes an exact path solver for the constrained LASSO with a few lines of
 encoding, and seventy years of work on the CLA carry over. The price is generality: the
-encodings below need a nondegenerate start and leave out general inequality rows
+encodings below need a nondegenerate start and leave out homogeneous inequality rows
 (Section~\ref{sec:limits}). The work is in the encoding, and there are two:
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
-parameter, and takes coefficient bounds and general equality constraints $A\beta=b$;
+parameter, and takes coefficient bounds, general equality constraints $A\beta=b$ and
+inequality rows $C\beta\le h$ with $h>0$. It is the form that solves the example;
 \item the \emph{budget form} (Section~\ref{sec:budget}) keeps the $\ell_1$ budget, as
 Markowitz's long-only, fully invested problem with a cash asset. It takes homogeneous
-constraints such as $\one\trans\beta=0$, and it is the form that solves the example.
+constraints such as $\one\trans\beta=0$, which the penalty form cannot start from.
 \end{enumerate}
-Neither reduction is deep. Each is a few lines on top of a CLA of about a hundred lines,
-and together they reproduce LARS, an interior-point solver and \texttt{cvxcla} to
-rounding error (Section~\ref{sec:evidence}).
+Neither reduction is deep. Each is a few lines on top of a released CLA, and together
+they reproduce LARS and an interior-point solver to rounding error
+(Section~\ref{sec:evidence}).
 Section~\ref{sec:limits} sets out where both forms stop. Readers who know the CLA can
 skip Section~\ref{sec:cla}.
 
@@ -224,10 +214,10 @@ constrained LASSO is
 \label{eq:lasso}
 \mathrm{L}_\lambda:\quad
 \min_\beta\ \tfrac12\|y-X\beta\|_2^2+\lambda\|\beta\|_1
-\quad\text{s.t.}\quad A\beta=b,\quad l\le\beta\le u,
+\quad\text{s.t.}\quad A\beta=b,\quad C\beta\le h,\quad l\le\beta\le u,
 \end{equation}
-with $A\in\R^{m\times p}$ and $l_j\le0\le u_j$, infinite entries allowed. With no rows
-and infinite bounds it is Tibshirani's LASSO. We assume, as \cite{perspective} does,
+with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$, $h>0$ and $l_j\le0\le u_j$, infinite
+entries allowed. With no rows and infinite bounds it is Tibshirani's LASSO. We assume, as \cite{perspective} does,
 that $\mathrm{L}_\lambda$ has a unique minimiser $\beta(\lambda)$ for every
 $\lambda>0$. This is the generic case: for the LASSO without constraints it holds
 whenever the columns of $X$ are in general position \cite{tibshirani2013}, for any $n$
@@ -285,8 +275,7 @@ continues. If there is no event the last segment runs to $\gamma=0$.
 starts at a vertex maximising $\mu\trans x$ over the feasible set. A linear program
 finds it. If the maximiser is unique and has exactly $m$ coordinates strictly inside
 their bounds, the bordered matrix in \eqref{eq:border} is nonsingular and the walk can
-begin. This is the nondegenerate case. The implementation checks the count and refuses
-to start otherwise.
+begin. This is the nondegenerate case. \texttt{cvxcla} declines a degenerate start.
 
 \section{The penalty form}
 \label{sec:penalty}
@@ -307,7 +296,7 @@ For $\lambda>0$, $\beta(\lambda)=Sz(\lambda)$, where $z(\lambda)$ solves the CLA
 instance $\mathrm{P}_\gamma$ with
 \[
 \Sig=S\trans GS,\quad \mu=-\one,\quad q=S\trans c,\quad
-\text{rows } ASz=b,\quad 0\le z\le\bar u,\quad \gamma=\lambda .
+\text{rows } ASz=b,\ CSz\le h,\quad 0\le z\le\bar u,\quad \gamma=\lambda .
 \]
 Moreover $q$ lies in the range of $\Sig$, so the benchmark reading of
 Section~\ref{sec:cla} applies: the program tracks a least-squares fit and pays
@@ -318,7 +307,7 @@ $\lambda$ for every unit of gross position.
 Up to the constant $\tfrac12\|y\|^2$, the CLA objective at $\gamma=\lambda$ is
 $\tfrac12\|y-XSz\|^2+\lambda\one\trans z$. For a fixed $\beta$ feasible in
 \eqref{eq:lasso}, the smallest $\one\trans z$ over $z\ge0$ with $Sz=\beta$ and $z\le\bar u$
-is $\|\beta\|_1$. It is attained by putting $\beta_j$ on the column of its sign, which
+is $\|\beta\|_1$; the rows hold for every such $z$, since they constrain $Sz=\beta$ only. It is attained by putting $\beta_j$ on the column of its sign, which
 respects $\bar u$ because $l_j\le\beta_j\le u_j$. The minimum of the CLA program over
 $z$ is therefore the minimum of $\mathrm{L}_\lambda$ over $\beta$. At a minimiser no
 coordinate holds both signs, since lowering both by the same amount keeps $\beta$ and
@@ -329,20 +318,21 @@ $v=S\bar x$ for some $\bar x$, and then $q=S\trans GS\bar x=\Sig\bar x$, where $
 is a least-squares fit.
 \end{proof}
 
-In code the form is three lines on top of a function \texttt{cla} that implements
-Section~\ref{sec:cla}, here with both signs allowed for every coefficient:
+In code the form is a few lines on top of \texttt{cvxcla}'s \texttt{CLA}, which
+implements Section~\ref{sec:cla}, here with both signs allowed for every coefficient:
 \begin{lstlisting}
 S = np.hstack([np.eye(p), -np.eye(p)])        # beta = S z with z >= 0
-run = cla(S.T @ G @ S, -np.ones(2 * p), A @ S, b, np.zeros(2 * p), cap, q=S.T @ c)
-beta = run.x @ S.T                            # one row per knot, at lam = run.gamma
+run = CLA(mean=-np.ones(2 * p), covariance=S.T @ G @ S, a=A @ S, b=b, g=C @ S, h=h,
+          lower_bounds=np.zeros(2 * p), upper_bounds=cap, q=S.T @ c)
+knots = [(t.lamb, S @ t.weights) for t in run.turning_points]   # lam = gamma
 \end{lstlisting}
 
 The covariance $S\trans GS$ is singular when both signs of a coefficient are allowed,
 but \eqref{eq:border} is not: for $\lambda>0$ the proof keeps the two halves of a
 coefficient out of $\F$ together, and the columns of $X$ on the support are independent
 in general position \cite{perspective}. The halves come apart only at $\lambda=0$, which
-rounding can move to $\gamma\approx10^{-16}$, so the implementation treats event
-parameters below $10^{-10}$ times the first one as zero.
+rounding can move to $\gamma\approx10^{-16}$; \texttt{cvxcla} treats an event whose
+parameter is round-off as one at $\gamma=0$.
 
 \paragraph{The start} Without equality rows the starting vertex is $z=0$: all
 positions are closed, because each costs more than it can earn. The first event is the
@@ -365,7 +355,8 @@ penalty form (lines) and the knots \texttt{lars\_path} returns \cite{sklearn} (c
 all 13 agree to $2\times10^{-13}$, relative. \emph{(b)} The same path seen by the budget
 form as a portfolio: the long and short positions $Sw$ and the cash weight $w_0$ share
 a budget of one, against $t=1/\gamma$. Cash enters at $t=\|\beta(0)\|_1=3460$, the end
-of the LASSO path; to its right the portfolio is the least-squares fit diluted by cash.}
+of the LASSO path; to its right the portfolio is the least-squares fit diluted by cash.
+The shares are read off the path: at budget $t$ the books hold $\sum_j\beta_j^\pm/t$.}
 \label{fig:path}
 \label{fig:portfolio}
 \end{figure}
@@ -373,7 +364,7 @@ of the LASSO path; to its right the portfolio is the least-squares fit diluted b
 \section{The budget form}
 \label{sec:budget}
 
-The penalty form cannot solve the opening example: with $b=0$ its start is degenerate
+The penalty form cannot take a zero sum: with $A\beta=0$ its start is degenerate
 (Section~\ref{sec:limits}). The second encoding starts instead from Tibshirani's
 original statement, the budget $\|\beta\|_1\le t$, and divides by $t$. The split
 coefficients then add up to at most one, which is Markowitz's own setting: a long-only
@@ -419,9 +410,10 @@ k = 2 * p + 1                                    # long, short, cash
 Sig = np.zeros((k, k)); Sig[:-1, :-1] = S.T @ G @ S
 mu = np.append(S.T @ c, 0.0)
 rows = np.vstack([np.ones(k), np.hstack([A @ S, np.zeros((m, 1))])])
-run = cla(Sig, mu, rows, np.append(1.0, np.zeros(m)),
-          np.zeros(k), np.full(k, np.inf), stop=k - 1)
-beta = run.x[:, :-1] @ S.T / run.gamma[:, None]  # beta = t S w with t = 1/gamma
+run = CLA(mean=mu, covariance=Sig, a=rows, b=np.append(1.0, np.zeros(m)),
+          lower_bounds=np.zeros(k), upper_bounds=np.full(k, np.inf), stop=k - 1)
+knots = [(t.lamb, S @ t.weights[:-1] / t.lamb)   # beta = t S w with t = 1/gamma
+         for t in run.turning_points]
 \end{lstlisting}
 
 The two ends of the CLA path have plain meanings. At $\gamma=\infty$, $t=0$, the start
@@ -438,8 +430,8 @@ At the other end, cash leaves its bound when its gradient $\eta$ reaches zero, s
 $\lambda=0$ and the budget goes slack: the regression no longer wants a larger $\ell_1$
 norm, and the LASSO path is over. Past that point the CLA still has a path, the ray
 $w=\beta(0)/t$ diluted by cash, but the twin halves' gradients vanish identically along
-it. The implementation therefore ends the run when cash enters, and lets that event win
-a tie. The tie matters when $p>n$: there every correlation vanishes at $\lambda=0$
+it. The run therefore ends when cash enters, which \texttt{cvxcla}'s \texttt{stop}
+does, and that event wins a tie. The tie matters when $p>n$: there every correlation vanishes at $\lambda=0$
 together with $\eta$, and rounding alone would decide which event the walk takes.
 Figure~\ref{fig:portfolio}(b) shows the diabetes path in these terms.
 
@@ -455,24 +447,23 @@ $\beta$ that sums to zero.
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item Form $G=X\trans X$ and $c=X\trans y$. Build $S$ with a column $e_j$ for each $j$
 with $u_j>0$ and a column $-e_j$ for each $j$ with $l_j<0$.
-\item If every constraint is homogeneous, $b=0$ and $l_j,u_j\in\{0,\pm\infty\}$, use the
-budget form: assets $(w,w_0)$ with covariance $\operatorname{diag}(S\trans GS,0)$ and
+\item If there are equality rows and every constraint is homogeneous, $b=0$,
+$l_j,u_j\in\{0,\pm\infty\}$ and no inequality rows, use the budget form: assets $(w,w_0)$ with covariance $\operatorname{diag}(S\trans GS,0)$ and
 expected returns $(S\trans c,0)$, rows $\one\trans w+w_0=1$ and $ASw=0$, and $w,w_0\ge0$.
 Run the CLA from $\gamma=\infty$ and stop when cash leaves zero. A turning point at
 $\gamma$ with budget multiplier $\eta$ is the knot $\beta=Sw/\gamma$ at
 $\lambda=\eta/\gamma$.
 \item Otherwise use the penalty form: covariance $S\trans GS$, expected returns $-\one$,
-benchmark $q=S\trans c$, rows $ASz=b$ and $0\le z\le\bar u$. Run the CLA from
+benchmark $q=S\trans c$, rows $ASz=b$ and $CSz\le h$, and $0\le z\le\bar u$. Run the CLA from
 $\gamma=\infty$ to $0$. A turning point at $\gamma$ is the knot $\beta=Sz$ at
 $\lambda=\gamma$. With $b\ne0$ the start must be a unique vertex
 (Section~\ref{sec:limits}).
 \item Between two knots $\beta$ is affine in $\lambda$, so any other point on the path is
 an interpolation.
 \end{enumerate}
-In \texttt{cvxcla}, steps~2--3 run on \texttt{CLA} as released; \texttt{Lasso(X, y, a=A)}
-traces $A\beta=0$ by step~2,
-\texttt{nonneg=True} gives $\beta\ge0$, and \texttt{g=G, h=h} gives $G\beta\le h$ with
-$h>0$.
+\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.5.0)
+carries out steps~1--4 on its \texttt{CLA} as released and returns the knots. Given no
+constraint at all, it traces the plain LASSO by a homotopy instead.
 \end{minipage}}
 \medskip
 
@@ -484,15 +475,22 @@ have $n=442$ patients and $p=10$ standardised baseline variables, and the respon
 centred. \emph{Nonnegative} requires every coefficient to be at least zero, the one
 constraint \texttt{lars\_path} accepts. \emph{Wide} is a Gaussian design with $n=40$ and
 $p=100$, with 8 nonzero coefficients and noise of standard deviation $0.5$. \emph{Box}
-caps every diabetes coefficient at $|\beta_j|\le u=396.1$, half the largest
-least-squares coefficient. At $\lambda=0$ the variables \texttt{bmi} and \texttt{s5}
+is the opening example of Section~\ref{sec:example}: it caps every diabetes coefficient
+at $|\beta_j|\le u=\exCap$, half the largest least-squares coefficient. At $\lambda=0$ the variables \texttt{bmi} and \texttt{s5}
 sit at the cap, while \texttt{s1}, whose least-squares coefficient is the largest, ends
-well inside it. \emph{Pinned} requires the fitted value for
+well inside it. \emph{Cholesterol} caps instead the net effect of the three cholesterol
+measures, $|\beta_{\texttt{s1}}+\beta_{\texttt{s2}}+\beta_{\texttt{s3}}|\le h$, two
+inequality rows with $h$ half the least-squares value; the rows bind at the end of the
+path. \emph{Pinned} requires the fitted value for
 the first patient to equal the observed one, one nonhomogeneous equality row. Its
 starting vertex puts all weight on \texttt{bmi}, the largest entry of that patient's
-covariate vector, and holds still until $\lambda=4053$. \emph{Zero-sum} is the opening
-example of Section~\ref{sec:example}, and \emph{Zero-sum, signs} adds nonnegativity on
-the even-numbered parts. \emph{sCD14} is the same model on real data, from a study of
+covariate vector, and holds still until $\lambda=4053$. \emph{Zero-sum} is a regression
+on compositional data in the style of Lin et al.\ \cite{lin2014}. Each of $n=60$
+samples is a composition of $p=30$ parts, the predictors are the logs of the shares,
+and the coefficients must sum to zero: a composition is only known up to scale, and
+only a zero sum makes the fit independent of the units. Five parts have nonzero true
+coefficients. \emph{Zero-sum, signs} adds nonnegativity on the even-numbered parts,
+which the truth meets. \emph{sCD14} is the same model on real data, from a study of
 the gut microbiome in HIV infection \cite{noguerajulian2016}, as distributed with the R
 package \texttt{coda4microbiome} \cite{calle2023}: the counts of \rdGenera{} bacterial
 genera in \rdSamples{} stool samples, and as the response the level of sCD14, a marker
@@ -504,55 +502,54 @@ the shares, centred. Its path has \rdKnots{} knots (Figure~\ref{fig:real}).
 \centering
 \includegraphics[width=0.7\textwidth]{scd14.pdf}
 \caption{The zero-sum LASSO of sCD14 on the log-shares of \rdGenera{} genera
-\cite{noguerajulian2016}: the path from the CLA in the budget form (lines), with an
+\cite{noguerajulian2016}: the path by the CLA in the budget form (lines), with an
 interior-point solve at the midpoint of every segment (circles).}
 \label{fig:real}
 \end{figure}
 
-Every path is checked in up to five ways. Where LARS applies it is the reference, compared
+Every path comes from \texttt{cvxcla.Lasso} 2.5.0, with the bounds passed even where
+they are infinite, so that the CLA computes it. It is checked in three ways, none of
+which uses \texttt{cvxcla}. Where LARS applies it is the reference, compared
 knot by knot in both $\lambda$ and $\beta$. Elsewhere the reference is an interior-point
 solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midpoint of every segment,
 where the path is affine in $\lambda$ and so known exactly from its two ends. This
 comparison is only as sharp as the solver, which reaches about $10^{-8}$ relative.
 Third, at every knot and every midpoint we evaluate the optimality conditions of
-\eqref{eq:lasso} directly, without reference to either form. With
-$r=G\beta-c+A\trans\kappa$ they are $r_j=-\lambda\operatorname{sign}\beta_j$ on the
-interior of the support, $|r_j|\le\lambda$ at zero, the one-sided versions at a cap, and
-primal feasibility. The largest violation, relative to $\|c\|_\infty$, is the last
-column of the table. Fourth, both forms run unchanged on the released
-\texttt{cvxcla.CLA} 2.4.0 \cite{cvxcla}, which takes the $q$ and the early stop they
-need, and it returns the same knots on every problem. Fifth, we compare with
-\texttt{cvxcla.Lasso}, a separate implementation (a homotopy, and a rescaled CLA for
-$A\beta=0$), on the six problems it takes: not \emph{Pinned} or \emph{Zero-sum, signs}.
+\eqref{eq:lasso} directly, without reference to either form. A linear program picks
+the multipliers $\kappa$ of $A\beta=b$ and $\eta\ge0$ of the active rows of $C\beta\le h$
+that satisfy the conditions best, and the violation is then evaluated exactly at those
+multipliers, so the solver's own tolerance cannot hide one. With
+$r=G\beta-c+A\trans\kappa+C\trans\eta$ the conditions are $r_j=-\lambda\operatorname{sign}\beta_j$ on the
+interior of the support; $|r_j|\le\lambda$ at zero, or only $r_j\ge-\lambda$ under
+$\beta_j\ge0$ and $r_j\le\lambda$ under $\beta_j\le0$; $r_j\le-\lambda$ at a cap $u_j>0$
+and $r_j\ge\lambda$ at a floor $l_j<0$; $\eta\ge0$; and primal feasibility. The
+largest violation, relative to $\|c\|_\infty$, is the last column of the table.
 
 \begin{table}[t]
 \centering
 \small\setlength{\tabcolsep}{3.5pt}
-\begin{tabular}{llrrrlcccc}
+\begin{tabular}{lrrrlcc}
 \toprule
-problem & form & $n$ & $p$ & knots & ref. & gap & \texttt{CLA} & \texttt{Lasso} & KKT \\
+problem & $n$ & $p$ & knots & ref. & gap & KKT \\
 \midrule
 \input{figures/evidence.tex}
 \end{tabular}
 \caption{The CLA against LARS (knot by knot) and against an interior-point solver (IPM,
 at segment midpoints). \emph{Gap}: largest discrepancy, relative to the largest
-coefficient. \emph{\texttt{CLA}}, \emph{\texttt{Lasso}}: largest knot discrepancy against
-the same form run on \texttt{cvxcla.CLA} 2.4.0 \cite{cvxcla}, unchanged, and against
-\texttt{cvxcla.Lasso}, where it takes the problem. \emph{KKT}: largest violation of the optimality conditions of
-\eqref{eq:lasso} over all knots and midpoints, relative to $\|c\|_\infty$. Each
-problem goes through every form that accepts it.}
+coefficient. \emph{KKT}: largest violation of the optimality conditions of
+\eqref{eq:lasso} over all knots and midpoints, relative to $\|c\|_\infty$. Every path is
+from \texttt{cvxcla.Lasso} 2.5.0, through the form that takes the problem.}
 \label{tab:evidence}
 \end{table}
 
-Three observations. First, both forms return the same knots wherever both apply, and
-\texttt{cvxcla}'s and LARS's knots to $10^{-13}$, including on the wide design, where 53 knots carry the path
-to the interpolating fit. Second, the interior-point gaps are the solver's, not the
-path's: on \emph{Box} and \emph{Zero-sum}, \texttt{cvxcla} agrees with the CLA to
-$10^{-15}$. The KKT residuals of the CLA's own output are at the level of rounding
-throughout, including the cases with no LARS to compare against. Third, in positive
+Three observations. First, the CLA returns LARS's knots to $10^{-13}$, including on
+the wide design, where 53 knots carry the path to the interpolating fit. Second, the
+interior-point gaps are the solver's, not the path's: the KKT residuals of the same
+paths are at the level of rounding throughout, including the cases with no LARS to
+compare against. Third, in positive
 mode the last point \texttt{lars\_path} returns is labelled $\alpha=0$ but is the path at
 $\lambda=30.65$, where it found nothing left to enter; its KKT violation at $\lambda=0$
-is $3\times10^{-2}$. Both CLA forms carry on to the nonnegative least-squares fit, so the
+is $3\times10^{-2}$. The CLA carries on to the nonnegative least-squares fit, so the
 table compares that last knot with \texttt{scipy.optimize.nnls} \cite{lawson1974}
 instead. Figures~\ref{fig:example} and~\ref{fig:real} show two of the paths that have no
 LARS reference; on the real data the CLA is as accurate as on the simulated problems.
@@ -560,18 +557,15 @@ LARS reference; on the real data the CLA is as accurate as on the simulated prob
 \paragraph{Cost and scale} The baseline is what one would otherwise do in Python:
 Clarabel through CVXPY at 100 values of $\lambda$, log-spaced over three decades, with
 the problem compiled once and $\lambda$ as a parameter, at default tolerances. It costs
-30 to 45 times as much as the whole CLA path on \emph{Zero-sum} and \emph{sCD14}, 160 to
-210 times on \emph{Box}, and 75 to 110 times on the zero-sum problems of
-Table~\ref{tab:scale}, which go up to $p=500$ parts, and it still misses every knot
-between two grid points. At that size a midpoint solve per segment would cost more than
-everything else together, so Table~\ref{tab:scale} keeps the two checks that scale, the
-optimality conditions and \texttt{cvxcla}; both hold to rounding. On the small problems
-\texttt{cvxcla.Lasso} costs $0.7$ to $2$ times what this note's CLA does, but the note's
-CLA refactors \eqref{eq:border} on every segment, and at $p=500$ \texttt{cvxcla} needs a
-fifth of its time.
+15 to 28 times as much as the whole CLA path on \emph{Zero-sum} and \emph{sCD14}, 94 to
+118 times on \emph{Box} and \emph{Cholesterol}, and 100 to 350 times on the zero-sum
+problems of Table~\ref{tab:scale}, rising with their size up to $p=500$ parts, and it
+still misses every knot between two grid points. At that size a midpoint solve per
+segment would cost more than everything else together, so Table~\ref{tab:scale} keeps
+the check that scales, the optimality conditions; it holds to rounding.
 
 The specialised tool is \texttt{c-lasso} \cite{classo}. On \emph{Zero-sum} and
-\emph{sCD14} its path algorithm takes about half to nine tenths of the CLA's
+\emph{sCD14} its path algorithm takes a fifth to three tenths of the CLA's
 time.\footnote{\texttt{c-lasso} ran under NumPy~1.26 and the CLA under NumPy~2.5, in
 separate environments on the same machine, so this comparison of times is rough.} It
 adds a ridge term $10^{-3}I$ to $X\trans X$, fixed in the package, and that term is the
@@ -581,7 +575,13 @@ ridge set to $10^{-12}$ by hand. So it computes the same path, slightly regulari
 takes only $C\beta=0$, without bounds or signs, and release 1.0.11, the latest at the
 time of writing, needs NumPy~1. In R, \texttt{zeroSum} \cite{zerosum} fits zero-sum
 elastic nets by coordinate descent on a grid of $\lambda$, like the baseline above, so
-it too gives points rather than the path, and it is not timed here. All costs are
+it too gives points rather than the path, and it is not timed here. The R package
+\texttt{PACLasso} \cite{paclasso} implements the penalized and constrained LASSO of
+James et al.\ \cite{james2020}, with linear equality and inequality constraints, the
+same range as Gaines et al. It too fits on a grid of $\lambda$, 41 values from
+$10^{-2}$ to $10^{6}$ by default, rather than tracing the path. CRAN archived it on
+2~June 2025, after its dependency \texttt{limSolve} was archived, so it is not run here
+either. All costs are
 ratios of the fastest of several runs, because absolute times depend on the machine.
 
 \paragraph{The path algorithm of Gaines et al.} It ships in MATLAB and in the Julia
@@ -592,12 +592,13 @@ as inequality rows. As shipped it reproduces none of the \gaProblems{}: its knot
 between \gaShippedMin{} and \gaShippedMax{} from the exact path, relative to the largest
 coefficient. The fault is in its start, not its path-following. It takes the first knot
 from a linear program that does not involve $y$, which under $\one\trans\beta=0$ starts
-the opening example at $\lambda=\gaStart$ instead of $\gaLamMax$; and it calls a
+\emph{Zero-sum} at $\lambda=\gaStart$ instead of $\gaLamMax$; and it calls a
 coefficient active there when an interior-point solve puts it above $10^{-4}$, an
 absolute threshold that on the diabetes data, whose loss is of order $10^6$, admits
 \gaSpurious{} of the \gaCoeffs{}. Started instead at the exact first knot, where that is
 simple to state, it agrees with the CLA to \gaStarted{} on the \gaStartedCount{} such
-problems with $n\ge p$: \emph{Plain}, \emph{Box}, \emph{Zero-sum} and \emph{sCD14}. On
+problems with $n\ge p$: \emph{Plain}, \emph{Box}, \emph{Cholesterol}, \emph{Zero-sum}
+and \emph{sCD14}. On
 \emph{Nonnegative}, \emph{Zero-sum, signs} and \emph{Pinned} the multipliers at the first
 knot are not unique, so we give it no start there and make no claim for its
 path-following. On \emph{Wide}, where $n<p$, it adds a ridge of $10^{-4}$ to $X\trans X$,
@@ -610,15 +611,14 @@ program's multipliers, which the Julia code does not (\texttt{lsq\_classopath.m}
 \begin{table}[t]
 \centering
 \small
-\begin{tabular}{rrrcc}
+\begin{tabular}{rrrc}
 \toprule
-$n$ & $p$ & knots & \texttt{cvxcla} & KKT \\
+$n$ & $p$ & knots & KKT \\
 \midrule
 \input{figures/scale.tex}
 \end{tabular}
-\caption{The budget form on simulated zero-sum problems of growing size: the largest knot
-discrepancy against \texttt{cvxcla.Lasso} and the largest KKT violation over all knots
-and midpoints, as in Table~\ref{tab:evidence}.}
+\caption{The budget form on simulated zero-sum problems of growing size: the largest KKT
+violation over all knots and midpoints, as in Table~\ref{tab:evidence}.}
 \label{tab:scale}
 \end{table}
 
@@ -626,13 +626,13 @@ and midpoints, as in Table~\ref{tab:evidence}.}
 \section{Where the two forms stop}
 \label{sec:limits}
 
-The forms cover bounds, equality rows with a nondegenerate start, and homogeneous rows
-with signs. The gaps are at the start or in the shape of the constraint.
+The forms cover bounds, equality rows with a nondegenerate start, inequality rows with
+$h>0$, and homogeneous rows with signs. The gaps are at the start or in the shape of the constraint.
 
 \paragraph{Homogeneous rows in the penalty form} With $b=0$ the starting vertex is
 $z=0$, with no free coordinates for $m>0$ rows. This is a degenerate vertex: the
 multipliers at the start are not determined by the active set, and \eqref{eq:border}
-is singular. The implementation detects this and refuses to start. The budget form is
+is singular. \texttt{cvxcla} detects this and declines to start. The budget form is
 the remedy, because rescaling to the simplex moves the start off the origin.
 
 \paragraph{Flat starts} A nonhomogeneous row can make the starting linear program
@@ -644,27 +644,38 @@ segment of \cite[Proposition~2]{perspective}, and finding the point requires a
 quadratic program rather than a linear one. Markowitz's own treatment of degenerate
 starts would handle it, but it is not implemented here.
 
-\paragraph{Inequality rows} Constraints $C\beta\le h$ enter either form as slack assets
-with zero variance and zero return, one per row. With $h$ in general position this
-changes nothing above. Homogeneous inequalities, such as the ordering constraints of a
-monotone fit, make the slack and the bound of the same coordinate active together at
-many vertices. This breaks linear independence, and the walk needs the
-anti-cycling machinery of the active-set literature. Neither is in the implementation
-behind Table~\ref{tab:evidence}, so the note makes no numerical claim for them.
+\paragraph{Inequality rows} Rows $C\beta\le h$ with $h>0$ enter the penalty form as rows
+$CSz\le h$ of the CLA. They are slack at the start $z=0$, so the start is unchanged and
+nondegenerate, and a row joins the active set when the path reaches it, like a bound.
+\emph{Cholesterol} tests this (Table~\ref{tab:evidence}). Two cases stay out of reach.
+The budget form cannot take them: rescaled by $t$, a row $C\beta\le h$ becomes
+$CSw\le\gamma h$, a right-hand side that moves with the parameter. So inequality rows
+cannot be combined with a zero sum, whose penalty form starts degenerate. And
+homogeneous rows ($h=0$), such as the ordering constraints of a monotone fit, are all
+tight at $\beta=0$, so the start is degenerate in either form; the walk would need the
+anti-cycling machinery of the active-set literature. Gaines et al.\ take both.
+
+A monotone fit shows the limit and how close one gets to it. On a Gaussian design with
+$n=100$ and $p=\moP$ and an ordered truth, the rows $\beta_j-\beta_{j+1}\le h$ with
+$h=0$ are refused. Relaxed to $h=\varepsilon>0$ they are slack at the start, and the
+path is exact for the relaxed problem: for every $\varepsilon$ from \moHMax{} down to
+\moHMin{} it has the same \moKnots{} knots and a KKT residual below \moKKT{}. Its largest
+distance to an interior-point solve with $h=0$ is $\varepsilon$ itself, to two digits. So the relaxation costs exactly what it says, a tolerance $\varepsilon$
+on the ordering, much as the ridge of \texttt{c-lasso} costs its own size. An exact
+path at $h=0$ needs the degenerate start resolved, by Markowitz's own rule for it or by
+the anti-cycling rules above; that is a natural next step for \texttt{cvxcla}, not
+something this note claims.
 
 \section{Conclusion}
 
 The LASSO is usually stated, and solved, with no constraint but its $\ell_1$ budget, and
-standard path software such as \texttt{lars\_path} cannot take another. The zero-sum
-constraint of compositional data is enough to rule it out, and the package built for
-that model, \texttt{c-lasso}, solves it only up to a small ridge term and takes no
-bounds, signs or nonzero right-hand sides. The identity of \cite{perspective} closes the
+standard path software such as \texttt{lars\_path} cannot take another. A cap on the
+coefficients is enough to rule it out. The identity of \cite{perspective} closes the
 gap. A constrained LASSO is a portfolio problem, and the Critical Line Algorithm, in
 the form Markowitz wrote it, computes its exact path, through the penalty form or the
-budget form. The case for it is exactness and the range of constraints, not speed:
-\texttt{c-lasso} and \texttt{cvxcla} are faster on the problems they take. On every
-problem tested, up to $p=500$, the forms agree with LARS,
-\texttt{cvxcla} and each other to rounding error, and they meet the LASSO's optimality
+budget form. The case for it is exactness and the range of constraints:
+on every problem tested, up to $p=500$, the paths agree with LARS and an
+interior-point solver to rounding error, and they meet the LASSO's optimality
 conditions to $10^{-15}$ everywhere along the path.
 
 \section*{Code and data availability}
@@ -672,9 +683,8 @@ conditions to $10^{-15}$ everywhere along the path.
 The software is in the directory \texttt{preprints/constrained\_lasso/} of
 \url{https://github.com/Jebel-Quant/lasso}, under the MIT licence. Each script declares
 its pinned dependencies and has a lockfile next to it that fixes Python 3.12 and every
-package by version and hash. \texttt{python/make\_figures.py} holds the CLA (the function
-\texttt{cla}, written for this note rather than taken from \texttt{cvxcla}
-\cite{cvxcla}), both forms and every check, and writes every figure, table and number
+package by version and hash. \texttt{python/make\_figures.py} computes every path with
+\texttt{cvxcla.Lasso} 2.5.0 \cite{cvxcla}, holds every check, and writes every figure, table and number
 the text quotes; its \texttt{test} mode runs the checks and \texttt{timings} the cost
 ratios. \texttt{python/classo\_check.py} runs \texttt{c-lasso} 1.0.11 under NumPy~1.26.
 \texttt{julia/classopath.jl} is the port of the path algorithm of
@@ -689,8 +699,9 @@ checks its SHA-256. \texttt{make figures} runs all four, in CI as well.
 \section*{Competing interests}
 
 The author works at Jebel Quant Research, which hosts the code, and maintains
-\texttt{cvxcla}. The results do not depend on it: the note's CLA is written out in its
-script, and \texttt{cvxcla} serves only as a second implementation to check against.
+\texttt{cvxcla}, with which every path is computed. Every path is checked
+without it: against LARS, an interior-point solver and the LASSO's optimality
+conditions.
 There are no other competing interests.
 
 \section*{Acknowledgements}
@@ -778,6 +789,12 @@ M.~R. Osborne, B.~Presnell, and B.~A. Turlach.
 \newblock \href{https://doi.org/10.1093/imanum/20.3.389}{\texttt{doi:10.1093/imanum/20.3.389}}.
 
 
+\bibitem{paclasso}
+C.~Paulson, G.~M. James, and P.~Rusmevichientong.
+\newblock PACLasso: penalized and constrained lasso optimization.
+\newblock R package version 1.0.0, 2019; archived on CRAN on 2 June 2025.
+\newblock \url{https://cran.r-project.org/package=PACLasso}.
+
 \bibitem{sklearn}
 F.~Pedregosa et al.
 \newblock Scikit-learn: machine learning in Python.
@@ -824,6 +841,13 @@ R.~J. Tibshirani.
 \newblock The lasso problem and uniqueness.
 \newblock \emph{Electronic Journal of Statistics}, 7:1456--1490, 2013.
 \newblock \href{https://doi.org/10.1214/13-EJS815}{\texttt{doi:10.1214/13-EJS815}}.
+
+\bibitem{wilson2007}
+P.~W.~F. Wilson, J.~B. Meigs, L.~Sullivan, et al.
+\newblock Prediction of incident diabetes mellitus in middle-aged adults: the
+{F}ramingham {O}ffspring {S}tudy.
+\newblock \emph{Archives of Internal Medicine}, 167(10):1068--1074, 2007.
+\newblock \href{https://doi.org/10.1001/archinte.167.10.1068}{\texttt{doi:10.1001/archinte.167.10.1068}}.
 
 
 \end{thebibliography}
