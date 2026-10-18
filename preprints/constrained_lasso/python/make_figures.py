@@ -397,6 +397,65 @@ def example_tex(ex: Example) -> str:
 
 
 # --------------------------------------------------------------------------------------
+# The limit: a monotone fit, whose rows are homogeneous
+# --------------------------------------------------------------------------------------
+MONOTONE_TRUTH = np.array([-2.0, -2.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.5, 3.0])
+MONOTONE_SLACK = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # the relaxations h = eps the note reports
+
+
+def monotone(h: float) -> Lasso:
+    """beta_1 <= ... <= beta_p as rows beta_j - beta_{j+1} <= h, on a Gaussian design with an ordered truth.
+
+    With h = 0 the rows are homogeneous, all tight at beta = 0, and the start is
+    degenerate in either form; h > 0 relaxes them so the penalty form can start.
+    """
+    rng = np.random.default_rng(SEED)
+    n, p = 100, len(MONOTONE_TRUTH)
+    x = rng.standard_normal((n, p))
+    y = x @ MONOTONE_TRUTH + 0.5 * rng.standard_normal(n)
+    d = np.eye(p - 1, p) - np.eye(p - 1, p, k=1)
+    return Lasso(x, y - y.mean(), c=d, h=np.full(p - 1, h))
+
+
+@dataclass
+class MonotoneRow:
+    """The relaxed monotone fit at one h: its knots, its own KKT residual, and its distance to h = 0."""
+
+    h: float
+    knots: int
+    kkt: float  # of the relaxed problem, which the path solves exactly
+    gap: float  # largest midpoint distance to an interior-point solve of the h = 0 problem, absolute
+
+
+def monotone_rows() -> list[MonotoneRow]:
+    """The relaxed monotone fit for each h of MONOTONE_SLACK."""
+    exact = monotone(0.0)
+    rows = []
+    for h in MONOTONE_SLACK:
+        prob = monotone(h)
+        path = trace(prob)
+        lam, beta = midpoints(path)
+        keep = lam > 1e-6 * path.lam[0]
+        gap = max(np.abs(reference(exact, v) - b).max() for v, b in zip(lam[keep], beta[keep], strict=True))
+        rows.append(MonotoneRow(h, len(path.lam), certify(prob, path), float(gap)))
+    return rows
+
+
+def monotone_tex(rows: list[MonotoneRow]) -> str:
+    """The monotone fit's numbers as LaTeX macros, for the note to input."""
+    ratios = [r.gap / r.h for r in rows]
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "moP": str(len(MONOTONE_TRUTH)),
+        "moKnots": str(rows[0].knots),
+        "moRatioLo": f"{min(ratios):.2f}",
+        "moRatioHi": f"{max(ratios):.2f}",
+        "moKKT": sci(max(r.kkt for r in rows)),
+        "moHMax": sci(max(MONOTONE_SLACK)),
+        "moHMin": sci(min(MONOTONE_SLACK)),
+    }.items())
+
+
+# --------------------------------------------------------------------------------------
 # The checks
 # --------------------------------------------------------------------------------------
 def against_lars(prob: Lasso, path: LassoPath, positive: bool = False) -> float:
@@ -506,6 +565,42 @@ def fig_path(out: Path) -> None:
     ax.set_xlabel(r"$\|\beta\|_1$")
     ax.set_ylabel(r"coefficient $\beta_j$")
     ax.set_xlim(0, norm[-1] * 1.12)
+    fig.tight_layout()
+    fig.savefig(out)
+    plt.close(fig)
+
+
+def fig_portfolio(out: Path) -> None:
+    """The diabetes path as the budget form sees it: long, short and cash shares against the budget t.
+
+    Read off the path itself, not a CLA run: at budget t = ||beta||_1 the long and short
+    books hold sum(beta+) / t and sum(beta-) / t, and cash holds nothing until the path
+    ends at t = ||beta(0)||_1; past it the least-squares fit is diluted by cash.
+    """
+    x, y, _ = diabetes()
+    path = trace(Lasso(x, y))
+    beta = path.beta[1:]  # the first knot is beta = 0, at t = 0, where the shares are not defined
+    budget = np.abs(beta).sum(axis=1)
+    long_, short = np.clip(beta, 0, None).sum(axis=1) / budget, np.clip(-beta, 0, None).sum(axis=1) / budget
+    cash = np.zeros_like(budget)
+    # Past the last knot the weights move along a ray; one more point shows it.
+    tail = 1.6 * budget[-1]
+    budget = np.append(budget, tail)
+    long_ = np.append(long_, np.clip(beta[-1], 0, None).sum() / tail)
+    short = np.append(short, np.clip(-beta[-1], 0, None).sum() / tail)
+    cash = np.append(cash, 1 - np.abs(beta[-1]).sum() / tail)
+
+    fig, ax = plt.subplots(figsize=(3.4, 2.7))
+    ax.stackplot(budget, long_, short, cash, colors=[BLUE, ORANGE, GRID], edgecolor="white", lw=0.6,
+                 labels=["long book", "short book", "cash"])
+    ax.axvline(budget[-2], color=MUTED, lw=0.6, ls="--")
+    ax.annotate("cash enters:\nend of the LASSO path", (budget[-2], 0.92), xytext=(-4, 0),
+                textcoords="offset points", ha="right", va="top", fontsize=6.5, color=INK)
+    ax.set_xlim(0, tail)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel(r"$\ell_1$ budget $t = 1/\gamma$")
+    ax.set_ylabel("share of the budget")
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncols=3)
     fig.tight_layout()
     fig.savefig(out)
     plt.close(fig)
@@ -625,6 +720,7 @@ def main() -> None:
     OUT.mkdir(exist_ok=True)
     style()
     fig_path(OUT / "path.pdf")
+    fig_portfolio(OUT / "portfolio.pdf")
     fig_example(OUT / "example.pdf")
     ex = example()
     (OUT / "example.tex").write_text(example_tex(ex))
@@ -632,6 +728,11 @@ def main() -> None:
     (OUT / "evidence.tex").write_text(table_tex(rows))
     big = scale()
     (OUT / "scale.tex").write_text(scale_tex(big))
+    mono = monotone_rows()
+    (OUT / "monotone.tex").write_text(monotone_tex(mono))
+    print("\nmonotone fit, rows relaxed to h:")
+    for r in mono:
+        print(f"  h = {r.h:.0e}: {r.knots} knots, KKT {r.kkt:.1e}, gap to h = 0 {r.gap:.1e} ({r.gap / r.h:.2f} h)")
     print("\nscale, zero-sum compositions:")
     for r in big:
         print(f"  n = {r.n:4d}, p = {r.p:3d}: {r.knots:3d} knots, KKT {r.kkt:.1e}")
@@ -734,6 +835,17 @@ def test_scale() -> None:
     """At p = 500 the path is still exact."""
     for r in scale():
         assert r.kkt < 1e-10, r
+
+
+def test_monotone() -> None:
+    """h = 0 is refused; each relaxed path is exact for its h, keeps its knots, and lies h from h = 0."""
+    with pytest.raises(ValueError, match="strictly positive"):
+        trace(monotone(0.0))
+    rows = monotone_rows()
+    assert len({r.knots for r in rows}) == 1
+    for r in rows:
+        assert r.kkt < 1e-10, r
+        assert abs(r.gap / r.h - 1) < 0.005, r  # the note says: h itself, to two digits
 
 
 def test_cholesterol_row_binds() -> None:
