@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "cvxcla==2.3.4",
+#     "cvxcla==2.4.0",
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
 #     "numpy==2.5.4",
@@ -51,6 +51,7 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from cvxcla import CLA as CvxclaCLA
 from cvxcla import Lasso as CvxclaLasso
 from scipy.optimize import linprog, nnls
 from sklearn.datasets import load_diabetes
@@ -185,6 +186,32 @@ def cla(
     return Turns(gamma=np.array(gammas), x=np.array(xs), nu=np.array(nus).reshape(len(xs), m))
 
 
+def cvxcla_cla(
+    sigma: np.ndarray,
+    mu: np.ndarray,
+    a: np.ndarray,
+    b: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    q: np.ndarray | None = None,
+    stop: int | None = None,
+) -> Turns:
+    """The same trace by the released CLA of cvxcla, unchanged, in the shape ``cla`` returns.
+
+    cvxcla 2.4.0 takes the benchmark term ``q`` and the early ``stop`` the two forms
+    need, finds the starting vertex itself, and records the equality multipliers with
+    the same convention as ``cla``: their slope at gamma = inf, their value below.
+    """
+    trace = CvxclaCLA(mean=mu, covariance=sigma, lower_bounds=lower, upper_bounds=upper, a=a, b=b, q=q,
+                      stop=stop).turning_points
+    return Turns(gamma=np.array([t.lamb for t in trace]), x=np.array([t.weights for t in trace]),
+                 nu=np.array([t.nu for t in trace]).reshape(len(trace), a.shape[0]))
+
+
+# The CLA a form runs on: this note's ``cla`` when None, or ``cvxcla_cla``.
+Engine = Callable[..., Turns] | None
+
+
 # --------------------------------------------------------------------------------------
 # The constrained LASSO, and its two CLA forms
 # --------------------------------------------------------------------------------------
@@ -227,7 +254,7 @@ def split(prob: Lasso) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return s, cap, keep
 
 
-def penalty_form(prob: Lasso) -> LassoPath:
+def penalty_form(prob: Lasso, engine: Engine = None) -> LassoPath:
     r"""The LASSO as a CLA whose parameter is lambda itself.
 
     With :math:`\beta = S z`, :math:`z\ge0` the positive and negative parts, the
@@ -239,13 +266,13 @@ def penalty_form(prob: Lasso) -> LassoPath:
     """
     gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
     s, cap, _ = split(prob)
-    turns = cla(s.T @ gram @ s, -np.ones(s.shape[1]), prob.a @ s, prob.b,
+    turns = (engine or cla)(s.T @ gram @ s, -np.ones(s.shape[1]), prob.a @ s, prob.b,
                 np.zeros(s.shape[1]), cap, q=s.T @ c)
     keep = np.isfinite(turns.gamma)  # the gamma = inf vertex is the gamma_1 knot again
     return LassoPath(lam=turns.gamma[keep], beta=turns.x[keep] @ s.T, kappa=turns.nu[keep], turns=turns)
 
 
-def budget_form(prob: Lasso) -> LassoPath:
+def budget_form(prob: Lasso, engine: Engine = None) -> LassoPath:
     r"""The LASSO as a classical CLA: long only, fully invested, with a cash asset.
 
     Put :math:`\beta = t\,S w` with :math:`w\ge0` and :math:`1^\top w + w_0 = 1`, the
@@ -267,7 +294,7 @@ def budget_form(prob: Lasso) -> LassoPath:
     rows = np.vstack([np.ones(k + 1), np.hstack([prob.a @ s, np.zeros((m, 1))])])
     # Cash leaving its bound is the budget going slack, lambda = 0: the LASSO path is over,
     # and past it the twin coordinates' gradients vanish identically, so the run stops there.
-    turns = cla(sigma, mu, rows, np.append(1.0, np.zeros(m)), np.zeros(k + 1), np.full(k + 1, np.inf),
+    turns = (engine or cla)(sigma, mu, rows, np.append(1.0, np.zeros(m)), np.zeros(k + 1), np.full(k + 1, np.inf),
                 stop=k)
     # beta = t S w = S w / gamma, which is 0 at gamma = inf (t = 0). Multiplying the CLA's
     # stationarity row by t: lambda is t times the budget multiplier, and at gamma = inf
@@ -438,109 +465,14 @@ def lars_at(x: np.ndarray, y: np.ndarray, lam: float) -> np.ndarray:
     return np.array([np.interp(lam, knots[::-1], c[::-1]) for c in coefs])
 
 
-def log_ratio(prob: Lasso, r: int, lam: float) -> np.ndarray:
-    r"""The usual workaround for :math:`1^\top\beta = 0`: eliminate the reference part ``r``.
-
-    Substituting :math:`\beta_r = -\sum_{j\ne r}\beta_j` gives an unconstrained regression
-    on the log-ratios :math:`z_j - z_r`, which ``lars_path`` takes. But its penalty is
-    :math:`\sum_{j\ne r}|\beta_j|`: the reference part goes unpenalised, so the answer
-    depends on which part is the reference.
-    """
-    p = prob.x.shape[1]
-    others = np.delete(np.arange(p), r)
-    beta = np.zeros(p)
-    beta[others] = lars_at(prob.x[:, others] - prob.x[:, [r]], prob.y, lam)
-    beta[r] = -beta[others].sum()
-    return beta
-
-
-def selections(prob: Lasso) -> list[set[frozenset[int]]]:
-    """For each reference part, every selection its log-ratio LASSO makes anywhere on its path.
-
-    Comparing at the same lambda is not quite fair: the reference goes unpenalised, so the
-    same lambda does not shrink the two problems alike. This asks the weaker question,
-    whether some lambda on the log-ratio path selects the same parts, read off at the
-    midpoint of every segment, where the selection is constant.
-    """
-    p = prob.x.shape[1]
-    out = []
-    for r in range(p):
-        others = np.delete(np.arange(p), r)
-        _, _, coefs = lars_path(prob.x[:, others] - prob.x[:, [r]], prob.y, method="lasso")
-        found = set()
-        for mid in (0.5 * (coefs[:, :-1] + coefs[:, 1:])).T:
-            beta = np.zeros(p)
-            beta[others], beta[r] = mid, -mid.sum()
-            found.add(frozenset(support(beta).tolist()))
-        out.append(found)
-    return out
-
-
-@dataclass
-class Crossing:
-    """A point where Proposition 3 says a reference part reproduces the zero-sum LASSO."""
-
-    r: int  # the reference part, unselected on the segment
-    lam: float  # where its generalised correlation rho_r crosses zero
-    at: float  # gap between the log-ratio LASSO and the zero-sum LASSO there, relative
-    off: float  # the same gap halfway back towards the start of the segment
-
-
-def crossings(prob: Lasso, path: LassoPath) -> list[Crossing]:
-    r"""Every lambda at which some unselected part has rho_r = 0, with the gap there and nearby.
-
-    With :math:`\rho = c - G\beta - \kappa 1 = \lambda s`, Proposition 3 says the log-ratio
-    LASSO against part r returns the zero-sum LASSO exactly when beta_r = 0 and rho_r = 0.
-    On a segment rho is affine in lambda, so each sign change of rho_r between two knots
-    is one such point.
-    """
-    gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
-    out = []
-    for k in range(1, len(path.lam) - 1):
-        if path.lam[k + 1] <= 1e-9 * path.lam[0]:
-            continue
-        rho0 = c - gram @ path.beta[k] - path.kappa[k][0]
-        rho1 = c - gram @ path.beta[k + 1] - path.kappa[k + 1][0]
-        zero = (np.abs(path.beta[k]) <= 1e-12) & (np.abs(path.beta[k + 1]) <= 1e-12)
-        for r in np.flatnonzero(zero & (rho0 * rho1 < 0)):
-            t = rho0[r] / (rho0[r] - rho1[r])  # rho_r is zero this far along the segment
-
-            def gap(t: float, r: int = r, k: int = k) -> float:
-                lam = path.lam[k] + t * (path.lam[k + 1] - path.lam[k])
-                beta = path.beta[k] + t * (path.beta[k + 1] - path.beta[k])
-                return float(np.abs(log_ratio(prob, r, lam) - beta).max() / np.abs(beta).max())
-
-            out.append(Crossing(int(r), float(path.lam[k] + t * (path.lam[k + 1] - path.lam[k])),
-                                gap(t), gap(t / 2)))
-    return out
-
-
-def reached(chosen: np.ndarray, found: list[set[frozenset[int]]]) -> int:
-    """How many reference parts reach the selection ``chosen`` somewhere on their paths."""
-    return sum(frozenset(chosen.tolist()) in f for f in found)
-
-
 @dataclass
 class Example:
-    """The zero-sum LASSO at one lambda, and what lars_path offers instead."""
+    """The zero-sum LASSO at one lambda, and what lars_path gives when the constraint is ignored."""
 
     lam: float  # mid-segment, where the zero-sum LASSO selects exactly the true parts
     truth: np.ndarray  # indices of the parts with a nonzero true coefficient
     beta: np.ndarray  # (p,) the zero-sum LASSO there, from the CLA
-    ratios: np.ndarray  # (p, p) row r: lars_path on log-ratios against part r
     plain: np.ndarray  # (p,) lars_path ignoring the constraint
-    anywhere: int  # reference parts whose log-ratio path selects the true parts at some lambda
-    crossings: list[Crossing]  # where Proposition 3 says a reference part reproduces the path
-
-    @property
-    def matches(self) -> int:
-        """How many reference parts give the zero-sum LASSO's support."""
-        return int(sum(np.array_equal(support(b), support(self.beta)) for b in self.ratios))
-
-    @property
-    def worst(self) -> float:
-        """Largest coefficient error over the reference parts, relative to the largest coefficient."""
-        return float(np.abs(self.ratios - self.beta).max() / np.abs(self.beta).max())
 
 
 def support(beta: np.ndarray) -> np.ndarray:
@@ -558,9 +490,7 @@ def example() -> Example:
                    support(0.5 * (path.beta[k] + path.beta[k + 1])), truth))
     lam = 0.5 * (path.lam[seg] + path.lam[seg + 1])
     beta = 0.5 * (path.beta[seg] + path.beta[seg + 1])
-    ratios = np.array([log_ratio(prob, r, lam) for r in range(prob.x.shape[1])])
-    return Example(lam, truth, beta, ratios, lars_at(prob.x, prob.y, lam), reached(truth, selections(prob)),
-                   crossings(prob, path))
+    return Example(lam, truth, beta, lars_at(prob.x, prob.y, lam))
 
 
 # The real-data example: 16S counts of 60 genera in 151 samples, and the inflammation
@@ -570,50 +500,20 @@ SCD14 = OUT.parent / "data" / "scd14.csv"
 SCD14_SHA256 = "3c6dcd6c18e10ea6f09bdd34329df3a8ce0a11dccd8026bf6c9a71f3c086d0da"
 
 
-def scd14(pseudocount: float = 1.0, log_response: bool = False) -> tuple[Lasso, list[str]]:
+def scd14() -> tuple[Lasso, list[str]]:
     """The zero-sum LASSO of sCD14 (in thousands) on the log-shares of the genera.
 
-    A count of zero has no logarithm, so every count gets a pseudocount first, one by
-    default, a common choice for such data. ``log_response`` regresses log sCD14 instead;
-    both choices are varied only to check that the note's conclusion does not hang on them.
+    A count of zero has no logarithm, so every count gets a pseudocount of one first, a
+    common choice for such data.
     """
     with SCD14.open() as f:
         header = f.readline().strip().split(",")
     table = np.loadtxt(SCD14, delimiter=",", skiprows=1, usecols=range(1, len(header)))
-    counts, y = table[:, :-1] + pseudocount, table[:, -1]
-    y = np.log(y) if log_response else y / 1000
+    counts, y = table[:, :-1] + 1.0, table[:, -1] / 1000
     z = np.log(counts / counts.sum(axis=1, keepdims=True))
     z -= z.mean(axis=0)
     p = z.shape[1]
     return Lasso(z, y - y.mean(), a=np.ones(p), b=np.zeros(1)), header[1:-1]
-
-
-@dataclass
-class Segment:
-    """One segment of a zero-sum path, against lars_path on log-ratios."""
-
-    lam: float  # its midpoint
-    size: int  # genera the zero-sum LASSO selects there
-    matches: int  # reference genera whose log-ratio LASSO selects the same ones at this lambda
-    anywhere: int  # reference genera whose log-ratio LASSO selects them at some lambda
-    worst: float  # largest coefficient error over the references, relative to the largest coefficient
-
-
-def segments(prob: Lasso, path: LassoPath, count: int = 10) -> list[Segment]:
-    """The first ``count`` segments with a nonzero solution, each tried with every reference part."""
-    found = selections(prob)
-    out = []
-    for k in range(1, count + 1):
-        lam = 0.5 * (path.lam[k] + path.lam[k + 1])
-        beta = 0.5 * (path.beta[k] + path.beta[k + 1])
-        ratios = np.array([log_ratio(prob, r, lam) for r in range(prob.x.shape[1])])
-        out.append(Segment(
-            lam, len(support(beta)),
-            int(sum(np.array_equal(support(b), support(beta)) for b in ratios)),
-            reached(support(beta), found),
-            float(np.abs(ratios - beta).max() / np.abs(beta).max()),
-        ))
-    return out
 
 
 def print_scd14() -> None:
@@ -626,9 +526,6 @@ def print_scd14() -> None:
           f"p = {prob.x.shape[1]}, {len(path.lam)} knots, KKT {certify(prob, path):.1e}, "
           f"cvxcla {against_cvxcla(prob, path):.1e}")
     print(f"  first to enter: {', '.join(first)}")
-    for s in segments(prob, path):
-        print(f"  lambda {s.lam:8.3f}: {s.size:2d} genera; of {prob.x.shape[1]} references {s.matches:2d} agree "
-              f"here, {s.anywhere:2d} anywhere on their paths; worst error {100 * s.worst:.0f}%")
 
 
 def example_tex(ex: Example) -> str:
@@ -636,12 +533,7 @@ def example_tex(ex: Example) -> str:
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "exLambda": f"{ex.lam:.1f}",
         "exParts": str(len(ex.beta)),
-        "exMatches": str(ex.matches),
-        "exAnywhere": str(ex.anywhere),
-        "exWorst": f"{100 * ex.worst:.0f}",
         "exPlainSum": f"{ex.plain.sum():.2f}",
-        "exCrossings": str(len(ex.crossings)),
-        "exCrossAt": sci(max(c.at for c in ex.crossings)),
     }.items())
 
 
@@ -725,6 +617,7 @@ class Row:
     knots: int
     reference: str
     gap: float
+    engine: float  # knot gap against the same form run on cvxcla's CLA
     cvxcla: float | None  # knot gap against cvxcla's Lasso, None where it takes no such problem
     kkt: float
 
@@ -747,7 +640,10 @@ def table() -> list[Row]:
                 ref, gap = "LARS", against_lars(prob, path, positive=name == "nonnegative")
             else:
                 ref, gap = "IPM", against_solver(prob, path)
-            rows.append(Row(name, form, *prob.x.shape, len(path.lam), ref, gap,
+            theirs = fn(prob, engine=cvxcla_cla)
+            assert len(theirs.lam) == len(path.lam), (name, form)
+            engine = float(np.abs(theirs.beta - path.beta).max() / np.abs(path.beta).max())
+            rows.append(Row(name, form, *prob.x.shape, len(path.lam), ref, gap, engine,
                             against_cvxcla(prob, path), certify(prob, path)))
     return rows
 
@@ -866,65 +762,14 @@ def path_legend(fig: plt.Figure) -> None:
     fig.legend(handles=handles, loc="lower center", ncols=2)
 
 
-def reference_panel(ax: plt.Axes, lam: float, beta: np.ndarray, ratios: np.ndarray, what: str) -> None:
-    """The zero-sum LASSO at one lambda, against lars_path on log-ratios for every reference part."""
-    parts = np.arange(len(beta))
-    ax.axhline(0, color=MUTED, lw=0.6)
-    for b in ratios:
-        ax.plot(parts, b, "_", ms=6, color=MUTED, alpha=0.6, zorder=1)
-    ax.plot(parts, beta, "o", ms=4, color=BLUE, zorder=3)
-    ax.plot([], [], "_", ms=6, color=MUTED, label=f"lars_path on log-ratios, {len(parts)} reference {what}")
-    ax.plot([], [], "o", ms=4, color=BLUE, label="zero-sum LASSO")
-    ax.legend(loc="upper right")
-    ax.set_title(rf"all coefficients at $\lambda={lam:.1f}$", fontsize=8, color=INK)
-
-
-def short(name: str) -> str:
-    """A genus as the figure labels it: ``g_Bacteroides`` is Bacteroides, an unnamed one its family."""
-    if name.startswith("g_"):
-        return name[2:]
-    return name.split("_")[1] + " (f.)" if name.startswith("f_") else name
-
-
-# The other ways to prepare the data: half a count instead of one, and log sCD14.
-SCD14_VARIANTS = [(0.5, False), (1.0, True), (0.5, True)]
-
-
-def sensitivity() -> list[list[Segment]]:
-    """The comparison with lars_path on log-ratios, for each other way to prepare the data."""
-    out = []
-    for pseudocount, log_response in SCD14_VARIANTS:
-        prob, _ = scd14(pseudocount, log_response)
-        out.append(segments(prob, budget_form(prob)))
-    return out
-
-
-def scd14_shown(prob: Lasso, path: LassoPath) -> tuple[float, np.ndarray, np.ndarray]:
-    """The first segment where the zero-sum LASSO selects five genera: lambda, beta, the log-ratio answers."""
-    k = next(k for k in range(1, len(path.lam) - 1)
-             if len(support(0.5 * (path.beta[k] + path.beta[k + 1]))) == 5)
-    lam = 0.5 * (path.lam[k] + path.lam[k + 1])
-    beta = 0.5 * (path.beta[k] + path.beta[k + 1])
-    return lam, beta, np.array([log_ratio(prob, r, lam) for r in range(prob.x.shape[1])])
-
-
 def fig_scd14(out: Path) -> None:
-    """The real-data example: the zero-sum path of sCD14 on 60 genera, and lars_path's answers."""
-    prob, names = scd14()
-    path = budget_form(prob)
-    lam, beta, ratios = scd14_shown(prob, path)
-    fig, (left, right) = plt.subplots(1, 2, figsize=(7.2, 3.3))
-    path_panel(left, prob, path)
-    left.axvline(lam, color=MUTED, lw=0.6, ls="--")
-    left.set_title("sCD14 on 60 genera, zero-sum LASSO by the CLA", fontsize=8, color=INK)
-    reference_panel(right, lam, beta, ratios, "genera")
-    ticks = support(beta)
-    right.set_xticks(ticks, [short(names[j]) for j in ticks], fontsize=6)
-    for label in right.get_xticklabels()[1::2]:  # two rows, so neighbouring genera do not collide
-        label.set_y(-0.06)
-    right.set_xlabel("genus (ticks: those the zero-sum LASSO selects)", labelpad=12)
+    """The real-data example: the zero-sum path of sCD14 on 60 genera."""
+    prob, _ = scd14()
+    fig, ax = plt.subplots(figsize=(4.8, 3.2))
+    path_panel(ax, prob, budget_form(prob))
+    ax.set_title("sCD14 on 60 genera, zero-sum LASSO by the CLA", fontsize=8, color=INK)
     path_legend(fig)
-    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     fig.savefig(out)
     plt.close(fig)
 
@@ -933,47 +778,21 @@ def scd14_tex() -> str:
     """The real-data example's numbers as LaTeX macros, for the note to input."""
     prob, _ = scd14()
     path = budget_form(prob)
-    segs = segments(prob, path)
-    lam, beta, ratios = scd14_shown(prob, path)
-    here = int(sum(np.array_equal(support(b), support(beta)) for b in ratios))
-    shown = next(s for s in segs if np.isclose(s.lam, lam))
-    others = [s for variant in sensitivity() for s in variant]
-    cross = crossings(prob, path)
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "rdSamples": str(prob.x.shape[0]),
         "rdGenera": str(prob.x.shape[1]),
         "rdKnots": str(len(path.lam)),
-        "rdSegments": str(len(segs)),
-        "rdMaxMatches": str(max(s.matches for s in segs)),
-        "rdMaxAnywhere": str(max(s.anywhere for s in segs)),
-        "rdAnywhere": str(shown.anywhere),
-        "rdWorstMin": f"{100 * min(s.worst for s in segs):.0f}",
-        "rdCrossings": str(len(cross)),
-        # The text quotes both problems at once, so these two run over both.
-        "rdCrossAt": sci(max(c.at for c in cross + example().crossings)),
-        "rdCrossOff": sci(min(c.off for c in cross + example().crossings)),
-        "rdSensMaxMatches": str(max(s.matches for s in others)),
-        "rdSensMaxAnywhere": str(max(s.anywhere for s in others)),
-        "rdLambda": f"{lam:.1f}",
-        "rdMatches": str(here),
-        "rdWorst": f"{100 * np.abs(ratios - beta).max() / np.abs(beta).max():.0f}",
     }.items())
 
 
 def fig_example(out: Path) -> None:
-    """Left: the zero-sum path from the CLA. Right: lars_path's answers, one per reference part."""
+    """The opening example: the zero-sum path from the CLA."""
     prob = problems()["zero-sum"]
-    ex = example()
-    fig, (left, right) = plt.subplots(1, 2, figsize=(7.2, 2.9))
-    path_panel(left, prob, budget_form(prob))
-    left.axvline(ex.lam, color=MUTED, lw=0.6, ls="--")
-    left.set_title(r"zero-sum LASSO, $\sum_j\beta_j=0$, by the CLA", fontsize=8, color=INK)
-
-    reference_panel(right, ex.lam, ex.beta, ex.ratios, "parts")
-    right.set_xticks(ex.truth)
-    right.set_xlabel("part $j$ (ticks: the parts in the truth)")
+    fig, ax = plt.subplots(figsize=(4.8, 3.0))
+    path_panel(ax, prob, budget_form(prob))
+    ax.set_title(r"zero-sum LASSO, $\sum_j\beta_j=0$, by the CLA", fontsize=8, color=INK)
     path_legend(fig)
-    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     fig.savefig(out)
     plt.close(fig)
 
@@ -992,7 +811,8 @@ def table_tex(rows: list[Row]) -> str:
     """
     return "".join(
         f"{r.name:<15} & {r.form:<7} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
-        f"{sci(r.gap):<19} & {'---' if r.cvxcla is None else sci(r.cvxcla):<19} & {sci(r.kkt)}\\\\\n"
+        f"{sci(r.gap):<19} & {sci(r.engine):<19} & {'---' if r.cvxcla is None else sci(r.cvxcla):<19} & "
+        f"{sci(r.kkt)}\\\\\n"
         for r in rows
     ) + "\\bottomrule\n"
 
@@ -1006,8 +826,7 @@ def main() -> None:
     fig_example(OUT / "example.pdf")
     ex = example()
     (OUT / "example.tex").write_text(example_tex(ex))
-    print(f"example at lambda = {ex.lam:.2f}: {ex.matches} of {len(ex.beta)} reference parts give the "
-          f"zero-sum support, worst error {100 * ex.worst:.0f}%, unconstrained sum {ex.plain.sum():.3f}")
+    print(f"example at lambda = {ex.lam:.2f}: lars_path ignoring the constraint sums to {ex.plain.sum():.3f}")
     rows = table()
     (OUT / "evidence.tex").write_text(table_tex(rows))
     big = scale()
@@ -1016,11 +835,11 @@ def main() -> None:
     for r in big:
         print(f"  n = {r.n:4d}, p = {r.p:3d}: {r.knots:3d} knots, cvxcla {r.cvxcla:.1e}, KKT {r.kkt:.1e}")
     print(f"{'problem':<16} {'form':<8} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} "
-          f"{'cvxcla':>9} {'KKT':>9}")
+          f"{'CLA 2.4':>9} {'Lasso':>9} {'KKT':>9}")
     for r in rows:
         cvx = "---" if r.cvxcla is None else f"{r.cvxcla:.1e}"
         print(f"{r.name:<16} {r.form:<8} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} "
-              f"{r.gap:9.1e} {cvx:>9} {r.kkt:9.1e}")
+              f"{r.gap:9.1e} {r.engine:9.1e} {cvx:>9} {r.kkt:9.1e}")
     # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment.
     saved = {"example": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
     arrays = {}
@@ -1028,6 +847,17 @@ def main() -> None:
         path = budget_form(prob)
         arrays |= {f"{name}.x": prob.x, f"{name}.y": prob.y, f"{name}.lam": path.lam, f"{name}.beta": path.beta}
     np.savez(OUT / "zero_sum_paths.npz", **arrays)
+    # Every problem of Table 2 with its exact path, for julia/gaines_check.jl, which runs
+    # ConstrainedLasso.jl on them. The path is from the first form that takes the problem.
+    arrays = {}
+    for name, prob in problems().items():
+        path = (budget_form if prob.a.shape[0] and not np.any(prob.b) else penalty_form)(prob)
+        key = name.replace(", ", "-")
+        fields = {"x": prob.x, "y": prob.y, "a": prob.a, "b": prob.b, "lower": prob.lower,
+                  "upper": prob.upper, "lam": path.lam, "beta": path.beta}
+        # NPZ.jl cannot read an empty array, so a problem without rows has no "a" and "b"
+        arrays |= {f"{key}.{k}": np.ascontiguousarray(v) for k, v in fields.items() if v.size}
+    np.savez(OUT / "table_paths.npz", **arrays)
     if SCD14.exists():
         fig_scd14(OUT / "scd14.pdf")
         (OUT / "scd14.tex").write_text(scd14_tex())
@@ -1079,6 +909,12 @@ def test_forms_agree() -> None:
             assert np.abs(pa.beta - bu.beta).max() < 1e-9 * np.abs(pa.beta).max()
 
 
+def test_cvxcla_cla(rows: list[Row]) -> None:
+    """Both forms run unchanged on cvxcla's released CLA, on every problem, to the same knots."""
+    for r in rows:
+        assert r.engine < 1e-10, r
+
+
 def test_cvxcla(rows: list[Row]) -> None:
     """cvxcla's Lasso returns the same knots wherever it takes the problem."""
     expected = {"plain", "nonnegative", "wide", "box", "zero-sum"} | ({"sCD14"} if SCD14.exists() else set())
@@ -1094,47 +930,27 @@ def test_table_tex(rows: list[Row]) -> None:
     assert len(tex) == len(rows)
     assert rule == r"\bottomrule"
     assert sci(8.6e-14) == r"$8.6\times10^{-14}$"
-    assert all(line.endswith(r"\\") and line.count("&") == 8 for line in tex)
+    assert all(line.endswith(r"\\") and line.count("&") == 9 for line in tex)
 
 
 def test_example() -> None:
-    """The opening example: the CLA finds the true parts, lars_path's workarounds do not."""
+    """The opening example: the CLA finds the true parts, and lars_path breaks the constraint."""
     ex = example()
     assert np.array_equal(support(ex.beta), ex.truth)
     assert abs(ex.beta.sum()) < 1e-12 * np.abs(ex.beta).max()
     assert np.abs(reference(problems()["zero-sum"], ex.lam) - ex.beta).max() < 1e-6 * np.abs(ex.beta).max()
-    assert 0 < ex.matches <= ex.anywhere < len(ex.beta) // 4
-    assert ex.worst > 0.5
     assert abs(ex.plain.sum()) > 0.01
 
 
 @pytest.mark.skipif(not SCD14.exists(), reason="no sCD14 data; fetch it with `uv run python/fetch_scd14.py`")
 def test_scd14() -> None:
-    """On the real data the CLA is exact, and the log-ratio workaround almost never agrees."""
+    """On the real data the CLA is exact."""
     assert hashlib.sha256(SCD14.read_bytes()).hexdigest() == SCD14_SHA256
     prob, _ = scd14()
     path = budget_form(prob)
     assert len(path.lam) == 60
     assert certify(prob, path) < 1e-10
     assert against_cvxcla(prob, path) < 1e-10
-    segs = segments(prob, path)
-    assert max(s.matches for s in segs) <= 2
-    assert max(s.anywhere for s in segs) <= 3
-    assert all(s.anywhere >= s.matches for s in segs)
-    for variant in sensitivity():  # the conclusion survives other ways to prepare the data
-        assert max(s.matches for s in variant) <= 2
-        assert max(s.anywhere for s in variant) <= 4
-    assert min(s.worst for s in segs) > 1.0
-
-
-def test_proposition_3() -> None:
-    """A reference part reproduces the zero-sum LASSO where rho_r = 0, and not just off it."""
-    probs = [problems()["zero-sum"]] + ([scd14()[0]] if SCD14.exists() else [])
-    for prob in probs:
-        found = crossings(prob, budget_form(prob))
-        assert found
-        assert max(c.at for c in found) < 1e-10
-        assert min(c.off for c in found) > 1e-6
 
 
 def test_scale() -> None:

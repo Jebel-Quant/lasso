@@ -40,6 +40,7 @@
 \input{figures/example.tex}
 \input{figures/scd14.tex}
 \input{figures/classo.tex}
+\input{figures/gaines.tex}
 
 \newtheorem{proposition}{Proposition}
 \theoremstyle{remark}
@@ -66,13 +67,7 @@
 \begin{abstract}
 The LASSO was introduced, and is still mostly solved, with no constraint but its
 $\ell_1$ budget. A regression on compositional data needs its coefficients to sum to
-zero, and \texttt{lars\_path} in scikit-learn has no way to say so. The usual
-workaround, regressing on log-ratios against a reference part, answers a different
-question for each reference: on a simulated example only \exAnywhere{} of \exParts{}
-choices select the right variables at any $\lambda$, and on real microbiome data at
-most \rdMaxAnywhere{} of \rdGenera{}. A proposition explains why: the two paths meet
-only where the reference part is unselected and its generalised correlation is zero.
-This note computes the exact path of the constrained LASSO with Markowitz's Critical
+zero, and \texttt{lars\_path} in scikit-learn has no way to say so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
 Line Algorithm (CLA), unmodified, by posing the regression as a portfolio, in one of two
 ways: a \emph{penalty form}, whose parameter is $\lambda$ and which takes bounds and
 equality rows, and a \emph{budget form}, Markowitz's long-only, fully invested problem
@@ -115,58 +110,33 @@ adds $\log c$ to every $z_{ij}$ and $\log c\sum_j\beta_j$ to the fit. Only when 
 coefficients sum to zero does the fit not depend on the units. In the simulation five
 parts have nonzero true coefficients, and the goal is to find them.
 
-\texttt{lars\_path} offers two ways out, and both fail. With the log-compositions in
-\texttt{Z}:
-\begin{lstlisting}
-alphas, _, coefs = lars_path(Z, y, method="lasso")   # ignores sum(beta) = 0
-others = np.delete(np.arange(p), r)                  # or: drop a reference part r
-alphas, _, coefs = lars_path(Z[:, others] - Z[:, [r]], y, method="lasso")
-\end{lstlisting}
-\begin{itemize}\setlength{\itemsep}{0pt}
-\item \emph{Ignore the constraint.} At $\lambda=\exLambda$ the coefficients
-\texttt{lars\_path} returns sum to $\exPlainSum$, not zero, so the fitted model changes
-with the units of the data.
-\item \emph{Eliminate a reference part.} Pick a part $r$, substitute
-$\beta_r=-\sum_{j\ne r}\beta_j$, and regress on the log-ratios $z_j-z_r$. That
-regression is unconstrained, so \texttt{lars\_path} runs. But its penalty is
-$\sum_{j\ne r}|\beta_j|$: the reference part is not penalised, so each choice of $r$ is
-a different problem with a different answer. Figure~\ref{fig:example}, right, shows all
-\exParts{} answers at $\lambda=\exLambda$. Only \exMatches{} of them select the five
-parts of the true model, and the coefficients differ from those of the zero-sum LASSO
-by up to \exWorst\% of the largest one. Since the reference goes unpenalised, the same
-$\lambda$ does not shrink the two problems alike, so we also ask the weaker question
-whether a log-ratio path selects the five parts at \emph{any} $\lambda$. Only
-\exAnywhere{} of the \exParts{} do. Section~\ref{sec:reference} proves that this is no
-accident of the data: a log-ratio path meets the zero-sum path only at isolated points.
-\end{itemize}
-A general convex solver on a grid of $\lambda$ is correct but blind: it gives points,
-not the path, and cannot tell where a variable enters between two of them. On real data
-the workaround fares worse still (Section~\ref{sec:real}).
+\texttt{lars\_path} cannot take the constraint, so the most it can do is ignore it. At
+$\lambda=\exLambda$ the coefficients it returns sum to $\exPlainSum$, not zero, and the
+fitted model changes with the units of the data. A general convex solver on a grid of
+$\lambda$ is correct but blind: it gives points, not the path, and cannot tell where a
+variable enters between two of them.
 
-None of this is news to people who fit such models. The zero-sum constraint of Lin et
-al.\ \cite{lin2014} treats all parts alike precisely so that no part has to serve as the
-reference. Altenbuchinger et al.\ \cite{zerosum} show that a poor choice of reference
-degrades the LASSO, and their \texttt{zeroSum} package fits zero-sum elastic nets by
-coordinate descent, again on a grid of $\lambda$. The Python package \texttt{c-lasso}
-\cite{classo} is built for exactly this model, the LASSO under $C\beta=0$ with
-log-contrast regression as its leading example. Its path algorithm adds a small ridge
-term, and Section~\ref{sec:evidence} compares it with the exact path. The point of the example is narrower:
-the standard path software stops at Tibshirani's problem, so the exact path of a
-constrained LASSO needs a different algorithm.
+The Python package \texttt{c-lasso} \cite{classo} can solve the problem. It is built
+for exactly this model, the LASSO under $C\beta=0$, with log-contrast regression as its
+leading example, and it has a path algorithm. That algorithm adds a small ridge term,
+so its path is close to the exact one but not equal to it; Section~\ref{sec:evidence}
+measures the gap. And $C\beta=0$ is all it takes. Constraints just as natural are out of
+its range: a sign on some of the coefficients, a cap $|\beta_j|\le u$ on their size, or
+an equality with a nonzero right-hand side, such as a fit that must pass through a given
+point. This note computes the exact path under all of these. It does not cover general
+inequality rows $C\beta\le h$, which fall outside both of its encodings
+(Section~\ref{sec:limits}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{example.pdf}
-\caption{The opening example. Left: the exact path of the zero-sum LASSO, computed by
-the CLA in the budget form (lines), with an interior-point solve at the midpoint of every
-segment (circles). The five parts of the true model enter first. Right: the coefficients
-at $\lambda=\exLambda$ (dashed line on the left). Dots: the zero-sum LASSO. Dashes:
-\texttt{lars\_path} on log-ratios, one answer for each of the \exParts{} possible
-reference parts. The ticks mark the parts in the true model.}
+\includegraphics[width=0.7\textwidth]{example.pdf}
+\caption{The opening example: the exact path of the zero-sum LASSO, computed by the CLA
+in the budget form (lines), with an interior-point solve at the midpoint of every
+segment (circles). The five parts of the true model enter first.}
 \label{fig:example}
 \end{figure}
 
-The left panel of Figure~\ref{fig:example} is the exact path, knot by knot. It was
+Figure~\ref{fig:example} is the exact path, knot by knot. It was
 computed by an algorithm that knows nothing about regression: the Critical Line
 Algorithm (CLA) that Markowitz \cite{markowitz1956} wrote for portfolios. The same path
 is one call in the open-source package \texttt{cvxcla} \cite{cvxcla}, which traces
@@ -210,14 +180,19 @@ knot of the LASSO path & turning point of the CLA \\
 Exact paths of the constrained LASSO are not new. Gaines, Kim and Zhou
 \cite{gaines2018} derive a path algorithm for it from its optimality conditions, which
 tracks the active set and the multipliers of the linear constraints as $\lambda$
-decreases. The CLA does the same bookkeeping: both are active-set methods that follow
-one family of quadratic programs, which is what the identity of \cite{perspective}
-leads one to expect. The difference is where the algorithm comes from. Here it is not
-derived for the LASSO at all. Markowitz's algorithm runs unchanged, so seventy years of
-work on it, and its implementations, such as \texttt{cvxcla} \cite{cvxcla}, carry over
-to the LASSO. The price is generality: the encodings below need a nondegenerate start
-and leave out general inequality rows (Section~\ref{sec:limits}). The work is in the
-encoding, and there are two:
+decreases, and it takes inequality rows as well as equalities, so it is the more
+general of the two. Started at the right knot, its implementation follows the same path
+as the CLA to rounding error; as shipped, it starts off the path and stays there, on
+every problem of Table~\ref{tab:evidence} (Section~\ref{sec:evidence}). The CLA does the
+same bookkeeping:
+both are active-set methods that follow one family of quadratic programs, which is what
+the identity of \cite{perspective} leads one to expect. What differs is where the
+algorithm comes from. Here it is not derived for the LASSO at all. Markowitz's
+algorithm runs unchanged, so any implementation of it, written and tested for
+portfolios, becomes an exact path solver for the constrained LASSO with a few lines of
+encoding, and seventy years of work on the CLA carry over. The price is generality: the
+encodings below need a nondegenerate start and leave out general inequality rows
+(Section~\ref{sec:limits}). The work is in the encoding, and there are two:
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
 parameter, and takes coefficient bounds and general equality constraints $A\beta=b$;
@@ -227,8 +202,7 @@ constraints such as $\one\trans\beta=0$, and it is the form that solves the exam
 \end{enumerate}
 Neither reduction is deep. Each is a few lines on top of a CLA of about a hundred lines,
 and together they reproduce LARS, an interior-point solver and \texttt{cvxcla} to
-rounding error (Section~\ref{sec:evidence}). The note's one theorem,
-Proposition~\ref{prop:reference}, explains why the reference workaround fails.
+rounding error (Section~\ref{sec:evidence}).
 Section~\ref{sec:limits} sets out where both forms stop. Readers who know the CLA can
 skip Section~\ref{sec:cla}.
 
@@ -446,7 +420,7 @@ response, entering with the sign of its correlation and with
 $\lambda=\lim\eta/\gamma=\max_j|c_j|$, just as in LARS. Under $\one\trans\beta=0$ it is
 one long and one short position of weight $\tfrac12$ each, the most and the least
 correlated predictors, entering together. That is why two coefficients leave zero at
-once on the left of Figure~\ref{fig:example}. Both starts are generically unique and
+once in Figure~\ref{fig:example}. Both starts are generically unique and
 nondegenerate.
 
 At the other end, cash leaves its bound when its gradient $\eta$ reaches zero, so
@@ -490,58 +464,6 @@ $h>0$.
 \end{minipage}}
 \medskip
 
-\section{When a reference part gives the zero-sum LASSO}
-\label{sec:reference}
-
-The opening example compared the zero-sum LASSO with the log-ratio LASSO against a
-reference part $r$. Substituting $\beta_r=-\sum_{j\ne r}\beta_j$ back, the latter is
-\[
-\min_\beta\ \tfrac12\|y-Z\beta\|_2^2+\lambda\sum_{j\ne r}|\beta_j|
-\quad\text{s.t.}\quad\one\trans\beta=0,
-\]
-the zero-sum LASSO with the penalty on part $r$ removed. The optimality conditions of
-the two problems say exactly when they agree. Write $\kappa$ for the multiplier of
-$\one\trans\beta=0$ in the zero-sum LASSO and
-\[
-\rho=Z\trans(y-Z\beta)-\kappa\one ,
-\]
-so that the zero-sum LASSO's optimality conditions read $\rho=\lambda s$ for a
-subgradient $s$ of $\|\beta\|_1$: $s_j=\operatorname{sign}\beta_j$ on the support and
-$|s_j|\le1$ off it.
-
-\begin{proposition}[Reference parts]
-\label{prop:reference}
-Let $\lambda>0$ and let $\beta=\beta(\lambda)\ne0$ be the zero-sum LASSO, with
-multiplier $\kappa$ and $\rho$ as above. Then $\beta$ solves the log-ratio LASSO against
-part $r$ at $\lambda$ if and only if $\beta_r=0$ and $\rho_r=0$.
-\end{proposition}
-
-\begin{proof}
-The log-ratio LASSO is optimal at $\beta$ with a multiplier $\kappa'$ exactly when
-$Z\trans(y-Z\beta)-\kappa'\one=\lambda s'$ with $s'_j\in\partial|\beta_j|$ for $j\ne r$
-and $s'_r=0$, since part $r$ carries no penalty. If $\beta_r=0$ and $\rho_r=0$, take
-$\kappa'=\kappa$ and $s'=s$ with $s_r$ replaced by $0$; these satisfy the conditions,
-which suffice for a convex problem, so $\beta$ is optimal. Conversely, suppose $\beta$
-solves the log-ratio LASSO with some $\kappa'$. Then $\lambda s'=\rho+(\kappa-\kappa')\one$.
-A nonzero $\beta$ that sums to zero has at least two nonzero coefficients, so one of
-them, $\beta_j$ with $j\ne r$, has $s'_j=s_j=\operatorname{sign}\beta_j$, and so
-$\kappa'=\kappa$. Then $\rho_r=\lambda s'_r=0$, so $s_r=0$, which rules out
-$\beta_r\ne0$.
-\end{proof}
-
-On a segment of the zero-sum path the support and signs are fixed, and $\beta$ and
-$\kappa$ are affine in $\lambda$, so $\rho_r$ is too. Unless $\rho_r$ vanishes on a
-whole segment, it vanishes at most once there. So the log-ratio path against part $r$
-meets the zero-sum path at isolated points, at most one per segment, and never where
-part $r$ is selected. Off those points the two have different coefficients, though
-they can still select the same parts, which is what the matches in
-Figures~\ref{fig:example} and~\ref{fig:real} are. The proposition also says where the
-points are, so it can be checked: on the opening example $\rho_r$ crosses zero
-\exCrossings{} times between knots, and on the real data of Section~\ref{sec:real}
-\rdCrossings{} times. At every crossing \texttt{lars\_path} on log-ratios against that
-part returns the zero-sum LASSO to \rdCrossAt{} or better; halfway back along the same
-segment the two differ by at least \rdCrossOff, relative.
-
 \section{Numerical evidence}
 \label{sec:evidence}
 
@@ -552,12 +474,28 @@ constraint \texttt{lars\_path} accepts. \emph{Wide} is a Gaussian design with $n
 $p=100$, with 8 nonzero coefficients and noise of standard deviation $0.5$. \emph{Box}
 caps every diabetes coefficient at $|\beta_j|\le u=396.1$, half the largest
 least-squares coefficient. At $\lambda=0$ the variables \texttt{bmi} and \texttt{s5}
-sit at the cap, and \texttt{s1} does not. \emph{Pinned} requires the fitted value for
+sit at the cap, while \texttt{s1}, whose least-squares coefficient is the largest, ends
+well inside it. \emph{Pinned} requires the fitted value for
 the first patient to equal the observed one, one nonhomogeneous equality row. Its
 starting vertex puts all weight on \texttt{bmi}, the largest entry of that patient's
 covariate vector, and holds still until $\lambda=4053$. \emph{Zero-sum} is the opening
 example of Section~\ref{sec:example}, and \emph{Zero-sum, signs} adds nonnegativity on
-the even-numbered parts. \emph{sCD14} is the real data of Section~\ref{sec:real}.
+the even-numbered parts. \emph{sCD14} is the same model on real data, from a study of
+the gut microbiome in HIV infection \cite{noguerajulian2016}, as distributed with the R
+package \texttt{coda4microbiome} \cite{calle2023}: the counts of \rdGenera{} bacterial
+genera in \rdSamples{} stool samples, and as the response the level of sCD14, a marker
+of inflammation, in thousands. A count of zero has no logarithm, so each count gets a
+pseudocount of one, a common choice for such data; the predictors are then the logs of
+the shares, centred. Its path has \rdKnots{} knots (Figure~\ref{fig:real}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.7\textwidth]{scd14.pdf}
+\caption{The zero-sum LASSO of sCD14 on the log-shares of \rdGenera{} genera
+\cite{noguerajulian2016}: the path from the CLA in the budget form (lines), with an
+interior-point solve at the midpoint of every segment (circles).}
+\label{fig:real}
+\end{figure}
 
 Every path is checked in up to four ways. Where LARS applies it is the reference, compared
 knot by knot in both $\lambda$ and $\beta$. Elsewhere the reference is an interior-point
@@ -604,13 +542,13 @@ $\lambda=30.65$, where it found nothing left to enter; its KKT violation at $\la
 is $3\times10^{-2}$. Both CLA forms carry on to the nonnegative least-squares fit, so the
 table compares that last knot with \texttt{scipy.optimize.nnls} \cite{lawson1974}
 instead. Figures~\ref{fig:example} and~\ref{fig:real} show two of the paths that have no
-LARS reference.
+LARS reference; on the real data the CLA is as accurate as on the simulated problems.
 
 \paragraph{Cost and scale} The baseline is what one would otherwise do in Python:
 Clarabel through CVXPY at 100 values of $\lambda$, log-spaced over three decades, with
 the problem compiled once and $\lambda$ as a parameter, at default tolerances. It costs
-30 to 40 times as much as the whole CLA path on \emph{Zero-sum} and \emph{sCD14}, 170 to
-210 times on \emph{Box}, and 80 to 110 times on the zero-sum problems of
+30 to 45 times as much as the whole CLA path on \emph{Zero-sum} and \emph{sCD14}, 160 to
+210 times on \emph{Box}, and 75 to 110 times on the zero-sum problems of
 Table~\ref{tab:scale}, which go up to $p=500$ parts, and it still misses every knot
 between two grid points. At that size a midpoint solve per segment would cost more than
 everything else together, so Table~\ref{tab:scale} keeps the two checks that scale, the
@@ -627,11 +565,34 @@ adds a ridge term $10^{-3}I$ to $X\trans X$, fixed in the package, and that term
 whole of its distance to the exact path: its \clPoints{} grid points lie up to \clGap{}
 from it as shipped, relative to the largest coefficient, and \clGapUnridged{} with the
 ridge set to $10^{-12}$ by hand. So it computes the same path, slightly regularised. It
-takes only $C\beta=0$, without bounds or signs, and its last release, 1.0.11, needs
-NumPy~1: it uses \texttt{np.infty}, which NumPy~2 removed. The path algorithms of Gaines
-et al.\ \cite{gaines2018}, in MATLAB, and of \texttt{zeroSum} \cite{zerosum}, in R, are
-not timed here. All costs are ratios of the fastest of several runs, because absolute
-times depend on the machine.
+takes only $C\beta=0$, without bounds or signs, and release 1.0.11, the latest at the
+time of writing, needs NumPy~1. In R, \texttt{zeroSum} \cite{zerosum} fits zero-sum
+elastic nets by coordinate descent on a grid of $\lambda$, like the baseline above, so
+it too gives points rather than the path, and it is not timed here. All costs are
+ratios of the fastest of several runs, because absolute times depend on the machine.
+
+\paragraph{The path algorithm of Gaines et al.} It ships in MATLAB and in the Julia
+package \texttt{ConstrainedLasso.jl}, which was written for Julia~0.6 and no longer
+loads. We ported the Julia code to Julia~1 and the current \texttt{Convex.jl} without
+changing the algorithm (Code availability), and ran it on every problem of Table~\ref{tab:evidence}, with bounds
+as inequality rows. As shipped it reproduces none of the \gaProblems{}: its knots lie
+between \gaShippedMin{} and \gaShippedMax{} from the exact path, relative to the largest
+coefficient. The fault is in its start, not its path-following. It takes the first knot
+from a linear program that does not involve $y$, which under $\one\trans\beta=0$ starts
+the opening example at $\lambda=\gaStart$ instead of $\gaLamMax$; and it calls a
+coefficient active there when an interior-point solve puts it above $10^{-4}$, an
+absolute threshold that on the diabetes data, whose loss is of order $10^6$, admits
+\gaSpurious{} of the \gaCoeffs{}. Started instead at the exact first knot, where that is
+simple to state, it agrees with the CLA to \gaStarted{} on the \gaStartedCount{} such
+problems with $n\ge p$: \emph{Plain}, \emph{Box}, \emph{Zero-sum} and \emph{sCD14}. On
+\emph{Nonnegative}, \emph{Zero-sum, signs} and \emph{Pinned} the multipliers at the first
+knot are not unique, so we give it no start there and make no claim for its
+path-following. On \emph{Wide}, where $n<p$, it adds a ridge of $10^{-4}$ to $X\trans X$,
+as \texttt{c-lasso} does, and stays \gaWide{} away. The MATLAB original, which we did
+not run, starts with the same ingredients: the same linear program, a quadratic program
+at its value and the same threshold. It then reads its first $\lambda$ off that
+program's multipliers, which the Julia code does not (\texttt{lsq\_classopath.m}, lines
+165--189, 242 and 253), so its start can differ from the one measured here.
 
 \begin{table}[t]
 \centering
@@ -647,48 +608,6 @@ discrepancy against \texttt{cvxcla.Lasso} and the largest KKT violation over all
 and midpoints, as in Table~\ref{tab:evidence}.}
 \label{tab:scale}
 \end{table}
-
-
-\section{Real data}
-\label{sec:real}
-
-\begin{figure}[!t]
-\centering
-\includegraphics[width=\textwidth]{scd14.pdf}
-\caption{The zero-sum LASSO of sCD14 on the log-shares of \rdGenera{} genera
-\cite{noguerajulian2016}. Left: the path from the CLA in the budget form (lines), with
-an interior-point solve at the midpoint of every segment (circles). Right: the
-coefficients at $\lambda=\rdLambda$ (dashed line on the left), where the zero-sum LASSO
-selects five genera (dots, and ticks). Dashes: \texttt{lars\_path} on log-ratios, one
-answer for each of the \rdGenera{} possible reference genera.}
-\label{fig:real}
-\end{figure}
-
-The data come from a study of the gut microbiome in HIV infection
-\cite{noguerajulian2016}, as distributed with the R package \texttt{coda4microbiome}
-\cite{calle2023}. They are the counts of \rdGenera{} bacterial genera in
-\rdSamples{} stool samples, and the response is the level of sCD14, a marker of
-inflammation, in thousands. A count of zero has no logarithm, so each count gets a
-pseudocount of one, a common choice for such data; the predictors are then the logs of
-the shares, centred. The model is the zero-sum LASSO of
-Section~\ref{sec:example}.
-
-The budget form traces the whole path in \rdKnots{} knots. Its row in
-Table~\ref{tab:evidence}, \emph{sCD14}, shows the same accuracy as on the simulated
-problems: the optimality conditions hold to rounding, and \texttt{cvxcla} returns the
-same knots. Figure~\ref{fig:real} repeats the experiment of Figure~\ref{fig:example}.
-At $\lambda=\rdLambda$ the zero-sum LASSO selects five genera; \rdMatches{} of the
-\rdGenera{} reference choices select the same five, and their coefficients are off by up
-to \rdWorst\% of the largest one. Nor is this a matter of matching $\lambda$: \rdAnywhere{}
-of the \rdGenera{} log-ratio paths select these five genera at any $\lambda$. Over the
-first \rdSegments{} segments of the zero-sum path, at most \rdMaxMatches{} reference
-choice agrees at the same $\lambda$ and at most \rdMaxAnywhere{} at any $\lambda$, and the
-worst coefficient error at the same $\lambda$ never drops below \rdWorstMin\%.
-
-The conclusion does not hang on how the data are prepared. With a pseudocount of one half
-instead of one, with $\log$ sCD14 as the response, or with both, at most
-\rdSensMaxMatches{} reference choice agrees at the same $\lambda$, and at most
-\rdSensMaxAnywhere{} at any $\lambda$, on each of the first \rdSegments{} segments.
 
 
 \section{Where the two forms stop}
@@ -723,14 +642,15 @@ behind Table~\ref{tab:evidence}, so the note makes no numerical claim for them.
 \section{Conclusion}
 
 The LASSO is usually stated, and solved, with no constraint but its $\ell_1$ budget, and
-standard path software such as \texttt{lars\_path} cannot take another. The opening
-example shows what that costs: the usual workaround for a zero-sum constraint answers a
-different question for each choice of reference, and on real microbiome data almost
-none of those questions has the zero-sum LASSO's answer; Proposition~\ref{prop:reference}
-says exactly where the two meet. The identity of \cite{perspective} removes the
-problem. A constrained LASSO is a portfolio problem, and the Critical Line Algorithm, in
+standard path software such as \texttt{lars\_path} cannot take another. The zero-sum
+constraint of compositional data is enough to rule it out, and the package built for
+that model, \texttt{c-lasso}, solves it only up to a small ridge term and takes no
+bounds, signs or nonzero right-hand sides. The identity of \cite{perspective} closes the
+gap. A constrained LASSO is a portfolio problem, and the Critical Line Algorithm, in
 the form Markowitz wrote it, computes its exact path, through the penalty form or the
-budget form. On every problem tested, up to $p=500$, the forms agree with LARS,
+budget form. The case for it is exactness and the range of constraints, not speed:
+\texttt{c-lasso} and \texttt{cvxcla} are faster on the problems they take. On every
+problem tested, up to $p=500$, the forms agree with LARS,
 \texttt{cvxcla} and each other to rounding error, and they meet the LASSO's optimality
 conditions to $10^{-15}$ everywhere along the path.
 
@@ -744,9 +664,14 @@ package by version and hash. \texttt{python/make\_figures.py} holds the CLA (the
 \cite{cvxcla}), both forms and every check, and writes every figure, table and number
 the text quotes; its \texttt{test} mode runs the checks and \texttt{timings} the cost
 ratios. \texttt{python/classo\_check.py} runs \texttt{c-lasso} 1.0.11 under NumPy~1.26.
+\texttt{julia/classopath.jl} is the port of the path algorithm of
+\texttt{ConstrainedLasso.jl} (MIT licence) to Julia~1.12, with each departure from the
+original marked in it: the sign convention of the solver's multipliers, Julia~0.6's
+handling of NaN in \texttt{findmin}, and a stray character; none changes the algorithm. \texttt{julia/gaines\_check.jl}
+runs it, in the environment its \texttt{Manifest.toml} pins.
 The simulated problems use fixed seeds. The sCD14 data are not redistributed:
 \texttt{python/fetch\_scd14.py} downloads \texttt{coda4microbiome} 0.2.4 from CRAN and
-checks its SHA-256. \texttt{make figures} runs all three, in CI as well.
+checks its SHA-256. \texttt{make figures} runs all four, in CI as well.
 
 \section*{Competing interests}
 

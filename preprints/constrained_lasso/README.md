@@ -9,9 +9,9 @@ Critical Line Algorithm that knows nothing about regression.
 
 The note opens with a regression that scikit-learn's `lars_path` cannot fit: a LASSO on
 log-compositions whose coefficients must sum to zero. `lars_path` takes no constraint but
-`positive`, and the usual workaround, regressing on log-ratios against a reference part,
-leaves that part unpenalised, so each of the 30 possible references gives a different
-answer. The CLA computes the exact constrained path.
+`positive`. `c-lasso` can fit it, with a small ridge term, but takes only `Cβ = 0`: no
+signs, no caps, no nonzero right-hand side. The CLA computes the exact constrained path
+under all of these.
 
 The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
 general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
@@ -51,10 +51,14 @@ python/
   classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
   classo_check.py.lock  its locked environment
   fetch_scd14.py.lock   its locked environment
+julia/
+  classopath.jl         the path algorithm of Gaines et al., ported from ConstrainedLasso.jl to Julia 1
+  gaines_check.jl       runs it on every problem of Table 2 against the exact paths
+  Project.toml          its environment, pinned with Manifest.toml (Julia 1.12)
+  LICENSE.classopath    ConstrainedLasso.jl's MIT licence
 ```
 
-`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, and
-`lars_path`'s answers for every reference part, Fig. 1), `figures/path.pdf` and
+`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, Fig. 1), `figures/path.pdf` and
 `figures/portfolio.pdf` (the diabetes path against the LARS knots, and the same path as a
 long/short/cash portfolio, the two panels of Fig. 2), and from the real data
 `figures/scd14.pdf` (Fig. 3). It also writes the rows of
@@ -78,7 +82,7 @@ version and hash; `uv run` uses it automatically. After changing a pin, refresh 
 Run it from this directory:
 
 ```sh
-make figures    # fetch the data if needed, run make_figures.py, then classo_check.py
+make figures    # fetch the data if needed, run make_figures.py, classo_check.py, gaines_check.jl
 make test       # the same numbers as pytest checks (uv run python/make_figures.py test)
 uv run python/make_figures.py timings   # the cost ratios of the note, and the machine
 make pdf        # build constrained_lasso.pdf from constrained_lasso.tex and figures/

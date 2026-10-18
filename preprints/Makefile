@@ -16,6 +16,8 @@
 # A python/*.py script that carries the line `# run: after figures` runs after
 # make_figures.py in every `make figures`, in its own locked environment: for a check
 # whose dependencies cannot share make_figures.py's, reading what it wrote to figures/.
+# A julia/*.jl script with the same line runs after those, in the environment that
+# julia/Project.toml and julia/Manifest.toml pin, for a check written in Julia.
 
 LATEX     := pdflatex
 LATEXOPTS := -interaction=nonstopmode -halt-on-error
@@ -49,6 +51,7 @@ endif
 FIGURES := $(wildcard python/make_figures.py)
 FETCH   := $(shell grep -l '^\# fetch: on build$$' python/fetch_*.py 2>/dev/null)
 AFTER   := $(shell grep -l '^\# run: after figures$$' python/*.py 2>/dev/null)
+JULIA   := $(shell grep -l '^\# run: after figures$$' julia/*.jl 2>/dev/null)
 
 pdf: $(MAIN).pdf
 
@@ -64,6 +67,8 @@ data:
 figures: data
 	$(if $(FIGURES),uv run $(FIGURES))
 	$(foreach script,$(AFTER),uv run $(script) &&) true
+	$(if $(JULIA),julia --project=julia -e 'using Pkg; Pkg.instantiate()')
+	$(foreach script,$(JULIA),julia --project=julia $(script) &&) true
 
 test:
 	$(if $(FIGURES),uv run $(FIGURES) test)

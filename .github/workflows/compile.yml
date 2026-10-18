@@ -108,6 +108,15 @@ jobs:
             ${{ matrix.dir }}/python/*.py
             ${{ matrix.dir }}/python/*.py.lock
 
+      # A julia/*.jl marked `# run: after figures` runs in the environment that
+      # julia/Project.toml and julia/Manifest.toml pin; the Manifest fixes the Julia version.
+      - uses: julia-actions/setup-julia@v3.0.2
+        if: hashFiles(format('{0}/julia/Project.toml', matrix.dir)) != ''
+        with:
+          version: '1.12'
+      - uses: julia-actions/cache@v3.4.0
+        if: hashFiles(format('{0}/julia/Project.toml', matrix.dir)) != ''
+
       # A python/fetch_*.py with the line `# fetch: on build` downloads data that may be
       # fetched freely and do not change; `make data` runs those. It comes before the
       # figure cache, whose key hashes data/.
@@ -116,14 +125,14 @@ jobs:
         run: make data
 
       # make_figures.py can spend minutes computing a note's numbers before it draws, so
-      # reuse the figures until the preprint's Python or its data change.
+      # reuse the figures until the preprint's Python or Julia, or its data, change.
       - name: Restore the figures
         id: figures
         if: hashFiles(format('{0}/python/make_figures.py', matrix.dir)) != ''
         uses: actions/cache@v6.1.0
         with:
           path: ${{ matrix.dir }}/figures
-          key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/**/*.py.lock', matrix.dir), format('{0}/data/**', matrix.dir)) }}
+          key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/**/*.py.lock', matrix.dir), format('{0}/julia/**', matrix.dir), format('{0}/data/**', matrix.dir)) }}
 
       # make figures runs make_figures.py, then any script marked `# run: after figures`.
       - name: Draw the figures
