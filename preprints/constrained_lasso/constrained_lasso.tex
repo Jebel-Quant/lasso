@@ -80,7 +80,8 @@ their ridge term or their start is corrected. On problems built to break a path
 algorithm, with columns correlated to \stRho{} or nearly duplicated, the KKT residuals
 stay below \stKKT{}, and where a solve is numerically singular the CLA stops with an
 error. Equality rows with more predictors than observations are out of reach; there
-the other path algorithms tested add a ridge term, so no exact path is available.
+the other path algorithms tested add a ridge term, so no exact path is available. So
+are caps and inequality rows under a zero sum.
 
 \medskip\noindent
 \textbf{Keywords:} constrained LASSO; critical line algorithm; solution path; least angle
@@ -191,8 +192,8 @@ constraints grows. The generalised lasso of Tibshirani and Taylor \cite{tibshira
 with penalty $\lambda\|D\beta\|_1$, has an exact path through its dual. Gaines, Kim and
 Zhou \cite{gaines2018} derive a path algorithm for the constrained LASSO itself from
 its optimality conditions. It tracks the active set and the multipliers of the linear
-constraints as $\lambda$ decreases, and it takes homogeneous inequality rows and
-inequality rows under a zero sum, which the encodings here do not. For $C\beta=0$
+constraints as $\lambda$ decreases, and it takes homogeneous inequality rows, and
+caps and inequality rows under a zero sum, which the encodings here do not. For $C\beta=0$
 alone, the Python package \texttt{c-lasso} \cite{classo} has a path algorithm with a
 small ridge term added. Neither was derived with portfolios in mind, so
 Section~\ref{sec:evidence} uses both as independent checks. The CLA is an active-set
@@ -705,9 +706,11 @@ starts would handle it, but it is not implemented here.
 $CSz\le h$ of the CLA. They are slack at the start $z=0$, so the start is unchanged and
 nondegenerate, and a row joins the active set when the path reaches it, like a bound.
 \emph{Cholesterol} tests this (Table~\ref{tab:evidence}). Two cases stay out of reach.
-The budget form cannot take them: rescaled by $t$, a row $C\beta\le h$ becomes
-$CSw\le\gamma h$, a right-hand side that moves with the parameter. So inequality rows
-cannot be combined with a zero sum, whose penalty form starts degenerate. And
+The budget form cannot take rows or caps: rescaled by $t$, a row $C\beta\le h$ becomes
+$CSw\le\gamma h$ and a cap $\beta_j\le u_j$ becomes $w\le\gamma u_j$, right-hand
+sides that move with the parameter. So neither inequality rows nor finite bounds can be
+combined with a zero sum, whose penalty form starts degenerate; a zero-sum regression
+with capped coefficients is out of reach. And
 homogeneous rows ($h=0$), such as the ordering constraints of a monotone fit, are all
 tight at $\beta=0$, so the start is degenerate in either form; the walk would need the
 anti-cycling machinery of the active-set literature. Gaines et al.\ take both.
@@ -728,8 +731,8 @@ problem and that its path is the path of the Critical Line Algorithm (their Lemm
 Theorem~1 and Corollary~1). The checks here support the identity wherever the
 encodings reach. On every problem, a CLA written for portfolios either returns the
 exact knots or stops with an error when its arithmetic cannot be trusted. The checks do
-not reach homogeneous inequality rows, inequality rows under a zero sum, or equality
-rows with $p>n$. Within that range the practical consequence is simple: \texttt{lars\_path}
+not reach homogeneous inequality rows, caps or inequality rows under a zero sum, or
+equality rows with $p>n$. Within that range the practical consequence is simple: \texttt{lars\_path}
 cannot take even a cap on the coefficients, and a CLA that takes general linear rows
 can.
 
