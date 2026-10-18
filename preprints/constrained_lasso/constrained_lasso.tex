@@ -107,40 +107,51 @@ y_i=\sum_j\beta_j z_{ij}+\varepsilon_i,\qquad\sum_j\beta_j=0 .
 The constraint is what makes the model meaningful. A composition is only known up to
 scale: measuring a sample in other units multiplies all its parts by some $c$, which
 adds $\log c$ to every $z_{ij}$ and $\log c\sum_j\beta_j$ to the fit. Only when the
-coefficients sum to zero does the fit not depend on the units. In the simulation five
-parts have nonzero true coefficients, and the goal is to find them.
+coefficients sum to zero does the fit not depend on the units. Prior knowledge often
+adds signs: suppose earlier studies show that the even-numbered parts can only raise
+$y$, so $\beta_j\ge0$ for even $j$. In the simulation five parts have nonzero true
+coefficients, all of them consistent with those signs, and the goal is to find them.
 
-\texttt{lars\_path} cannot take the constraint, so the most it can do is ignore it. At
+\texttt{lars\_path} cannot take the zero sum, so the most it can do is ignore it. At
 $\lambda=\exLambda$ the coefficients it returns sum to $\exPlainSum$, not zero, and the
 fitted model changes with the units of the data. A general convex solver on a grid of
 $\lambda$ is correct but blind: it gives points, not the path, and cannot tell where a
 variable enters between two of them.
 
-The Python package \texttt{c-lasso} \cite{classo} can solve the problem. It is built
-for exactly this model, the LASSO under $C\beta=0$, with log-contrast regression as its
-leading example, and it has a path algorithm. That algorithm adds a small ridge term,
-so its path is close to the exact one but not equal to it; Section~\ref{sec:evidence}
-measures the gap. And $C\beta=0$ is all it takes. Constraints just as natural are out of
-its range: a sign on some of the coefficients, a cap $|\beta_j|\le u$ on their size, or
-an equality with a nonzero right-hand side, such as a fit that must pass through a given
-point. This note computes the exact path under all of these. It does not cover general
+The Python package \texttt{c-lasso} \cite{classo} can solve the zero-sum part. It is
+built for the LASSO under $C\beta=0$, with log-contrast regression as its leading
+example, and it has a path algorithm. That algorithm adds a small ridge term, so its
+path is close to the exact one but not equal to it; Section~\ref{sec:evidence} measures
+the gap. But $C\beta=0$ is all it takes. Constraints just as natural are out of its
+range: a sign on some of the coefficients, as here, a cap $|\beta_j|\le u$ on their
+size, or an equality with a nonzero right-hand side, such as a fit that must pass
+through a given point. Figure~\ref{fig:example} shows what the signs are worth. Without
+them the zero-sum LASSO gives \exWrong{} even-numbered parts a negative coefficient,
+against what is known, at \exBroken{} of its \exKnots{} knots; with them no part
+crosses its sign, and the path has \exSigned{} knots. This note computes the exact path
+under all of these constraints. It does not cover general
 inequality rows $C\beta\le h$, which fall outside both of its encodings
 (Section~\ref{sec:limits}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.7\textwidth]{example.pdf}
-\caption{The opening example: the exact path of the zero-sum LASSO, computed by the CLA
-in the budget form (lines), with an interior-point solve at the midpoint of every
-segment (circles). The five parts of the true model enter first.}
+\includegraphics[width=\textwidth]{example.pdf}
+\caption{The opening example, as the known signs see it: the coefficients of the
+even-numbered parts, near zero. Left: the zero-sum LASSO alone, the model
+\texttt{c-lasso} fits; the parts it pushes into the shaded half-plane, which the signs
+rule out, are in orange. Right: the same with $\beta_j\ge0$ for even $j$, which only the
+CLA computes here. Lines: the exact path from the CLA in the budget form. Circles: an
+interior-point solve at the midpoint of every segment. Part~0, the one even part in the
+truth, leaves the window at the top.}
 \label{fig:example}
 \end{figure}
 
-Figure~\ref{fig:example} is the exact path, knot by knot. It was
-computed by an algorithm that knows nothing about regression: the Critical Line
-Algorithm (CLA) that Markowitz \cite{markowitz1956} wrote for portfolios. The same path
-is one call in the open-source package \texttt{cvxcla} \cite{cvxcla}, which traces
-homogeneous equality constraints with the rescaling of Section~\ref{sec:budget}:
+Both panels are exact paths, knot by knot. They were computed by an algorithm that
+knows nothing about regression: the Critical Line Algorithm (CLA) that Markowitz
+\cite{markowitz1956} wrote for portfolios. In the open-source package \texttt{cvxcla}
+\cite{cvxcla} the left one is one call, which traces homogeneous equality constraints
+with the rescaling of Section~\ref{sec:budget}, and the right one runs on its CLA through
+Algorithm~1:
 \begin{lstlisting}
 from cvxcla import Lasso
 knots = Lasso(Z, y, a=np.ones((1, p))).path   # each knot: lam, beta, active
@@ -420,7 +431,7 @@ response, entering with the sign of its correlation and with
 $\lambda=\lim\eta/\gamma=\max_j|c_j|$, just as in LARS. Under $\one\trans\beta=0$ it is
 one long and one short position of weight $\tfrac12$ each, the most and the least
 correlated predictors, entering together. That is why two coefficients leave zero at
-once in Figure~\ref{fig:example}. Both starts are generically unique and
+once in Figure~\ref{fig:real}. Both starts are generically unique and
 nondegenerate.
 
 At the other end, cash leaves its bound when its gradient $\eta$ reaches zero, so

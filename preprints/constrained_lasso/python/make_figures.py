@@ -198,7 +198,7 @@ def cvxcla_cla(
 ) -> Turns:
     """The same trace by the released CLA of cvxcla, unchanged, in the shape ``cla`` returns.
 
-    cvxcla 2.4.0 takes the benchmark term ``q`` and the early ``stop`` the two forms
+    cvxcla takes, since 2.4.0, the benchmark term ``q`` and the early ``stop`` the two forms
     need, finds the starting vertex itself, and records the equality multipliers with
     the same convention as ``cla``: their slope at gamma = inf, their value below.
     """
@@ -373,7 +373,9 @@ def wide(seed: int = SEED, n: int = 40, p: int = 100) -> tuple[np.ndarray, np.nd
 
 
 COMPOSITION_TRUTH = np.zeros(30)
-COMPOSITION_TRUTH[[0, 3, 7, 12, 20]] = [1.2, -0.8, 0.9, -0.6, -0.7]
+# The negative parts are odd-numbered, so the truth meets the signs of Zero-sum, signs:
+# every even-numbered part has a nonnegative coefficient.
+COMPOSITION_TRUTH[[0, 3, 7, 13, 21]] = [1.2, -0.8, 0.9, -0.6, -0.7]
 
 
 def compositional(seed: int = SEED, n: int = 60, p: int = 30) -> tuple[np.ndarray, np.ndarray]:
@@ -434,6 +436,15 @@ def scale_tex(rows: list[ScaleRow]) -> str:
                    for r in rows) + "\\bottomrule\n"
 
 
+# Small counts as the note spells them out.
+NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+
+
+def signed_parts(p: int) -> np.ndarray:
+    """The parts of Zero-sum, signs whose coefficient must be nonnegative: the even-numbered ones."""
+    return np.arange(p) % 2 == 0
+
+
 def problems() -> dict[str, Lasso]:
     """Every problem the note reports, by the name its table uses."""
     xd, yd, _ = diabetes()
@@ -451,7 +462,7 @@ def problems() -> dict[str, Lasso]:
         "pinned": Lasso(xd, yd, a=point, b=np.array([yd[0] / np.abs(xd[0]).max()])),
         "zero-sum": Lasso(xc, yc, a=np.ones(xc.shape[1]), b=np.zeros(1)),
         "zero-sum, signs": Lasso(xc, yc, a=np.ones(xc.shape[1]), b=np.zeros(1),
-                                 lower=np.where(np.arange(xc.shape[1]) % 2 == 0, 0.0, -np.inf)),
+                                 lower=np.where(signed_parts(xc.shape[1]), 0.0, -np.inf)),
     } | ({"sCD14": scd14()[0]} if SCD14.exists() else {})
 
 
@@ -467,12 +478,20 @@ def lars_at(x: np.ndarray, y: np.ndarray, lam: float) -> np.ndarray:
 
 @dataclass
 class Example:
-    """The zero-sum LASSO at one lambda, and what lars_path gives when the constraint is ignored."""
+    """The opening example: the zero-sum LASSO with and without the known signs.
+
+    The signs are those of Zero-sum, signs: every even-numbered part has a nonnegative
+    coefficient, which the truth meets. c-lasso can impose the sum but not the signs.
+    """
 
     lam: float  # mid-segment, where the zero-sum LASSO selects exactly the true parts
     truth: np.ndarray  # indices of the parts with a nonzero true coefficient
     beta: np.ndarray  # (p,) the zero-sum LASSO there, from the CLA
     plain: np.ndarray  # (p,) lars_path ignoring the constraint
+    knots: int  # knots of the zero-sum path without the signs
+    broken: int  # of those, the knots where some even-numbered part is negative
+    wrong: int  # even-numbered parts that are negative somewhere on that path
+    signed: int  # knots of the path with the signs
 
 
 def support(beta: np.ndarray) -> np.ndarray:
@@ -490,7 +509,10 @@ def example() -> Example:
                    support(0.5 * (path.beta[k] + path.beta[k + 1])), truth))
     lam = 0.5 * (path.lam[seg] + path.lam[seg + 1])
     beta = 0.5 * (path.beta[seg] + path.beta[seg + 1])
-    return Example(lam, truth, beta, lars_at(prob.x, prob.y, lam))
+    negative = path.beta[:, signed_parts(prob.x.shape[1])] < -1e-12 * np.abs(path.beta).max()
+    signed = budget_form(problems()["zero-sum, signs"])
+    return Example(lam, truth, beta, lars_at(prob.x, prob.y, lam), len(path.lam), int(negative.any(axis=1).sum()),
+                   int(negative.any(axis=0).sum()), len(signed.lam))
 
 
 # The real-data example: 16S counts of 60 genera in 151 samples, and the inflammation
@@ -534,6 +556,10 @@ def example_tex(ex: Example) -> str:
         "exLambda": f"{ex.lam:.1f}",
         "exParts": str(len(ex.beta)),
         "exPlainSum": f"{ex.plain.sum():.2f}",
+        "exKnots": str(ex.knots),
+        "exBroken": str(ex.broken),
+        "exWrong": NUMBERS[ex.wrong],
+        "exSigned": str(ex.signed),
     }.items())
 
 
@@ -786,12 +812,42 @@ def scd14_tex() -> str:
 
 
 def fig_example(out: Path) -> None:
-    """The opening example: the zero-sum path from the CLA."""
-    prob = problems()["zero-sum"]
-    fig, ax = plt.subplots(figsize=(4.8, 3.0))
-    path_panel(ax, prob, budget_form(prob))
-    ax.set_title(r"zero-sum LASSO, $\sum_j\beta_j=0$, by the CLA", fontsize=8, color=INK)
-    path_legend(fig)
+    """The opening example, as the known signs see it: the even-numbered parts, near zero.
+
+    Left, the zero-sum LASSO alone, the model c-lasso fits; right, with the signs. The
+    shaded half-plane is what the signs rule out, and the parts the left path pushes into
+    it are drawn in orange. Part 0, the one even part in the truth, leaves the window.
+    """
+    probs = problems()
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.9), sharey=True)
+    for ax, name, title in ((axes[0], "zero-sum", r"$\sum_j\beta_j=0$ only: what c-lasso fits"),
+                            (axes[1], "zero-sum, signs", r"and $\beta_j\geq0$ for even $j$: only the CLA")):
+        prob = probs[name]
+        path = budget_form(prob)
+        even = signed_parts(prob.x.shape[1])
+        wrong = even & (path.beta < -1e-12 * np.abs(path.beta).max()).any(axis=0)
+        lam, _ = midpoints(path)
+        lam = lam[lam > 1e-6 * path.lam[0]]
+        ref = np.array([reference(prob, v) for v in lam])
+        ax.axhspan(-1.0, 0.0, color=GRID, alpha=0.5, lw=0, zorder=0)
+        ax.axhline(0, color=MUTED, lw=0.6)
+        ax.plot(path.lam, path.beta[:, even & ~wrong], "-", color=BLUE, lw=1.1, zorder=2)
+        ax.plot(path.lam, path.beta[:, wrong], "-", color=ORANGE, lw=1.4, zorder=3)
+        ax.plot(lam, ref[:, even], "o", ms=3.4, mfc="none", mec=INK, mew=0.6, zorder=4)
+        ax.set_xscale("symlog", linthresh=path.lam[0] / 50)
+        ax.set_xlim(path.lam[0] * 1.05, 0)
+        ax.set_ylim(-0.08, 0.25)
+        ax.set_xlabel(r"penalty $\lambda$ (decreasing)")
+        ax.set_title(title, fontsize=8, color=INK)
+    axes[0].set_ylabel(r"even-numbered $\beta_j$")
+    axes[0].text(0.03, 0.06, "ruled out by the signs", transform=axes[0].transAxes, fontsize=6.5, color=MUTED)
+    handles = [
+        plt.Line2D([], [], color=BLUE, lw=1.1, label="CLA path"),
+        plt.Line2D([], [], color=ORANGE, lw=1.4, label="negative, against the known sign"),
+        plt.Line2D([], [], ls="none", marker="o", ms=3.4, mfc="none", mec=INK, mew=0.6,
+                   label="interior-point solve, mid-segment"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncols=3)
     fig.tight_layout(rect=(0, 0.08, 1, 1))
     fig.savefig(out)
     plt.close(fig)
@@ -940,6 +996,12 @@ def test_example() -> None:
     assert abs(ex.beta.sum()) < 1e-12 * np.abs(ex.beta).max()
     assert np.abs(reference(problems()["zero-sum"], ex.lam) - ex.beta).max() < 1e-6 * np.abs(ex.beta).max()
     assert abs(ex.plain.sum()) > 0.01
+    # The truth meets the known signs; without them the path breaks them, with them it does not.
+    even = signed_parts(len(COMPOSITION_TRUTH))
+    assert (COMPOSITION_TRUTH[even] >= 0).all()
+    assert ex.broken > ex.knots // 2 and ex.wrong >= 3
+    signed = budget_form(problems()["zero-sum, signs"])
+    assert (signed.beta[:, even] >= -1e-12 * np.abs(signed.beta).max()).all()
 
 
 @pytest.mark.skipif(not SCD14.exists(), reason="no sCD14 data; fetch it with `uv run python/fetch_scd14.py`")
