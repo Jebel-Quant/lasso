@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "cvxcla==2.4.2",
+#     "cvxcla==2.5.0",
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
 #     "numpy==2.5.4",
@@ -16,19 +16,13 @@ r"""The constrained LASSO, traced by the Critical Line Algorithm.
 
 Companion code for ``constrained_lasso.tex``. The note runs the other way from
 ``../lasso``: there a LASSO solver computes efficient frontiers, here a Critical Line
-Algorithm computes LASSO paths. The CLA is the released one of ``cvxcla``, in
-Markowitz's general form, and knows nothing about regression; this script holds no CLA
-of its own. Two maps feed it:
+Algorithm computes LASSO paths. Every path comes from one call, ``cvxcla.Lasso``, which
+encodes the LASSO as a CLA in the penalty or the budget form the note describes and runs
+Markowitz's algorithm unchanged. This script holds no CLA and no encoding: it states the
+problems, calls ``cvxcla``, and checks what comes back without it, against LARS, an
+interior-point solver and the LASSO's optimality conditions.
 
-* ``penalty_form``: the penalty is a cost of one unit of return per unit of gross
-  position, so the CLA's risk-tolerance parameter *is* the LASSO's lambda. Bounds on the
-  coefficients are bounds on the positions, and linear equality constraints are rows of
-  the CLA's constraint matrix.
-* ``budget_form``: the l1 ball, rescaled to the unit simplex, is the fully invested
-  long-only budget, with one riskless "cash" asset as its slack. The parameter is the
-  reciprocal of the l1 bound, and homogeneous constraints carry over unchanged.
-
-    uv run python/make_figures.py        # the four figures, Table 1 as figures/evidence.tex,
+    uv run python/make_figures.py        # the figures, Table 2 as figures/evidence.tex,
                                          # the example's numbers as figures/example.tex
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
     uv run python/make_figures.py timings  # the cost ratios the note quotes, and the machine
@@ -52,10 +46,8 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from cvxcla import CLA as CvxclaCLA
 from cvxcla import Lasso as CvxclaLasso
-from cvxcla.errors import DegenerateProblemError
-from scipy.optimize import nnls
+from scipy.optimize import linprog, nnls
 from sklearn.datasets import load_diabetes
 from sklearn.linear_model import lars_path
 
@@ -68,48 +60,11 @@ CONIC = {"solver": cp.CLARABEL, "tol_gap_abs": 1e-12, "tol_gap_rel": 1e-12, "tol
 
 
 # --------------------------------------------------------------------------------------
-# The Critical Line Algorithm, from cvxcla
-# --------------------------------------------------------------------------------------
-@dataclass
-class Turns:
-    """The turning points of a CLA run, from the largest parameter to zero."""
-
-    gamma: np.ndarray  # (k,) parameter at each turning point; gamma[0] is inf
-    x: np.ndarray  # (k, N) the solution there
-    nu: np.ndarray  # (k, m) the equality multipliers there; at gamma = inf, their slope nu / gamma
-
-
-def cla(
-    sigma: np.ndarray,
-    mu: np.ndarray,
-    a: np.ndarray,
-    b: np.ndarray,
-    lower: np.ndarray,
-    upper: np.ndarray,
-    q: np.ndarray | None = None,
-    stop: int | None = None,
-) -> Turns:
-    r"""Trace :math:`\min \tfrac12 x^\top\Sigma x - (q+\gamma\mu)^\top x` from gamma = inf to 0, by cvxcla.
-
-    Subject to :math:`Ax=b` and :math:`l\le x\le u`: Markowitz's Critical Line Algorithm
-    in its general form, as ``cvxcla.CLA`` releases it, unchanged. It takes the benchmark
-    term ``q`` and the early ``stop`` the two forms need (since 2.4.0), finds the starting
-    vertex itself and declines a degenerate one. ``stop`` names a coordinate whose
-    leaving its bound ends the run. The equality multipliers are recorded as their slope
-    at gamma = inf and their value below.
-    """
-    trace = CvxclaCLA(mean=mu, covariance=sigma, lower_bounds=lower, upper_bounds=upper, a=a, b=b, q=q,
-                      stop=stop).turning_points
-    return Turns(gamma=np.array([t.lamb for t in trace]), x=np.array([t.weights for t in trace]),
-                 nu=np.array([t.nu for t in trace]).reshape(len(trace), a.shape[0]))
-
-
-# --------------------------------------------------------------------------------------
-# The constrained LASSO, and its two CLA forms
+# The constrained LASSO, and its path from cvxcla
 # --------------------------------------------------------------------------------------
 @dataclass
 class Lasso:
-    r""":math:`\min \tfrac12\|y-X\beta\|^2 + \lambda\|\beta\|_1` s.t. :math:`A\beta=b,\ l\le\beta\le u`."""
+    r""":math:`\min \tfrac12\|y-X\beta\|^2 + \lambda\|\beta\|_1` s.t. :math:`A\beta=b,\ C\beta\le h,\ l\le\beta\le u`."""
 
     x: np.ndarray
     y: np.ndarray
@@ -117,6 +72,8 @@ class Lasso:
     b: np.ndarray | None = None
     lower: np.ndarray | None = None  # each entry <= 0
     upper: np.ndarray | None = None  # each entry >= 0
+    c: np.ndarray | None = None  # inequality rows C beta <= h
+    h: np.ndarray | None = None  # each entry > 0
 
     def __post_init__(self) -> None:
         """Fill in the absent constraints as the empty ones."""
@@ -125,6 +82,8 @@ class Lasso:
         self.b = np.zeros(self.a.shape[0]) if self.b is None else np.atleast_1d(self.b).astype(float)
         self.lower = np.full(p, -np.inf) if self.lower is None else self.lower
         self.upper = np.full(p, np.inf) if self.upper is None else self.upper
+        self.c = np.zeros((0, p)) if self.c is None else np.atleast_2d(self.c)
+        self.h = np.zeros(self.c.shape[0]) if self.h is None else np.atleast_1d(self.h).astype(float)
 
 
 @dataclass
@@ -133,87 +92,61 @@ class LassoPath:
 
     lam: np.ndarray  # (k,)
     beta: np.ndarray  # (k, p)
-    kappa: np.ndarray  # (k, m) multipliers of A beta = b
-    turns: Turns  # the CLA run the knots were read off
 
 
-def split(prob: Lasso) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Positive and negative parts: kept columns of [I, -I], and the upper bounds of each."""
-    p = prob.x.shape[1]
-    keep = np.concatenate([prob.upper > 0, prob.lower < 0])  # a sign the bounds forbid is dropped
-    s = np.hstack([np.eye(p), -np.eye(p)])[:, keep]
-    cap = np.concatenate([prob.upper, -prob.lower])[keep]
-    return s, cap, keep
+def trace(prob: Lasso) -> LassoPath:
+    """The exact path from ``cvxcla.Lasso``, which picks the CLA encoding that takes the problem.
 
-
-def penalty_form(prob: Lasso) -> LassoPath:
-    r"""The LASSO as a CLA whose parameter is lambda itself.
-
-    With :math:`\beta = S z`, :math:`z\ge0` the positive and negative parts, the
-    objective is :math:`\tfrac12 z^\top S^\top G S z - (S^\top c)^\top z + \lambda 1^\top z`
-    for :math:`G=X^\top X`, :math:`c=X^\top y`: a CLA instance with covariance
-    :math:`S^\top G S`, expected returns :math:`\mu = -1` and benchmark term
-    :math:`q = S^\top c`, which lies in the range of the covariance because :math:`c` lies
-    in that of :math:`G`. The rows are :math:`ASz=b`, the bounds :math:`0\le z\le` cap.
+    The bounds are always passed, infinite ones included: without any constraint
+    ``cvxcla`` would trace the plain LASSO by its homotopy instead, and the point here is
+    that the CLA computes every path.
     """
-    gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
-    s, cap, _ = split(prob)
-    turns = cla(s.T @ gram @ s, -np.ones(s.shape[1]), prob.a @ s, prob.b,
-                np.zeros(s.shape[1]), cap, q=s.T @ c)
-    keep = np.isfinite(turns.gamma)  # the gamma = inf vertex is the gamma_1 knot again
-    return LassoPath(lam=turns.gamma[keep], beta=turns.x[keep] @ s.T, kappa=turns.nu[keep], turns=turns)
+    path = CvxclaLasso(
+        prob.x, prob.y,
+        a=prob.a if prob.a.shape[0] else None,
+        b=prob.b if prob.a.shape[0] else None,
+        lower=prob.lower,
+        upper=prob.upper,
+        g=prob.c if prob.c.shape[0] else None,
+        h=prob.h if prob.c.shape[0] else None,
+    ).path
+    return LassoPath(lam=np.array([k.lam for k in path]), beta=np.array([k.beta for k in path]))
 
 
-def budget_form(prob: Lasso) -> LassoPath:
-    r"""The LASSO as a classical CLA: long only, fully invested, with a cash asset.
-
-    Put :math:`\beta = t\,S w` with :math:`w\ge0` and :math:`1^\top w + w_0 = 1`, the
-    riskless :math:`w_0` taking up whatever of the l1 budget :math:`t` is unused. Dividing
-    the bound-form objective by :math:`t^2` leaves
-    :math:`\tfrac12 w^\top S^\top G S w - \gamma (S^\top c)^\top w` with
-    :math:`\gamma = 1/t`: covariance :math:`S^\top G S` (zero for cash), expected returns
-    :math:`S^\top c` (zero for cash). Only homogeneous constraints survive the rescaling,
-    so this form takes :math:`A\beta = 0` and sign constraints, and no finite box.
-    """
-    assert not np.any(prob.b), "the budget form needs homogeneous constraints, A beta = 0"
-    assert np.all(np.isin(prob.lower, [0, -np.inf])) and np.all(np.isin(prob.upper, [0, np.inf]))
-    gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
-    s, _, _ = split(prob)
-    k, m = s.shape[1], prob.a.shape[0]
-    sigma = np.zeros((k + 1, k + 1))
-    sigma[:k, :k] = s.T @ gram @ s
-    mu = np.append(s.T @ c, 0.0)
-    rows = np.vstack([np.ones(k + 1), np.hstack([prob.a @ s, np.zeros((m, 1))])])
-    # Cash leaving its bound is the budget going slack, lambda = 0: the LASSO path is over,
-    # and past it the twin coordinates' gradients vanish identically, so the run stops there.
-    turns = cla(sigma, mu, rows, np.append(1.0, np.zeros(m)), np.zeros(k + 1), np.full(k + 1, np.inf),
-                stop=k)
-    # beta = t S w = S w / gamma, which is 0 at gamma = inf (t = 0). Multiplying the CLA's
-    # stationarity row by t: lambda is t times the budget multiplier, and at gamma = inf
-    # the slope cvxcla records there is exactly that limit.
-    t = np.where(np.isinf(turns.gamma), 0.0, 1.0 / turns.gamma)
-    beta = turns.x[:, :k] @ s.T * t[:, None]
-    nu = np.where(np.isinf(turns.gamma)[:, None], turns.nu, turns.nu * t[:, None])
-    return LassoPath(lam=nu[:, 0], beta=beta, kappa=nu[:, 1:], turns=turns)
-
-
-def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray, kappa: np.ndarray) -> float:
+def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray) -> float:
     r"""Largest violation of the LASSO's optimality conditions, relative to lambda_max.
 
-    Read off the original problem, not either CLA form: with
-    :math:`r = G\beta - c + A^\top\kappa`, a nonzero coordinate strictly inside its box
-    needs :math:`r_j = -\lambda\,\mathrm{sign}\,\beta_j`, one at a cap :math:`u_j>0` needs
+    Read off the original problem, without ``cvxcla``. With
+    :math:`r = G\beta - c + A^\top\kappa + C_R^\top\eta` over the active rows :math:`R` of
+    :math:`C\beta\le h`, a nonzero coordinate strictly inside its box needs
+    :math:`r_j = -\lambda\,\mathrm{sign}\,\beta_j`, one at a cap :math:`u_j>0` needs
     :math:`r_j \le -\lambda` and one at a floor :math:`l_j<0` needs :math:`r_j\ge\lambda`.
     A zero coordinate needs :math:`r_j\ge-\lambda` and :math:`r_j\le\lambda`, less the
-    side a sign constraint (:math:`l_j=0` or :math:`u_j=0`) takes away. Primal
-    feasibility is included.
+    side a sign constraint (:math:`l_j=0` or :math:`u_j=0`) takes away, and
+    :math:`\eta\ge0`. The multipliers are solved for on the interior coordinates; at
+    :math:`\beta=0`, where nothing pins them down, a linear program picks the ones that
+    violate the conditions least. Primal feasibility is included.
     """
     gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
-    r = gram @ beta - c + prob.a.T @ kappa
     tol = 1e-9 * max(1.0, np.abs(beta).max())
     zero = np.abs(beta) <= tol
     at_up, at_lo = ~zero & (beta >= prob.upper - tol), ~zero & (beta <= prob.lower + tol)
     inner = ~zero & ~at_up & ~at_lo
+    active = prob.c @ beta >= prob.h - tol * max(1.0, np.abs(prob.h).max(initial=1.0))
+    rows = np.vstack([prob.a, prob.c[active]])
+    r = gram @ beta - c
+    eta = np.zeros(0)
+    if rows.shape[0] and inner.any():
+        mult = np.linalg.lstsq(rows[:, inner].T, -lam * np.sign(beta[inner]) - r[inner], rcond=None)[0]
+        r = r + rows.T @ mult
+        eta = mult[prob.a.shape[0]:]
+    elif prob.a.shape[0]:
+        m = prob.a.shape[0]
+        lhs = np.vstack([prob.a.T[prob.lower < 0], -prob.a.T[prob.upper > 0]])
+        rhs = np.concatenate([lam - r[prob.lower < 0], lam + r[prob.upper > 0]])
+        lp = linprog(np.append(np.zeros(m), 1.0), A_ub=np.hstack([lhs, -np.ones((len(rhs), 1))]), b_ub=rhs,
+                     bounds=[(None, None)] * m + [(0.0, None)], method="highs")
+        r = r + prob.a.T @ lp.x[:m]
     viol = np.concatenate([
         np.abs(r[inner] + lam * np.sign(beta[inner])),
         np.maximum(r[at_up] + lam, 0),
@@ -221,6 +154,8 @@ def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray, kappa: np.ndarray) -
         np.maximum(r[zero & (prob.lower < 0)] - lam, 0),
         np.maximum(-r[zero & (prob.upper > 0)] - lam, 0),
         np.abs(prob.a @ beta - prob.b),
+        np.maximum(prob.c @ beta - prob.h, 0),
+        np.maximum(-eta, 0),
         np.maximum(beta - prob.upper, 0),
         np.maximum(prob.lower - beta, 0),
     ])
@@ -233,6 +168,8 @@ def reference(prob: Lasso, lam: float) -> np.ndarray:
     cons = []
     if prob.a.shape[0]:
         cons.append(prob.a @ beta == prob.b)
+    if prob.c.shape[0]:
+        cons.append(prob.c @ beta <= prob.h)
     if np.isfinite(prob.upper).any():
         i = np.isfinite(prob.upper)
         cons.append(beta[i] <= prob.upper[i])
@@ -302,32 +239,31 @@ def large_composition(n: int, p: int, seed: int = SEED, k: int = 10) -> Lasso:
 
 @dataclass
 class ScaleRow:
-    """One line of the scale table: the budget form on a large zero-sum problem."""
+    """One line of the scale table: a large zero-sum problem."""
 
     n: int
     p: int
     knots: int
-    cvxcla: float  # knot gap against cvxcla's Lasso
     kkt: float
 
 
 def scale() -> list[ScaleRow]:
-    """The budget form on growing zero-sum problems, checked without an interior-point solver.
+    """Growing zero-sum problems, checked without an interior-point solver.
 
     A midpoint solve per segment would cost more than everything else together at p = 500,
-    so the checks here are the two that scale: the optimality conditions, and cvxcla.
+    so the check here is the one that scales: the optimality conditions.
     """
     rows = []
     for n, p in SCALE:
         prob = large_composition(n, p)
-        path = budget_form(prob)
-        rows.append(ScaleRow(n, p, len(path.lam), against_cvxcla(prob, path), certify(prob, path)))
+        path = trace(prob)
+        rows.append(ScaleRow(n, p, len(path.lam), certify(prob, path)))
     return rows
 
 
 def scale_tex(rows: list[ScaleRow]) -> str:
     """The body of Table 3, for the note to input, with its closing rule."""
-    return "".join(f"{r.n:>4} & {r.p:>3} & {r.knots:>3} & {sci(r.cvxcla)} & {sci(r.kkt)}\\\\\n"
+    return "".join(f"{r.n:>4} & {r.p:>3} & {r.knots:>3} & {sci(r.kkt)}\\\\\n"
                    for r in rows) + "\\bottomrule\n"
 
 
@@ -349,11 +285,15 @@ def problems() -> dict[str, Lasso]:
     ols = np.linalg.lstsq(xd, yd, rcond=None)[0]
     cap = 0.5 * np.abs(ols).max()
     point = xd[0] / np.abs(xd[0]).max()  # pin the fit at the first patient, rescaled
+    _, _, names = diabetes()
+    chol = np.isin(names, ["s1", "s2", "s3"]).astype(float)
+    net = 0.5 * abs(chol @ ols)  # half the least-squares net effect of the cholesterol measures
     return {
         "plain": Lasso(xd, yd),
         "nonnegative": Lasso(xd, yd, lower=np.zeros(p)),
         "wide": Lasso(xw, yw),
         "box": Lasso(xd, yd, lower=np.full(p, -cap), upper=np.full(p, cap)),
+        "cholesterol": Lasso(xd, yd, c=np.vstack([chol, -chol]), h=np.full(2, net)),
         "pinned": Lasso(xd, yd, a=point, b=np.array([yd[0] / np.abs(xd[0]).max()])),
         "zero-sum": Lasso(xc, yc, a=np.ones(xc.shape[1]), b=np.zeros(1)),
         "zero-sum, signs": Lasso(xc, yc, a=np.ones(xc.shape[1]), b=np.zeros(1),
@@ -390,13 +330,13 @@ def example() -> Example:
     x, y, names = diabetes()
     box = problems()["box"]
     ols = np.linalg.lstsq(x, y, rcond=None)[0]
-    plain = penalty_form(Lasso(x, y))
+    plain = trace(Lasso(x, y))
     over = (np.abs(plain.beta) > box.upper * (1 + 1e-12)).any(axis=1)
     hdl, p = names.index("s3"), x.shape[1]
 
     def keeps(u: int) -> bool:
         prob = Lasso(x, y, lower=np.full(p, -float(u)), upper=np.full(p, float(u)))
-        path = penalty_form(prob)
+        path = trace(prob)
         assert certify(prob, path) < 1e-10, u  # a sign read off a path that is not exact means nothing
         return bool(path.beta[:, hdl].max() <= 1e-9 * u)
 
@@ -405,7 +345,7 @@ def example() -> Example:
         hi += 1
     assert keeps(1)
     return Example(float(box.upper[0]), {n: float(ols[names.index(n)]) for n in ("s1", "s2", "s3")},
-                   len(plain.lam), int(over.sum()), penalty_form(box).beta, hi)
+                   len(plain.lam), int(over.sum()), trace(box).beta, hi)
 
 
 # The real-data example: 16S counts of 60 genera in 151 samples, and the inflammation
@@ -435,11 +375,10 @@ def print_scd14() -> None:
     """The real-data example, as the note quotes it."""
     prob, names = scd14()
     snapshot = hashlib.sha256(SCD14.read_bytes()).hexdigest() == SCD14_SHA256
-    path = budget_form(prob)
+    path = trace(prob)
     first = list(dict.fromkeys(names[j] for b in path.beta for j in support(b)))[:5]
     print(f"\nsCD14 ({'the note' if snapshot else 'NOT the note'}'s snapshot): n = {prob.x.shape[0]}, "
-          f"p = {prob.x.shape[1]}, {len(path.lam)} knots, KKT {certify(prob, path):.1e}, "
-          f"cvxcla {against_cvxcla(prob, path):.1e}")
+          f"p = {prob.x.shape[1]}, {len(path.lam)} knots, KKT {certify(prob, path):.1e}")
     print(f"  first to enter: {', '.join(first)}")
 
 
@@ -482,47 +421,11 @@ def against_solver(prob: Lasso, path: LassoPath) -> float:
     return float(max(gaps) / np.abs(path.beta).max())
 
 
-def by_cvxcla(prob: Lasso) -> tuple[np.ndarray, np.ndarray] | None:
-    """The same path from the cvxcla package's ``Lasso``, as (lambda, beta), where it applies.
-
-    ``cvxcla.Lasso`` takes ``nonneg=True`` for beta >= 0, rows ``G beta <= h`` with h > 0
-    (a finite box is two of them per coefficient), or homogeneous rows ``A beta = 0``, one
-    kind at a time. It has no nonhomogeneous rows and no signs on some coefficients only.
-    """
-    p = prob.x.shape[1]
-    unbounded = np.isinf(prob.lower).all() and np.isinf(prob.upper).all()
-    rows = prob.a.shape[0] > 0
-    if np.any(prob.b):
-        return None
-    if unbounded:
-        kwargs = {"a": prob.a} if rows else {}
-    elif not rows and (prob.lower == 0).all() and np.isinf(prob.upper).all():
-        kwargs = {"nonneg": True}
-    elif not rows and np.isfinite(prob.lower).all() and np.isfinite(prob.upper).all():
-        kwargs = {"g": np.vstack([np.eye(p), -np.eye(p)]), "h": np.concatenate([prob.upper, -prob.lower])}
-    else:
-        return None
-    path = CvxclaLasso(prob.x, prob.y, **kwargs).path
-    return np.array([k.lam for k in path]), np.array([k.beta for k in path])
-
-
-def against_cvxcla(prob: Lasso, path: LassoPath) -> float | None:
-    """Largest knot discrepancy against cvxcla's ``Lasso``, relative; None where it does not apply."""
-    theirs = by_cvxcla(prob)
-    if theirs is None:
-        return None
-    lam, beta = theirs
-    assert len(lam) == len(path.lam), (len(lam), len(path.lam))
-    return float(max(np.abs(path.beta - beta).max() / np.abs(beta).max(),
-                     np.abs(path.lam - lam).max() / lam[0]))
-
-
 def certify(prob: Lasso, path: LassoPath) -> float:
     """Largest KKT violation over every knot and every segment midpoint."""
     lam, beta = midpoints(path)
-    kap = 0.5 * (path.kappa[:-1] + path.kappa[1:])
-    knots = [kkt_residual(prob, *z) for z in zip(path.lam, path.beta, path.kappa, strict=True)]
-    mids = [kkt_residual(prob, *z) for z in zip(lam, beta, kap, strict=True)]
+    knots = [kkt_residual(prob, *z) for z in zip(path.lam, path.beta, strict=True)]
+    mids = [kkt_residual(prob, *z) for z in zip(lam, beta, strict=True)]
     return max(knots + mids)
 
 
@@ -531,36 +434,24 @@ class Row:
     """One line of the note's table."""
 
     name: str
-    form: str
     n: int
     p: int
     knots: int
     reference: str
     gap: float
-    cvxcla: float | None  # knot gap against cvxcla's Lasso, None where it takes no such problem
     kkt: float
 
 
 def table() -> list[Row]:
-    """Every problem, through every form that takes it."""
-    probs = problems()
+    """Every problem, its path from cvxcla, and the checks."""
     rows = []
-    for name, prob in probs.items():
-        forms = [("penalty", penalty_form)]
-        homogeneous = not np.any(prob.b) and np.isin(prob.lower, [0, -np.inf]).all() \
-            and np.isin(prob.upper, [0, np.inf]).all()
-        if homogeneous:
-            forms.append(("budget", budget_form))
-        if prob.a.shape[0] and not np.any(prob.b):
-            forms = forms[1:]  # b = 0 makes the penalty form's start degenerate
-        for form, fn in forms:
-            path = fn(prob)
-            if name in ("plain", "wide", "nonnegative"):
-                ref, gap = "LARS", against_lars(prob, path, positive=name == "nonnegative")
-            else:
-                ref, gap = "IPM", against_solver(prob, path)
-            rows.append(Row(name, form, *prob.x.shape, len(path.lam), ref, gap,
-                            against_cvxcla(prob, path), certify(prob, path)))
+    for name, prob in problems().items():
+        path = trace(prob)
+        if name in ("plain", "wide", "nonnegative"):
+            ref, gap = "LARS", against_lars(prob, path, positive=name == "nonnegative")
+        else:
+            ref, gap = "IPM", against_solver(prob, path)
+        rows.append(Row(name, *prob.x.shape, len(path.lam), ref, gap, certify(prob, path)))
     return rows
 
 
@@ -583,10 +474,10 @@ def style() -> None:
 
 
 def fig_path(out: Path) -> None:
-    """The diabetes LASSO path from the CLA, with the LARS knots on top."""
+    """The diabetes LASSO path from cvxcla, with the LARS knots on top."""
     x, y, names = diabetes()
     prob = Lasso(x, y)
-    path = penalty_form(prob)
+    path = trace(prob)
     alphas, _, coefs = lars_path(x, y, method="lasso")
     norm = np.abs(path.beta).sum(axis=1)
     norm_l = np.abs(coefs).sum(axis=0)
@@ -609,46 +500,12 @@ def fig_path(out: Path) -> None:
         ax.annotate(names[j], (norm[-1], ends[j]), xytext=(norm[-1] * 1.03, y_label), textcoords="data",
                     va="center", fontsize=6.5, color=INK,
                     arrowprops={"arrowstyle": "-", "color": GRID, "lw": 0.5, "shrinkA": 0, "shrinkB": 0})
-    ax.plot([], [], "-", color=BLUE, lw=1.2, label="CLA, penalty form")
+    ax.plot([], [], "-", color=BLUE, lw=1.2, label="cvxcla.Lasso")
     ax.plot([], [], "o", ms=4.5, mfc="none", mec=ORANGE, mew=0.9, label="LARS knots")
     ax.legend(loc="upper left")
     ax.set_xlabel(r"$\|\beta\|_1$")
     ax.set_ylabel(r"coefficient $\beta_j$")
     ax.set_xlim(0, norm[-1] * 1.12)
-    fig.tight_layout()
-    fig.savefig(out)
-    plt.close(fig)
-
-
-def fig_portfolio(out: Path) -> None:
-    """The same path as the budget form sees it: long, short and cash weights against 1/t."""
-    x, y, _ = diabetes()
-    path = budget_form(Lasso(x, y))
-    t = path.turns
-    keep = np.isfinite(t.gamma) & (t.gamma > 0)
-    budget = 1.0 / t.gamma[keep]
-    w = t.x[keep]
-    p = x.shape[1]
-    long_, short, cash = w[:, :p].sum(axis=1), w[:, p : 2 * p].sum(axis=1), w[:, -1]
-    # Past the last knot the weights move along a ray; one more point shows it.
-    tail = 1.6 * budget[-1]
-    beta_end = path.beta[-1]
-    budget = np.append(budget, tail)
-    long_ = np.append(long_, np.clip(beta_end, 0, None).sum() / tail)
-    short = np.append(short, np.clip(-beta_end, 0, None).sum() / tail)
-    cash = np.append(cash, 1 - np.abs(beta_end).sum() / tail)
-
-    fig, ax = plt.subplots(figsize=(3.4, 2.7))
-    ax.stackplot(budget, long_, short, cash, colors=[BLUE, ORANGE, GRID], edgecolor="white", lw=0.6,
-                 labels=["long book", "short book", "cash"])
-    ax.axvline(budget[-2], color=MUTED, lw=0.6, ls="--")
-    ax.annotate("cash enters:\nend of the LASSO path", (budget[-2], 0.92), xytext=(-4, 0),
-                textcoords="offset points", ha="right", va="top", fontsize=6.5, color=INK)
-    ax.set_xlim(0, tail)
-    ax.set_ylim(0, 1)
-    ax.set_xlabel(r"$\ell_1$ budget $t = 1/\gamma$")
-    ax.set_ylabel("share of the budget")
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncols=3)
     fig.tight_layout()
     fig.savefig(out)
     plt.close(fig)
@@ -682,7 +539,7 @@ def fig_scd14(out: Path) -> None:
     """The real-data example: the zero-sum path of sCD14 on 60 genera."""
     prob, _ = scd14()
     fig, ax = plt.subplots(figsize=(4.8, 3.2))
-    path_panel(ax, prob, budget_form(prob))
+    path_panel(ax, prob, trace(prob))
     ax.set_title("sCD14 on 60 genera, zero-sum LASSO by the CLA", fontsize=8, color=INK)
     path_legend(fig)
     fig.tight_layout(rect=(0, 0.08, 1, 1))
@@ -693,7 +550,7 @@ def fig_scd14(out: Path) -> None:
 def scd14_tex() -> str:
     """The real-data example's numbers as LaTeX macros, for the note to input."""
     prob, _ = scd14()
-    path = budget_form(prob)
+    path = trace(prob)
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "rdSamples": str(prob.x.shape[0]),
         "rdGenera": str(prob.x.shape[1]),
@@ -714,7 +571,7 @@ def fig_example(out: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.9), sharey=True)
     for ax, prob, title in ((axes[0], Lasso(x, y), "no cap: what lars_path fits"),
                             (axes[1], box, rf"$|\beta_j|\leq {u:.0f}$: the CLA")):
-        path = penalty_form(prob)
+        path = trace(prob)
         over = (np.abs(path.beta) > u * (1 + 1e-12)).any(axis=0)
         lam, _ = midpoints(path)
         lam = lam[lam > 1e-6 * path.lam[0]]
@@ -751,15 +608,14 @@ def sci(x: float) -> str:
 
 
 def table_tex(rows: list[Row]) -> str:
-    """The body of Table 2, one LaTeX row per problem and form, for the note to input.
+    """The body of Table 2, one LaTeX row per problem, for the note to input.
 
     The closing rule comes with it: after an ``\\input`` inside a tabular, LaTeX no longer
     accepts a ``\\bottomrule`` of the note's own.
     """
     return "".join(
-        f"{r.name:<15} & {r.form:<7} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
-        f"{sci(r.gap):<19} & {'---' if r.cvxcla is None else sci(r.cvxcla):<19} & "
-        f"{sci(r.kkt)}\\\\\n"
+        f"{r.name:<15} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
+        f"{sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
         for r in rows
     ) + "\\bottomrule\n"
 
@@ -769,7 +625,6 @@ def main() -> None:
     OUT.mkdir(exist_ok=True)
     style()
     fig_path(OUT / "path.pdf")
-    fig_portfolio(OUT / "portfolio.pdf")
     fig_example(OUT / "example.pdf")
     ex = example()
     (OUT / "example.tex").write_text(example_tex(ex))
@@ -777,31 +632,28 @@ def main() -> None:
     (OUT / "evidence.tex").write_text(table_tex(rows))
     big = scale()
     (OUT / "scale.tex").write_text(scale_tex(big))
-    print("\nscale, budget form on zero-sum compositions:")
+    print("\nscale, zero-sum compositions:")
     for r in big:
-        print(f"  n = {r.n:4d}, p = {r.p:3d}: {r.knots:3d} knots, cvxcla {r.cvxcla:.1e}, KKT {r.kkt:.1e}")
-    print(f"{'problem':<16} {'form':<8} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} "
-          f"{'Lasso':>9} {'KKT':>9}")
+        print(f"  n = {r.n:4d}, p = {r.p:3d}: {r.knots:3d} knots, KKT {r.kkt:.1e}")
+    print(f"{'problem':<16} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} {'KKT':>9}")
     for r in rows:
-        cvx = "---" if r.cvxcla is None else f"{r.cvxcla:.1e}"
-        print(f"{r.name:<16} {r.form:<8} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} "
-              f"{r.gap:9.1e} {cvx:>9} {r.kkt:9.1e}")
+        print(f"{r.name:<16} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} {r.gap:9.1e} {r.kkt:9.1e}")
     # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment.
     saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
     arrays = {}
     for name, prob in saved.items():
-        path = budget_form(prob)
+        path = trace(prob)
         arrays |= {f"{name}.x": prob.x, f"{name}.y": prob.y, f"{name}.lam": path.lam, f"{name}.beta": path.beta}
     np.savez(OUT / "zero_sum_paths.npz", **arrays)
     # Every problem of Table 2 with its exact path, for julia/gaines_check.jl, which runs
-    # ConstrainedLasso.jl on them. The path is from the first form that takes the problem.
+    # ConstrainedLasso.jl on them.
     arrays = {}
     for name, prob in problems().items():
-        path = (budget_form if prob.a.shape[0] and not np.any(prob.b) else penalty_form)(prob)
+        path = trace(prob)
         key = name.replace(", ", "-")
-        fields = {"x": prob.x, "y": prob.y, "a": prob.a, "b": prob.b, "lower": prob.lower,
-                  "upper": prob.upper, "lam": path.lam, "beta": path.beta}
-        # NPZ.jl cannot read an empty array, so a problem without rows has no "a" and "b"
+        fields = {"x": prob.x, "y": prob.y, "a": prob.a, "b": prob.b, "c": prob.c, "h": prob.h,
+                  "lower": prob.lower, "upper": prob.upper, "lam": path.lam, "beta": path.beta}
+        # NPZ.jl cannot read an empty array, so a problem without rows has no "a" and "b" (or "c" and "h")
         arrays |= {f"{key}.{k}": np.ascontiguousarray(v) for k, v in fields.items() if v.size}
     np.savez(OUT / "table_paths.npz", **arrays)
     if SCD14.exists():
@@ -846,31 +698,13 @@ def test_kkt(rows: list[Row]) -> None:
         assert r.kkt < 1e-10, r
 
 
-def test_forms_agree() -> None:
-    """The two forms return the same knots wherever both apply."""
-    for name, prob in problems().items():
-        if name in ("plain", "nonnegative", "wide"):
-            pa, bu = penalty_form(prob), budget_form(prob)
-            assert len(pa.lam) == len(bu.lam)
-            assert np.abs(pa.beta - bu.beta).max() < 1e-9 * np.abs(pa.beta).max()
-
-
-def test_cvxcla(rows: list[Row]) -> None:
-    """cvxcla's Lasso returns the same knots wherever it takes the problem."""
-    expected = {"plain", "nonnegative", "wide", "box", "zero-sum"} | ({"sCD14"} if SCD14.exists() else set())
-    assert {r.name for r in rows if r.cvxcla is not None} == expected
-    for r in rows:
-        if r.cvxcla is not None:
-            assert r.cvxcla < 1e-10, r
-
-
 def test_table_tex(rows: list[Row]) -> None:
-    """Table 2 has one row per problem and form, with the numbers as the note prints them."""
+    """Table 2 has one row per problem, with the numbers as the note prints them."""
     *tex, rule = table_tex(rows).splitlines()
     assert len(tex) == len(rows)
     assert rule == r"\bottomrule"
     assert sci(8.6e-14) == r"$8.6\times10^{-14}$"
-    assert all(line.endswith(r"\\") and line.count("&") == 8 for line in tex)
+    assert all(line.endswith(r"\\") and line.count("&") == 6 for line in tex)
 
 
 def test_example() -> None:
@@ -888,26 +722,25 @@ def test_example() -> None:
 
 @pytest.mark.skipif(not SCD14.exists(), reason="no sCD14 data; fetch it with `uv run python/fetch_scd14.py`")
 def test_scd14() -> None:
-    """On the real data the CLA is exact."""
+    """On the real data the path is exact."""
     assert hashlib.sha256(SCD14.read_bytes()).hexdigest() == SCD14_SHA256
     prob, _ = scd14()
-    path = budget_form(prob)
+    path = trace(prob)
     assert len(path.lam) == 60
     assert certify(prob, path) < 1e-10
-    assert against_cvxcla(prob, path) < 1e-10
 
 
 def test_scale() -> None:
-    """At p = 500 the path is still exact, and cvxcla still returns the same knots."""
+    """At p = 500 the path is still exact."""
     for r in scale():
         assert r.kkt < 1e-10, r
-        assert r.cvxcla < 1e-10, r
 
 
-def test_degenerate_start_refused() -> None:
-    """With b = 0 the penalty form starts on a degenerate vertex, and cvxcla declines it."""
-    with pytest.raises(DegenerateProblemError, match="degenerate"):
-        penalty_form(problems()["zero-sum"])
+def test_cholesterol_row_binds() -> None:
+    """The inequality rows of Cholesterol are active at the end of the path, so they are tested."""
+    prob = problems()["cholesterol"]
+    end = trace(prob).beta[-1]
+    assert np.isclose(np.abs(prob.c[0] @ end), prob.h[0])
 
 
 # --------------------------------------------------------------------------------------
@@ -954,6 +787,8 @@ def grid(prob: Lasso, lam_max: float) -> Callable[[], None]:
     """
     beta, lam = cp.Variable(prob.x.shape[1]), cp.Parameter(nonneg=True)
     cons = [prob.a @ beta == prob.b] if prob.a.shape[0] else []
+    if prob.c.shape[0]:
+        cons.append(prob.c @ beta <= prob.h)
     if np.isfinite(prob.upper).any():
         i = np.isfinite(prob.upper)
         cons.append(beta[i] <= prob.upper[i])
@@ -970,28 +805,24 @@ def grid(prob: Lasso, lam_max: float) -> Callable[[], None]:
 
 
 def timings() -> None:
-    """Print, for each constrained problem, what the path costs against cvxcla and a grid."""
+    """Print, for each constrained problem, what the exact path costs against a grid."""
     print(f"machine: {machine()}; each time the fastest of {TIMING_REPEATS} runs")
-    forms = {"box": penalty_form, "zero-sum": budget_form, "sCD14": budget_form}
     for name, prob in problems().items():
-        if name not in forms:
+        if name not in ("box", "cholesterol", "zero-sum", "sCD14"):
             continue
-        form = forms[name]
-        path = form(prob)
-        cla_s = fastest(lambda prob=prob, form=form: form(prob))
-        cvx_s = fastest(lambda prob=prob: by_cvxcla(prob))
+        path = trace(prob)
+        path_s = fastest(lambda prob=prob: trace(prob))
         grid_s = fastest(grid(prob, path.lam[0]), repeats=3)  # the first run compiles; later ones reuse it
-        print(f"  {name:<9} {len(path.lam):3d} knots: CLA {cla_s * 1e3:7.1f} ms, cvxcla {cvx_s / cla_s:5.1f}x, "
-              f"{GRID_POINTS}-point Clarabel grid {grid_s / cla_s:6.0f}x the CLA")
+        print(f"  {name:<11} {len(path.lam):3d} knots: path {path_s * 1e3:7.1f} ms, "
+              f"{GRID_POINTS}-point Clarabel grid {grid_s / path_s:6.0f}x the path")
     print("Table 3, the zero-sum problems at scale (the grid timed twice: the first run compiles):")
     for n, p in SCALE:
         prob = large_composition(n, p)
-        path = budget_form(prob)
-        cla_s = fastest(lambda prob=prob: budget_form(prob))
-        cvx_s = fastest(lambda prob=prob: by_cvxcla(prob))
+        path = trace(prob)
+        path_s = fastest(lambda prob=prob: trace(prob))
         grid_s = fastest(grid(prob, path.lam[0]), repeats=2)
-        print(f"  n = {n:4d}, p = {p:3d}, {len(path.lam):3d} knots: CLA {cla_s:6.2f} s, cvxcla {cvx_s / cla_s:4.1f}x, "
-              f"{GRID_POINTS}-point Clarabel grid {grid_s / cla_s:4.0f}x the CLA")
+        print(f"  n = {n:4d}, p = {p:3d}, {len(path.lam):3d} knots: path {path_s:6.2f} s, "
+              f"{GRID_POINTS}-point Clarabel grid {grid_s / path_s:4.0f}x the path")
 
 
 if __name__ == "__main__":

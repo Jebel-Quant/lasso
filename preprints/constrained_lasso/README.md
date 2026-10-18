@@ -11,15 +11,20 @@ The note opens with the diabetes LASSO, capped: every coefficient must satisfy
 `|β_j| ≤ u`. Without the cap, least squares plays the cholesterol measures off against
 each other and gives HDL a positive coefficient. scikit-learn's `lars_path` takes no
 constraint but `positive`, so it cannot cap. The CLA computes the exact path under
-caps, signs and equality constraints, among them the zero sum of compositional data.
+caps, signs, equality constraints, among them the zero sum of compositional data, and
+inequality rows `Cβ ≤ h` with `h > 0`.
 
-The CLA is the released `CLA` of [`cvxcla`](https://github.com/cvxgrp/cvxcla) (2.4.2,
-pinned); this folder holds no CLA of its own. It is Markowitz's in its general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
-`γ = ∞` down to 0. Two encodings feed it a LASSO:
+Every path comes from one call, `cvxcla.Lasso` ([`cvxcla`](https://github.com/cvxgrp/cvxcla)
+2.5.0, pinned). This folder holds no CLA and no encoding of its own; it states the
+problems, calls `cvxcla`, and checks the paths without it. `cvxcla.Lasso` runs the CLA in
+Markowitz's general form, `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `Gx ≤ h`,
+`l ≤ x ≤ u`, traced from `γ = ∞` down to 0, through one of the two encodings the note
+describes:
 
 - **Penalty form.** Split β into positive and negative parts, `Σ = S'GS`, `μ = −1`,
   `q = S'X'y`. The parameter `γ` is λ itself. Coefficient bounds become position limits,
-  and equality rows `Aβ = b` become budget rows (nondegenerate start needed, so `b ≠ 0`).
+  equality rows `Aβ = b` become budget rows (nondegenerate start needed, so `b ≠ 0`), and
+  inequality rows `Cβ ≤ h` (with `h > 0`) become rows `CSz ≤ h`.
 - **Budget form.** Rescale the ℓ1 ball to the simplex, `β = t·Sw`, and add a riskless cash
   asset for the unused budget. This is Markowitz's long-only, fully invested problem with
   `γ = 1/t`. Homogeneous constraints (`Aβ = 0`, sign constraints) carry over, and the path
@@ -29,9 +34,9 @@ On the diabetes data, a p > n design and compositional data with `Σβ = 0`, eve
 comes back to 1e-13. The constrained cases match an interior-point solver to its own
 accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
 
-Where it takes the problem (six of the eight), `cvxcla`'s `Lasso`, a separate route (a
-homotopy, and a rescaled CLA for `Aβ = 0`), returns the same knots to 1e-13; Table 2
-reports it.
+The note's own CLA was removed in favour of `cvxcla`'s. That switch exposed a bug in it:
+under tight caps it returned paths that broke the optimality conditions without saying
+so. The checks above are what caught it, and they are what the paths rest on now.
 
 The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
 HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
@@ -58,9 +63,8 @@ julia/
   LICENSE.classopath    ConstrainedLasso.jl's MIT licence
 ```
 
-`python/make_figures.py` writes `figures/example.pdf` (the diabetes path without and with the cap, Fig. 1), `figures/path.pdf` and
-`figures/portfolio.pdf` (the diabetes path against the LARS knots, and the same path as a
-long/short/cash portfolio, the two panels of Fig. 2), and from the real data
+`python/make_figures.py` writes `figures/example.pdf` (the diabetes path without and with the cap, Fig. 1), `figures/path.pdf`
+(the diabetes path against the LARS knots, Fig. 2), and from the real data
 `figures/scd14.pdf` (Fig. 3). It also writes the rows of
 Table 2 as `figures/evidence.tex`, the zero-sum problems at scale (up to 500 parts) as
 Table 3 in `figures/scale.tex`, and the numbers the text quotes as `figures/example.tex`

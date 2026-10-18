@@ -4,7 +4,7 @@ requires-python = "==3.12.*"
 
 [manifest]
 requirements = [
-    { name = "cvxcla", specifier = "==2.4.2" },
+    { name = "cvxcla", specifier = "==2.5.0" },
     { name = "cvxpy", specifier = "==1.9.3" },
     { name = "matplotlib", specifier = "==3.11.2" },
     { name = "numpy", specifier = "==2.5.4" },
@@ -108,16 +108,16 @@ wheels = [
 
 [[package]]
 name = "cvxcla"
-version = "2.4.2"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cvx-linalg" },
     { name = "numpy" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/91/057c6c31a6dc7b27fdd51e1503e0b5486b1dadac5960c714edd02eb3256e/cvxcla-2.4.2.tar.gz", hash = "sha256:259e6a55a6d218375e72800cc65433a6ed06681c66d547ceb697b27bd6b203b4", size = 5187881, upload-time = "2026-10-18T14:22:47.939Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/17/88/cc898735fb121ebbb037ee400c426e999d4ce08b7b8da735e6120f6c32b2/cvxcla-2.5.0.tar.gz", hash = "sha256:443d324c6aaceddd990f922c847c306da7b6c35838943f69f38b826231b9dbfc", size = 5194626, upload-time = "2026-10-18T16:06:07.533Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/88/b30a9508b0d1a40812919c54d5218a44e53f3ee825bbd9e0dfc2c456da57/cvxcla-2.4.2-py3-none-any.whl", hash = "sha256:b0e1c52a4eaff12296d6a4580d4f5f997fbd44d98231725e506f0eb3930f2c35", size = 89707, upload-time = "2026-10-18T14:22:46.022Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/dc/179dd257167dd6af99e825ca6b6e7d23a5b0d92f138db4ab02bee69a8227/cvxcla-2.5.0-py3-none-any.whl", hash = "sha256:9198ee5159947495a785659eeb9c167bac00dde5e18a4583f56ececd625e20d1", size = 94494, upload-time = "2026-10-18T16:06:06.034Z" },
 ]
 
 [[package]]

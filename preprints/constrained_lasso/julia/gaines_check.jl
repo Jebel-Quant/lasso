@@ -31,13 +31,14 @@ using LinearAlgebra, Logging, NPZ, Printf
 const FIGURES = joinpath(dirname(@__DIR__), "figures")
 const REPEATS = 5  # each run timed this often, and the fastest counts
 
-"""The problem `name` from the archive, with its bounds written as inequality rows."""
+"""The problem `name` from the archive, with its bounds written as inequality rows after its own."""
 function problem(data, name)
     x, y = data["$name.x"], data["$name.y"]
     p = size(x, 2)
     a, b = get(data, "$name.a", zeros(0, p)), get(data, "$name.b", zeros(0))
+    c, h = reshape(get(data, "$name.c", zeros(0, p)), :, p), vec(get(data, "$name.h", zeros(0)))
     lower, upper = data["$name.lower"], data["$name.upper"]
-    rows, rhs = Vector{Float64}[], Float64[]
+    rows, rhs = Vector{Float64}[eachrow(c)...], Float64[h...]
     for j in 1:p
         isfinite(upper[j]) && (push!(rows, [i == j ? 1.0 : 0.0 for i in 1:p]); push!(rhs, upper[j]))
         isfinite(lower[j]) && (push!(rows, [i == j ? -1.0 : 0.0 for i in 1:p]); push!(rhs, -lower[j]))
