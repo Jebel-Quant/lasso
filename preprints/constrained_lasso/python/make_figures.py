@@ -23,7 +23,8 @@ problems, calls ``cvxcla``, and checks what comes back without it, against LARS,
 interior-point solver and the LASSO's optimality conditions.
 
     uv run python/make_figures.py        # the figures, Table 2 as figures/evidence.tex,
-                                         # the example's numbers as figures/example.tex
+                                         # the example's numbers as figures/example.tex,
+                                         # Table 4 of hostile problems as figures/stress.tex
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
     uv run python/make_figures.py timings  # the cost ratios the note quotes, and the machine
 
@@ -272,6 +273,133 @@ def scale_tex(rows: list[ScaleRow]) -> str:
     """The body of Table 3, for the note to input, with its closing rule."""
     return "".join(f"{r.n:>4} & {r.p:>3} & {r.knots:>3} & {sci(r.kkt)}\\\\\n"
                    for r in rows) + "\\bottomrule\n"
+
+
+# The hostile problems of Table 4: how close to one another the columns are allowed to get.
+STRESS_RHO = 0.99999  # pairwise correlation of the equicorrelated design
+STRESS_DUPLICATE = (1e-4, 1e-6)  # noise, relative to its spread, on a copy of bmi
+
+
+def correlated(rho: float = STRESS_RHO, seed: int = SEED, n: int = 100, p: int = 40) -> tuple[np.ndarray, np.ndarray]:
+    """An equicorrelated Gaussian design: every pair of columns has correlation ``rho``."""
+    rng = np.random.default_rng(seed)
+    x = np.sqrt(rho) * rng.standard_normal((n, 1)) + np.sqrt(1 - rho) * rng.standard_normal((n, p))
+    x -= x.mean(axis=0)
+    beta = np.zeros(p)
+    beta[:6] = rng.choice([-1, 1], 6) * rng.uniform(1, 3, 6)
+    y = x @ beta + 0.5 * rng.standard_normal(n)
+    return x, y - y.mean()
+
+
+def near_duplicate(eps: float, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    """The diabetes data with an eleventh column, bmi plus noise ``eps`` times its spread."""
+    xd, yd, names = diabetes()
+    bmi = xd[:, names.index("bmi")]
+    rng = np.random.default_rng(seed)
+    return np.column_stack([xd, bmi + eps * bmi.std() * rng.standard_normal(len(yd))]), yd
+
+
+def stress_problems() -> dict[str, tuple[Lasso, str]]:
+    """The hostile problems by the names Table 4 uses, each with its reference."""
+    xs, ys = correlated()
+    p = xs.shape[1]
+    cap = 0.5 * np.abs(np.linalg.lstsq(xs, ys, rcond=None)[0]).max()
+    xd, yd, _ = diabetes()
+    box = 0.5 * np.abs(np.linalg.lstsq(xd, yd, rcond=None)[0]).max()  # the cap of Box
+    xw, yw = wide()
+    out = {
+        "correlated": (Lasso(xs, ys), "LARS"),
+        "correlated, box": (Lasso(xs, ys, lower=np.full(p, -cap), upper=np.full(p, cap)), "IPM"),
+        "correlated, zero-sum": (Lasso(xs, ys, a=np.ones(p), b=np.zeros(1)), "IPM"),
+    }
+    for eps in STRESS_DUPLICATE:
+        x, y = near_duplicate(eps)
+        q = x.shape[1]
+        out[f"duplicate {eps:.0e}"] = (Lasso(x, y), "LARS")
+        out[f"duplicate {eps:.0e}, box"] = (Lasso(x, y, lower=np.full(q, -box), upper=np.full(q, box)), "IPM")
+    out["wide, zero-sum"] = (Lasso(xw - xw.mean(axis=0), yw - yw.mean(), a=np.ones(xw.shape[1]),
+                                   b=np.zeros(1)), "IPM")
+    return out
+
+
+def objective(prob: Lasso, lam: float, beta: np.ndarray) -> float:
+    """The LASSO objective at ``lam``."""
+    return float(0.5 * np.sum((prob.y - prob.x @ beta) ** 2) + lam * np.abs(beta).sum())
+
+
+@dataclass
+class StressRow:
+    """One line of the stress table. A path cvxcla declines has no knots and no checks."""
+
+    name: str
+    n: int
+    p: int
+    cond: float  # condition number of X
+    reference: str
+    knots: int | None = None
+    gap: float | None = None  # against the reference, as in Table 2
+    kkt: float | None = None
+    ref_kkt: float | None = None  # LARS's own KKT residual, where LARS is the reference
+    ref_excess: float | None = None  # how much worse the IPM objective is, relative, at its worst midpoint
+    declined: str | None = None  # cvxcla's reason, when it declines
+
+
+def stress() -> list[StressRow]:
+    """The hostile problems, through the same checks as Table 2, and the reference's own accuracy.
+
+    Where the path and its reference part, the reference is checked as well: LARS by the
+    same KKT residual, the interior-point solver by its objective, which is worse than the
+    path's when the gap is the solver's.
+    """
+    rows = []
+    for name, (prob, ref) in stress_problems().items():
+        row = StressRow(name, *prob.x.shape, float(np.linalg.cond(prob.x)), ref)
+        try:
+            path = trace(prob)
+        except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
+            row.declined = str(err).split(":")[0]
+            rows.append(row)
+            continue
+        row.knots, row.kkt = len(path.lam), certify(prob, path)
+        if ref == "LARS":
+            row.gap = against_lars(prob, path)
+            alphas, _, coefs = lars_path(prob.x, prob.y, method="lasso")
+            row.ref_kkt = max(kkt_residual(prob, a * prob.x.shape[0], b)
+                              for a, b in zip(alphas, coefs.T, strict=True))
+        else:
+            row.gap = against_solver(prob, path)
+            lam, beta = midpoints(path)
+            keep = lam > 1e-6 * path.lam[0]
+            row.ref_excess = max((objective(prob, l, reference(prob, l)) - objective(prob, l, b))
+                                 / objective(prob, l, b) for l, b in zip(lam[keep], beta[keep], strict=True))
+        rows.append(row)
+    return rows
+
+
+def stress_tex(rows: list[StressRow]) -> str:
+    """The body of Table 4, with its closing rule."""
+    def line(r: StressRow) -> str:
+        name = r.name
+        for eps in STRESS_DUPLICATE:
+            name = name.replace(f"{eps:.0e}", f"$10^{{{round(np.log10(eps))}}}$")
+        head = f"{name:<21} & {r.n:>3} & {r.p:>3} & {sci(r.cond):<19} & "
+        if r.declined:
+            return head + r"\multicolumn{4}{c}{declined}\\" + "\n"
+        return head + f"{r.knots:>2} & {r.reference:<4} & {sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
+    return "".join(line(r) for r in rows) + "\\bottomrule\n"
+
+
+def stress_numbers(rows: list[StressRow]) -> str:
+    """The numbers the text quotes about Table 4, as LaTeX macros."""
+    traced = [r for r in rows if not r.declined]
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "stRho": f"{STRESS_RHO}",
+        "stEpsHi": sci(max(STRESS_DUPLICATE)),
+        "stEpsLo": sci(min(STRESS_DUPLICATE)),
+        "stKKT": sci(max(r.kkt for r in traced)),
+        "stLarsKKT": sci(max(r.ref_kkt for r in traced if r.ref_kkt is not None)),
+        "stIpmGap": sci(max(r.gap for r in traced if r.reference == "IPM")),
+    }.items())
 
 
 # Small counts as the note spells them out.
@@ -735,6 +863,16 @@ def main() -> None:
     (OUT / "evidence.tex").write_text(table_tex(rows))
     big = scale()
     (OUT / "scale.tex").write_text(scale_tex(big))
+    hostile = stress()
+    (OUT / "stress.tex").write_text(stress_tex(hostile))
+    (OUT / "stress_numbers.tex").write_text(stress_numbers(hostile))
+    print("\nstress, hostile problems:")
+    for r in hostile:
+        if r.declined:
+            print(f"  {r.name:<22} cond {r.cond:.1e}: declined: {r.declined}")
+        else:
+            own = f"LARS's own KKT {r.ref_kkt:.1e}" if r.ref_kkt is not None else f"IPM objective worse by {r.ref_excess:.1e}"
+            print(f"  {r.name:<22} cond {r.cond:.1e}: {r.knots} knots, {r.reference} gap {r.gap:.1e}, KKT {r.kkt:.1e}, {own}")
     mono = monotone_rows()
     (OUT / "monotone.tex").write_text(monotone_tex(mono))
     print("\nmonotone fit, rows relaxed to h:")
@@ -842,6 +980,27 @@ def test_scale() -> None:
     """At p = 500 the path is still exact."""
     for r in scale():
         assert r.kkt < 1e-10, r
+
+
+def test_stress() -> None:
+    """On the hostile problems the path is exact or declined, never wrong.
+
+    Against LARS, two exact paths can part by as much as the conditioning allows,
+    cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
+    rounding. Against the interior-point solver, the solver's objective is the worse one,
+    so a gap there is the solver's.
+    """
+    rows = {r.name: r for r in stress()}
+    assert {n for n, r in rows.items() if r.declined} == {"duplicate 1e-06", "wide, zero-sum"}
+    for r in rows.values():
+        if r.declined:
+            continue
+        assert r.kkt < 1e-12, r
+        if r.reference == "LARS":
+            assert r.gap < r.cond**2 * np.finfo(float).eps, r
+            assert r.ref_kkt < 1e-12, r
+        else:
+            assert r.ref_excess > -1e-12, r  # the solver never beats the path
 
 
 def test_monotone() -> None:
