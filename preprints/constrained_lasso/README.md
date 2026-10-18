@@ -9,9 +9,9 @@ Critical Line Algorithm that knows nothing about regression.
 
 The note opens with a regression that scikit-learn's `lars_path` cannot fit: a LASSO on
 log-compositions whose coefficients must sum to zero. `lars_path` takes no constraint but
-`positive`, and the usual workaround, regressing on log-ratios against a reference part,
-leaves that part unpenalised, so each of the 30 possible references gives a different
-answer. The CLA computes the exact constrained path.
+`positive`. `c-lasso` can fit it, with a small ridge term, but takes only `Cβ = 0`: no
+signs, no caps, no nonzero right-hand side. The CLA computes the exact constrained path
+under all of these.
 
 The CLA (`cla` in `python/make_figures.py`, about a hundred lines of NumPy) is Markowitz's in its
 general form: `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `l ≤ x ≤ u`, traced from
@@ -30,8 +30,9 @@ comes back to 1e-13. The constrained cases match an interior-point solver to its
 accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
 
 Where it takes the problem (six of the eight), [`cvxcla`](https://github.com/cvxgrp/cvxcla)'s
-`Lasso`, a separate implementation pinned to 2.3.4, returns the same knots to 1e-13; the
-script checks this as a fourth column of Table 2.
+`Lasso`, a separate implementation, returns the same knots to 1e-13, and both forms run
+unchanged on its released `CLA` (cvxcla 2.4.0, pinned) on all eight problems; Table 2
+reports both.
 
 The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
 HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
@@ -45,19 +46,23 @@ LASSO's selection.
 constrained_lasso.tex   the note
 Makefile                builds constrained_lasso.pdf (make figures first)
 python/
-  make_figures.py       the CLA, both forms, five figures, Tables 2 and 3, both examples, and the checks as pytest tests
+  make_figures.py       the CLA, both forms, three figures, Tables 2 and 3, both examples, and the checks as pytest tests
   make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
   fetch_scd14.py        downloads the sCD14 data from CRAN into data/scd14.csv (git ignores data/)
   classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
   classo_check.py.lock  its locked environment
   fetch_scd14.py.lock   its locked environment
+julia/
+  classopath.jl         the path algorithm of Gaines et al., ported from ConstrainedLasso.jl to Julia 1
+  gaines_check.jl       runs it on every problem of Table 2 against the exact paths
+  Project.toml          its environment, pinned with Manifest.toml (Julia 1.12)
+  LICENSE.classopath    ConstrainedLasso.jl's MIT licence
 ```
 
-`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, and
-`lars_path`'s answers for every reference part, Fig. 1), `figures/path.pdf` (the diabetes
-path, CLA against LARS knots, Fig. 2), `figures/portfolio.pdf` (the same path as a
-long/short/cash portfolio, Fig. 3) and `figures/constrained.pdf` (the box-constrained path,
-Fig. 4), and from the real data `figures/scd14.pdf` (Fig. 5). It also writes the rows of
+`python/make_figures.py` writes `figures/example.pdf` (the zero-sum path from the CLA, Fig. 1), `figures/path.pdf` and
+`figures/portfolio.pdf` (the diabetes path against the LARS knots, and the same path as a
+long/short/cash portfolio, the two panels of Fig. 2), and from the real data
+`figures/scd14.pdf` (Fig. 3). It also writes the rows of
 Table 2 as `figures/evidence.tex`, the zero-sum problems at scale (up to 500 parts) as
 Table 3 in `figures/scale.tex`, and the numbers the text quotes as `figures/example.tex`
 and `figures/scd14.tex`, which the note inputs, so the text and the table always show
@@ -78,7 +83,7 @@ version and hash; `uv run` uses it automatically. After changing a pin, refresh 
 Run it from this directory:
 
 ```sh
-make figures    # fetch the data if needed, run make_figures.py, then classo_check.py
+make figures    # fetch the data if needed, run make_figures.py, classo_check.py, gaines_check.jl
 make test       # the same numbers as pytest checks (uv run python/make_figures.py test)
 uv run python/make_figures.py timings   # the cost ratios of the note, and the machine
 make pdf        # build constrained_lasso.pdf from constrained_lasso.tex and figures/
