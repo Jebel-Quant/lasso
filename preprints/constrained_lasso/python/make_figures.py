@@ -278,6 +278,7 @@ def scale_tex(rows: list[ScaleRow]) -> str:
 # The hostile problems of Table 4: how close to one another the columns are allowed to get.
 STRESS_RHO = 0.99999  # pairwise correlation of the equicorrelated design
 STRESS_DUPLICATE = (1e-4, 1e-6)  # noise, relative to its spread, on a copy of bmi
+STRESS_SEEDS = (SEED, SEED + 1, SEED + 2)  # each hostile problem is drawn this many times
 
 
 def correlated(rho: float = STRESS_RHO, seed: int = SEED, n: int = 100, p: int = 40) -> tuple[np.ndarray, np.ndarray]:
@@ -299,21 +300,21 @@ def near_duplicate(eps: float, seed: int = SEED) -> tuple[np.ndarray, np.ndarray
     return np.column_stack([xd, bmi + eps * bmi.std() * rng.standard_normal(len(yd))]), yd
 
 
-def stress_problems() -> dict[str, tuple[Lasso, str]]:
-    """The hostile problems by the names Table 4 uses, each with its reference."""
-    xs, ys = correlated()
+def stress_problems(seed: int = SEED) -> dict[str, tuple[Lasso, str]]:
+    """The hostile problems for one seed, by the names Table 4 uses, each with its reference."""
+    xs, ys = correlated(seed=seed)
     p = xs.shape[1]
     cap = 0.5 * np.abs(np.linalg.lstsq(xs, ys, rcond=None)[0]).max()
     xd, yd, _ = diabetes()
     box = 0.5 * np.abs(np.linalg.lstsq(xd, yd, rcond=None)[0]).max()  # the cap of Box
-    xw, yw = wide()
+    xw, yw = wide(seed=seed)
     out = {
         "correlated": (Lasso(xs, ys), "LARS"),
         "correlated, box": (Lasso(xs, ys, lower=np.full(p, -cap), upper=np.full(p, cap)), "IPM"),
         "correlated, zero-sum": (Lasso(xs, ys, a=np.ones(p), b=np.zeros(1)), "IPM"),
     }
     for eps in STRESS_DUPLICATE:
-        x, y = near_duplicate(eps)
+        x, y = near_duplicate(eps, seed=seed)
         q = x.shape[1]
         out[f"duplicate {eps:.0e}"] = (Lasso(x, y), "LARS")
         out[f"duplicate {eps:.0e}, box"] = (Lasso(x, y, lower=np.full(q, -box), upper=np.full(q, box)), "IPM")
@@ -329,51 +330,56 @@ def objective(prob: Lasso, lam: float, beta: np.ndarray) -> float:
 
 @dataclass
 class StressRow:
-    """One line of the stress table. A path cvxcla declines has no knots and no checks."""
+    """One line of the stress table: the worst over the seeds. Declined seeds have no checks."""
 
     name: str
     n: int
     p: int
-    cond: float  # condition number of X
     reference: str
-    knots: int | None = None
+    cond: float = 0.0  # largest condition number of X
+    knots: tuple[int, int] | None = None  # fewest and most knots
     gap: float | None = None  # against the reference, as in Table 2
     kkt: float | None = None
     ref_kkt: float | None = None  # LARS's own KKT residual, where LARS is the reference
-    ref_excess: float | None = None  # how much worse the IPM objective is, relative, at its worst midpoint
-    declined: str | None = None  # cvxcla's reason, when it declines
+    ref_excess: float | None = None  # the least by which the IPM objective is worse, relative, at any midpoint
+    declined: int = 0  # how many seeds cvxcla declines
+    reason: str | None = None  # its reason, when it declines
 
 
 def stress() -> list[StressRow]:
-    """The hostile problems, through the same checks as Table 2, and the reference's own accuracy.
+    """The hostile problems over every seed, through the checks of Table 2, and the reference's accuracy.
 
     Where the path and its reference part, the reference is checked as well: LARS by the
-    same KKT residual, the interior-point solver by its objective, which is worse than the
-    path's when the gap is the solver's.
+    same KKT residual, the interior-point solver by its objective, which beats the path's by
+    no more than the solver's tolerance when the gap is the solver's.
     """
-    rows = []
-    for name, (prob, ref) in stress_problems().items():
-        row = StressRow(name, *prob.x.shape, float(np.linalg.cond(prob.x)), ref)
-        try:
-            path = trace(prob)
-        except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
-            row.declined = str(err).split(":")[0]
-            rows.append(row)
-            continue
-        row.knots, row.kkt = len(path.lam), certify(prob, path)
-        if ref == "LARS":
-            row.gap = against_lars(prob, path)
-            alphas, _, coefs = lars_path(prob.x, prob.y, method="lasso")
-            row.ref_kkt = max(kkt_residual(prob, a * prob.x.shape[0], b)
-                              for a, b in zip(alphas, coefs.T, strict=True))
-        else:
-            row.gap = against_solver(prob, path)
-            lam, beta = midpoints(path)
-            keep = lam > 1e-6 * path.lam[0]
-            row.ref_excess = max((objective(prob, l, reference(prob, l)) - objective(prob, l, b))
-                                 / objective(prob, l, b) for l, b in zip(lam[keep], beta[keep], strict=True))
-        rows.append(row)
-    return rows
+    rows: dict[str, StressRow] = {}
+    for seed in STRESS_SEEDS:
+        for name, (prob, ref) in stress_problems(seed).items():
+            row = rows.setdefault(name, StressRow(name, *prob.x.shape, ref))
+            row.cond = max(row.cond, float(np.linalg.cond(prob.x)))
+            try:
+                path = trace(prob)
+            except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
+                row.declined += 1
+                row.reason = str(err).split(":")[0]
+                continue
+            k = len(path.lam)
+            row.knots = (k, k) if row.knots is None else (min(row.knots[0], k), max(row.knots[1], k))
+            row.kkt = max(row.kkt or 0.0, certify(prob, path))
+            if ref == "LARS":
+                row.gap = max(row.gap or 0.0, against_lars(prob, path))
+                alphas, _, coefs = lars_path(prob.x, prob.y, method="lasso")
+                own = max(kkt_residual(prob, a * prob.x.shape[0], b) for a, b in zip(alphas, coefs.T, strict=True))
+                row.ref_kkt = max(row.ref_kkt or 0.0, own)
+            else:
+                row.gap = max(row.gap or 0.0, against_solver(prob, path))
+                lam, beta = midpoints(path)
+                keep = lam > 1e-6 * path.lam[0]
+                excess = min((objective(prob, l, reference(prob, l)) - objective(prob, l, b))
+                             / objective(prob, l, b) for l, b in zip(lam[keep], beta[keep], strict=True))
+                row.ref_excess = excess if row.ref_excess is None else min(row.ref_excess, excess)
+    return list(rows.values())
 
 
 def stress_tex(rows: list[StressRow]) -> str:
@@ -383,22 +389,27 @@ def stress_tex(rows: list[StressRow]) -> str:
         for eps in STRESS_DUPLICATE:
             name = name.replace(f"{eps:.0e}", f"$10^{{{round(np.log10(eps))}}}$")
         head = f"{name:<21} & {r.n:>3} & {r.p:>3} & {sci(r.cond):<19} & "
-        if r.declined:
+        if r.declined == len(STRESS_SEEDS):
             return head + r"\multicolumn{4}{c}{declined}\\" + "\n"
-        return head + f"{r.knots:>2} & {r.reference:<4} & {sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
+        knots = f"{r.knots[0]}" if r.knots[0] == r.knots[1] else f"{r.knots[0]}--{r.knots[1]}"
+        if r.declined:
+            knots += f" ({r.declined} declined)"
+        return head + f"{knots:>5} & {r.reference:<4} & {sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
     return "".join(line(r) for r in rows) + "\\bottomrule\n"
 
 
 def stress_numbers(rows: list[StressRow]) -> str:
     """The numbers the text quotes about Table 4, as LaTeX macros."""
-    traced = [r for r in rows if not r.declined]
+    traced = [r for r in rows if r.kkt is not None]
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "stRho": f"{STRESS_RHO}",
+        "stSeeds": NUMBERS[len(STRESS_SEEDS)],
         "stEpsHi": sci(max(STRESS_DUPLICATE)),
         "stEpsLo": sci(min(STRESS_DUPLICATE)),
         "stKKT": sci(max(r.kkt for r in traced)),
         "stLarsKKT": sci(max(r.ref_kkt for r in traced if r.ref_kkt is not None)),
         "stIpmGap": sci(max(r.gap for r in traced if r.reference == "IPM")),
+        "stIpmBetter": sci(max(0.0, -min(r.ref_excess for r in traced if r.ref_excess is not None))),
     }.items())
 
 
@@ -987,11 +998,13 @@ def test_stress() -> None:
 
     Against LARS, two exact paths can part by as much as the conditioning allows,
     cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
-    rounding. Against the interior-point solver, the solver's objective is the worse one,
-    so a gap there is the solver's.
+    rounding. Against the interior-point solver, the solver's objective is never better
+    than the path's by more than its tolerance, so a gap there is the solver's. The two
+    problems cvxcla declines, it declines for every seed.
     """
     rows = {r.name: r for r in stress()}
-    assert {n for n, r in rows.items() if r.declined} == {"duplicate 1e-06", "wide, zero-sum"}
+    every = len(STRESS_SEEDS)
+    assert {n: r.declined for n, r in rows.items() if r.declined} == {"duplicate 1e-06": every, "wide, zero-sum": every}
     for r in rows.values():
         if r.declined:
             continue
@@ -1000,7 +1013,7 @@ def test_stress() -> None:
             assert r.gap < r.cond**2 * np.finfo(float).eps, r
             assert r.ref_kkt < 1e-12, r
         else:
-            assert r.ref_excess > -1e-12, r  # the solver never beats the path
+            assert r.ref_excess > -1e-12, r  # the solver beats the path by no more than its tolerance
 
 
 def test_monotone() -> None:
