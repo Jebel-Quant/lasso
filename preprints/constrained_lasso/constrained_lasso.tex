@@ -490,7 +490,10 @@ constraint at all, it traces the plain LASSO by a homotopy instead.
 \section{Numerical evidence}
 \label{sec:evidence}
 
-Table~\ref{tab:evidence} lists the test problems. The diabetes data \cite{efron2004}
+If the identity of \cite{perspective} holds, the CLA, run unchanged on either encoding,
+returns the exact path of the constrained LASSO. This section tests that prediction
+against references that do not use the CLA. Table~\ref{tab:evidence} lists the test
+problems. The diabetes data \cite{efron2004}
 have $n=442$ patients and $p=10$ standardised baseline variables, and the response is
 centred. \emph{Nonnegative} requires every coefficient to be at least zero, the one
 constraint \texttt{lars\_path} accepts. \emph{Wide} is a Gaussian design with $n=40$ and
@@ -574,59 +577,51 @@ table compares that last knot with \texttt{scipy.optimize.nnls} \cite{lawson1974
 instead. Figures~\ref{fig:example} and~\ref{fig:real} show two of the paths that have no
 LARS reference; on the real data the CLA is as accurate as on the simulated problems.
 
-\paragraph{Cost and scale} The baseline is what one would otherwise do in Python:
-Clarabel through CVXPY at 100 values of $\lambda$, log-spaced over three decades, with
-the problem compiled once and $\lambda$ as a parameter, at default tolerances. It costs
-15 to 28 times as much as the whole CLA path on \emph{Zero-sum} and \emph{sCD14}, 94 to
-118 times on \emph{Box} and \emph{Cholesterol}, and 100 to 350 times on the zero-sum
-problems of Table~\ref{tab:scale}, rising with their size up to $p=500$ parts, and it
-still misses every knot between two grid points. At that size a midpoint solve per
-segment would cost more than everything else together, so Table~\ref{tab:scale} keeps
-the check that scales, the optimality conditions; it holds to rounding.
+\paragraph{Scale} Table~\ref{tab:scale} extends the test to simulated zero-sum
+problems of up to $p=500$ parts. At that size a midpoint solve per segment would cost
+more than the path itself, so the table keeps the check that scales, the optimality
+conditions; they hold to rounding. Cost is not the subject of this note, but for
+scale: a grid of 100 interior-point solves (Clarabel through CVXPY, compiled once with
+$\lambda$ as a parameter) costs 15 to 350 times as much as the whole CLA path on these
+problems, in ratios of the fastest of several runs, and still misses every knot
+between two grid points.
 
-The specialised tool is \texttt{c-lasso} \cite{classo}. On \emph{Zero-sum} and
-\emph{sCD14} its path algorithm takes a fifth to three tenths of the CLA's
-time.\footnote{\texttt{c-lasso} ran under NumPy~1.26 and the CLA under NumPy~2.5, in
-separate environments on the same machine, so this comparison of times is rough.} It
-adds a ridge term $10^{-3}I$ to $X\trans X$, fixed in the package, and that term is the
-whole of its distance to the exact path: its \clPoints{} grid points lie up to \clGap{}
-from it as shipped, relative to the largest coefficient, and \clGapUnridged{} with the
-ridge set to $10^{-12}$ by hand. So it computes the same path, slightly regularised. It
-takes only $C\beta=0$, without bounds or signs, and release 1.0.11, the latest at the
-time of writing, needs NumPy~1. In R, \texttt{zeroSum} \cite{zerosum} fits zero-sum
-elastic nets by coordinate descent on a grid of $\lambda$, like the baseline above, so
-it too gives points rather than the path, and it is not timed here. The R package
-\texttt{PACLasso} \cite{paclasso} implements the penalized and constrained LASSO of
-James et al.\ \cite{james2020}, with linear equality and inequality constraints, the
-same range as Gaines et al. It too fits on a grid of $\lambda$, 41 values from
-$10^{-2}$ to $10^{6}$ by default, rather than tracing the path. CRAN archived it on
-2~June 2025, after its dependency \texttt{limSolve} was archived, so it is not run here
-either. All costs are
-ratios of the fastest of several runs, because absolute times depend on the machine.
+\paragraph{Two independent path algorithms} The strongest check is a path algorithm
+derived for the LASSO itself, with no reference to portfolios. Two are available, and
+both trace the path the CLA traces.
 
-\paragraph{The path algorithm of Gaines et al.} It ships in MATLAB and in the Julia
+The algorithm of Gaines et al.\ \cite{gaines2018} ships in MATLAB and in the Julia
 package \texttt{ConstrainedLasso.jl}, which was written for Julia~0.6 and no longer
 loads. We ported the Julia code to Julia~1 and the current \texttt{Convex.jl} without
-changing the algorithm (Code availability), and ran it on every problem of Table~\ref{tab:evidence}, with bounds
-as inequality rows. As shipped it reproduces none of the \gaProblems{}: its knots lie
-between \gaShippedMin{} and \gaShippedMax{} from the exact path, relative to the largest
-coefficient. The fault is in its start, not its path-following. It takes the first knot
-from a linear program that does not involve $y$, which under $\one\trans\beta=0$ starts
-\emph{Zero-sum} at $\lambda=\gaStart$ instead of $\gaLamMax$; and it calls a
-coefficient active there when an interior-point solve puts it above $10^{-4}$, an
-absolute threshold that on the diabetes data, whose loss is of order $10^6$, admits
-\gaSpurious{} of the \gaCoeffs{}. Started instead at the exact first knot, where that is
-simple to state, it agrees with the CLA to \gaStarted{} on the \gaStartedCount{} such
-problems with $n\ge p$: \emph{Plain}, \emph{Box}, \emph{Cholesterol}, \emph{Zero-sum}
-and \emph{sCD14}. On
-\emph{Nonnegative}, \emph{Zero-sum, signs} and \emph{Pinned} the multipliers at the first
-knot are not unique, so we give it no start there and make no claim for its
-path-following. On \emph{Wide}, where $n<p$, it adds a ridge of $10^{-4}$ to $X\trans X$,
-as \texttt{c-lasso} does, and stays \gaWide{} away. The MATLAB original, which we did
-not run, starts with the same ingredients: the same linear program, a quadratic program
-at its value and the same threshold. It then reads its first $\lambda$ off that
-program's multipliers, which the Julia code does not (\texttt{lsq\_classopath.m}, lines
-165--189, 242 and 253), so its start can differ from the one measured here.
+changing the algorithm (Code availability), and ran it on every problem of
+Table~\ref{tab:evidence}, with bounds as inequality rows. Started at the exact first
+knot, where that is simple to state, it agrees with the CLA to \gaStarted{} on the
+\gaStartedCount{} such problems with $n\ge p$: \emph{Plain}, \emph{Box},
+\emph{Cholesterol}, \emph{Zero-sum} and \emph{sCD14}. On \emph{Nonnegative},
+\emph{Zero-sum, signs} and \emph{Pinned} the multipliers at the first knot are not
+unique, so we give it no start there and make no claim. On \emph{Wide}, where $n<p$, it
+adds a ridge of $10^{-4}$ to $X\trans X$ and stays \gaWide{} away. As shipped, its own
+start puts it off the path on all \gaProblems{} problems, by \gaShippedMin{} to
+\gaShippedMax{} relative to the largest coefficient. It takes the first knot from a
+linear program that does not involve $y$, which starts \emph{Zero-sum} at
+$\lambda=\gaStart$ instead of $\gaLamMax$, and it calls a coefficient active there when
+an interior-point solve puts it above $10^{-4}$, an absolute threshold that on the
+diabetes data, whose loss is of order $10^6$, admits \gaSpurious{} of the \gaCoeffs{}.
+The MATLAB original, which we did not run, reads its first $\lambda$ off the
+multipliers of that start (\texttt{lsq\_classopath.m}, lines 165--189, 242 and 253), so
+its start can differ from the one measured here.
+
+\texttt{c-lasso} \cite{classo} has a path algorithm for $C\beta=0$ alone, without bounds
+or signs, so it runs on \emph{Zero-sum} and \emph{sCD14}. It adds a ridge term
+$10^{-3}I$ to $X\trans X$, fixed in the package, and that term is the whole of its
+distance to the CLA: its \clPoints{} grid points lie up to \clGap{} from the CLA path as
+shipped, relative to the largest coefficient, and \clGapUnridged{} with the ridge set
+to $10^{-12}$ by hand.
+
+Two further packages fit on a grid of $\lambda$ rather than tracing the path, so they
+cannot check the knots and are not run: \texttt{zeroSum} \cite{zerosum}, for zero-sum
+elastic nets in R, and \texttt{PACLasso} \cite{paclasso}, the penalized and constrained
+LASSO of James et al.\ \cite{james2020}, which CRAN archived on 2~June 2025.
 
 \begin{table}[t]
 \centering
