@@ -40,7 +40,8 @@ from the code rather than being typed in.
 The shared rules in [`preprints/Makefile`](preprints/Makefile) are:
 
 ```sh
-make figures      # uv run python/make_figures.py
+make data         # run each python/fetch_*.py marked `# fetch: on build` (see below)
+make figures      # make data, uv run python/make_figures.py, then any `# run: after figures` script
 make test         # uv run python/make_figures.py test
 make pdf          # pdflatex, three passes; run `make figures` first
 make arxiv        # <name>.tar.gz and <name>.zip: the .tex and the figures it includes
@@ -175,6 +176,19 @@ those changes.
   prints the SHA-256 of the result, so you can tell whether you have the file the note
   used. Without that data, `python/make_figures.py` skips that example and runs
   everything else.
+- **Data that may be downloaded freely are fetched on every build.** A fetch script that
+  carries the line `# fetch: on build` opts in: `make data` runs it, `make figures` runs
+  `make data` first, and CI runs `make data` before it restores the figure cache, so the
+  note's numbers from those data are computed in CI like the rest. Use it only for data
+  that are free to download and fixed, such as a file inside a CRAN release, and have the
+  script check a SHA-256. `preprints/constrained_lasso/python/fetch_scd14.py` does this
+  for the sCD14 microbiome data; `fetch_french.py` does not opt in.
+- **A check that cannot share the main environment runs after it.** A `python/*.py`
+  script that carries the line `# run: after figures` runs after `make_figures.py` in
+  every `make figures`, in CI too, with its own pins and lockfile. It reads what the main
+  script saved in `figures/` and writes its own numbers there.
+  `preprints/constrained_lasso/python/classo_check.py` does this to run c-lasso, whose
+  last release needs NumPy 1, against the main script's NumPy 2.
 - **Third-party data are not committed.** The repository is public, so committing data
   publishes them. Even data that are free to download are usually copyrighted: Kenneth
   French asked that the Fama-French portfolio returns not be redistributed here, so
