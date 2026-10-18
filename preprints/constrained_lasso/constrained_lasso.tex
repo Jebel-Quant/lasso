@@ -71,8 +71,9 @@ $\ell_1$ budget. Many regressions need more, such as bounds on the coefficients 
 coefficients that sum to zero, and \texttt{lars\_path} in scikit-learn has no way to say
 so. This note computes the exact path of the constrained LASSO with Markowitz's Critical
 Line Algorithm (CLA), unmodified, by posing the regression as a portfolio. On every
-problem tested, up to 500 predictors, the CLA reproduces LARS and an interior-point
-solver to rounding error and meets the LASSO's optimality conditions to $10^{-15}$.
+problem tested, the CLA reproduces LARS to rounding error and an interior-point solver
+to the solver's accuracy, and on problems of up to 500 predictors it meets the LASSO's
+optimality conditions at the level of rounding, within $5\times10^{-15}$.
 
 \medskip\noindent
 \textbf{Keywords:} constrained LASSO; critical line algorithm; solution path; least angle
@@ -181,10 +182,10 @@ tracks the active set and the multipliers of the linear constraints as $\lambda$
 decreases. It takes homogeneous inequality rows as well, and inequality rows under a
 zero sum, so it is the more general of the two. For $C\beta=0$ alone the Python package \texttt{c-lasso}
 \cite{classo} has a path algorithm as well, which adds a small ridge term, so its path
-is close to the exact one but not equal to it. Started at the right knot, its implementation follows the same path
-as the CLA to rounding error; as shipped, it starts off the path and stays there, on
-every problem of Table~\ref{tab:evidence} (Section~\ref{sec:evidence}). The CLA does the
-same bookkeeping:
+is close to the exact one but not equal to it. On \emph{Zero-sum} and \emph{sCD14}, the
+problems of Table~\ref{tab:evidence} it takes, the ridge is the whole of the difference:
+with the ridge turned down by hand, it follows the same path as the CLA to rounding
+error (Section~\ref{sec:evidence}). The CLA does the same bookkeeping:
 both are active-set methods that follow one family of quadratic programs, which is what
 the identity of \cite{perspective} leads one to expect. What differs is where the
 algorithm comes from. Here it is not derived for the LASSO at all. Markowitz's
@@ -202,7 +203,7 @@ Markowitz's long-only, fully invested problem with a cash asset. It takes homoge
 constraints such as $\one\trans\beta=0$, which the penalty form cannot start from.
 \end{enumerate}
 Neither reduction is deep. Each is a few lines on top of a released CLA, and together
-they reproduce LARS and an interior-point solver to rounding error
+they reproduce LARS to rounding error and an interior-point solver to its accuracy
 (Section~\ref{sec:evidence}).
 Section~\ref{sec:limits} sets out where both forms stop. Readers who know the CLA can
 skip Section~\ref{sec:cla}.
@@ -674,9 +675,10 @@ coefficients is enough to rule it out. The identity of \cite{perspective} closes
 gap. A constrained LASSO is a portfolio problem, and the Critical Line Algorithm, in
 the form Markowitz wrote it, computes its exact path, through the penalty form or the
 budget form. The case for it is exactness and the range of constraints:
-on every problem tested, up to $p=500$, the paths agree with LARS and an
-interior-point solver to rounding error, and they meet the LASSO's optimality
-conditions to $10^{-15}$ everywhere along the path.
+on every problem tested the paths agree with LARS to rounding error and with an
+interior-point solver to its accuracy, and on problems of up to $p=500$ they meet the
+LASSO's optimality conditions at the level of rounding, within $5\times10^{-15}$,
+everywhere along the path.
 
 \section*{Code and data availability}
 
