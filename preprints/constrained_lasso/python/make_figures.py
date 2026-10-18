@@ -485,6 +485,7 @@ class Example:
     knots: int  # knots of the plain LASSO path
     over: int  # of those, the knots where some coefficient passes the cap
     capped: np.ndarray  # (k, p) the knots of the capped path
+    keeps: tuple[int, int]  # the whole caps around u under which HDL stays nonpositive
 
 
 def support(beta: np.ndarray) -> np.ndarray:
@@ -493,14 +494,25 @@ def support(beta: np.ndarray) -> np.ndarray:
 
 
 def example() -> Example:
-    """The diabetes LASSO of Section 1, plain and capped."""
+    """The diabetes LASSO of Section 1, plain and capped, and the caps that keep HDL's sign."""
     x, y, names = diabetes()
     box = problems()["box"]
     ols = np.linalg.lstsq(x, y, rcond=None)[0]
     plain = penalty_form(Lasso(x, y))
     over = (np.abs(plain.beta) > box.upper * (1 + 1e-12)).any(axis=1)
+    hdl, p = names.index("s3"), x.shape[1]
+
+    def keeps(u: float) -> bool:
+        beta = penalty_form(Lasso(x, y, lower=np.full(p, -u), upper=np.full(p, u))).beta
+        return bool(beta[:, hdl].max() <= 1e-9 * u)
+
+    lo = hi = int(box.upper[0])
+    while keeps(lo - 1):
+        lo -= 1
+    while keeps(hi + 1):
+        hi += 1
     return Example(float(box.upper[0]), {n: float(ols[names.index(n)]) for n in ("s1", "s2", "s3")},
-                   len(plain.lam), int(over.sum()), penalty_form(box).beta)
+                   len(plain.lam), int(over.sum()), penalty_form(box).beta, (lo, hi))
 
 
 # The real-data example: 16S counts of 60 genera in 151 samples, and the inflammation
@@ -548,6 +560,8 @@ def example_tex(ex: Example) -> str:
         "exKnots": str(ex.knots),
         "exOver": NUMBERS[ex.over],
         "exCapped": str(len(ex.capped)),
+        "exKeepLo": str(ex.keeps[0]),
+        "exKeepHi": str(ex.keeps[1]),
     }.items())
 
 
@@ -986,6 +1000,8 @@ def test_example() -> None:
     assert ex.ols["s1"] < -ex.cap and ex.ols["s2"] > ex.cap and ex.ols["s3"] > 0
     assert (np.abs(ex.capped) <= ex.cap * (1 + 1e-12)).all()
     assert (ex.capped[:, hdl] <= 1e-9 * ex.cap).all()
+    # The sign is not an accident of u: a wide band of caps keeps it, though not a loose one.
+    assert ex.keeps[0] < ex.cap / 4 and 1.5 * ex.cap < ex.keeps[1] < abs(ex.ols["s1"])
 
 
 @pytest.mark.skipif(not SCD14.exists(), reason="no sCD14 data; fetch it with `uv run python/fetch_scd14.py`")

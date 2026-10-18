@@ -102,8 +102,9 @@ variables are blood serum measurements, and three of them are closely related me
 of cholesterol: total cholesterol (\texttt{s1}), LDL (\texttt{s2}) and HDL
 (\texttt{s3}). Least squares plays them off against each other. It gives total
 cholesterol a coefficient of $\exTC$ and LDL one of $\exLDL$, two large effects of
-opposite sign that mostly cancel, and it gives HDL, the cholesterol known to protect,
-a coefficient of $\exHDL$, as if more of it made the disease progress faster. The LASSO
+opposite sign that mostly cancel, and it gives HDL, whose low levels are a risk factor
+for diabetes \cite{wilson2007}, a coefficient of $\exHDL$, as if more of it made the
+disease progress faster. The LASSO
 path ends at the least-squares fit, so it gets there too. A cap on every coefficient,
 $|\beta_j|\le u$, stops the offsetting; we take $u=\exCap$, half the largest
 least-squares coefficient.
@@ -111,7 +112,9 @@ least-squares coefficient.
 Figure~\ref{fig:example} shows what the cap does. Without it the path passes the cap at
 \exOver{} of its \exKnots{} knots and ends with HDL positive. With it no coefficient
 passes the cap, and HDL stays negative along the whole path, although no sign is
-imposed. The capped path has \exCapped{} knots. This note computes the exact path under
+imposed. That does not hang on the choice of $u$: every whole-number cap from
+\exKeepLo{} to \exKeepHi{} keeps HDL negative along the whole path, and only much
+tighter or much looser caps let it turn positive. The capped path has \exCapped{} knots. This note computes the exact path under
 caps, signs on some of the coefficients and equality constraints $A\beta=b$, among them
 the zero sum of a regression on compositional data. It does not cover general
 inequality rows $C\beta\le h$, which fall outside both of its encodings
@@ -140,6 +143,12 @@ from cvxcla import Lasso
 caps = Lasso(X, y, g=np.vstack([np.eye(p), -np.eye(p)]), h=np.full(2 * p, u))
 knots = caps.path   # each knot: lam, beta, active
 \end{lstlisting}
+So a cap alone does not need the CLA. But \texttt{cvxcla.Lasso} takes one kind of
+constraint at a time: caps, nonnegativity on every coefficient, or homogeneous rows
+$A\beta=0$. It takes neither signs on only some of the coefficients nor a nonzero
+right-hand side, and so neither \emph{Pinned} nor \emph{Zero-sum, signs} of
+Table~\ref{tab:evidence}. The CLA takes all of these, and their combinations within the limits of
+Section~\ref{sec:limits}, unchanged, through the same two encodings.
 
 \paragraph{Why a portfolio algorithm} Schmelzer and Hastie \cite{perspective} prove that
 the CLA and the constrained LASSO \cite{james2020,gaines2018} trace the same curve.
@@ -815,6 +824,13 @@ R.~J. Tibshirani.
 \newblock The lasso problem and uniqueness.
 \newblock \emph{Electronic Journal of Statistics}, 7:1456--1490, 2013.
 \newblock \href{https://doi.org/10.1214/13-EJS815}{\texttt{doi:10.1214/13-EJS815}}.
+
+\bibitem{wilson2007}
+P.~W.~F. Wilson, J.~B. Meigs, L.~Sullivan, et al.
+\newblock Prediction of incident diabetes mellitus in middle-aged adults: the
+{F}ramingham {O}ffspring {S}tudy.
+\newblock \emph{Archives of Internal Medicine}, 167(10):1068--1074, 2007.
+\newblock \href{https://doi.org/10.1001/archinte.167.10.1068}{\texttt{doi:10.1001/archinte.167.10.1068}}.
 
 
 \end{thebibliography}
