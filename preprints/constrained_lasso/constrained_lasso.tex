@@ -515,9 +515,11 @@ solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midpoint of every s
 where the path is affine in $\lambda$ and so known exactly from its two ends. This
 comparison is only as sharp as the solver, which reaches about $10^{-8}$ relative.
 Third, at every knot and every midpoint we evaluate the optimality conditions of
-\eqref{eq:lasso} directly, without reference to either form, solving for the
-multipliers $\kappa$ of $A\beta=b$ and $\eta\ge0$ of the active rows of $C\beta\le h$ on
-the interior of the support. With $r=G\beta-c+A\trans\kappa+C\trans\eta$ they are $r_j=-\lambda\operatorname{sign}\beta_j$ on the
+\eqref{eq:lasso} directly, without reference to either form. A linear program picks
+the multipliers $\kappa$ of $A\beta=b$ and $\eta\ge0$ of the active rows of $C\beta\le h$
+that satisfy the conditions best, and the violation is then evaluated exactly at those
+multipliers, so the solver's own tolerance cannot hide one. With
+$r=G\beta-c+A\trans\kappa+C\trans\eta$ the conditions are $r_j=-\lambda\operatorname{sign}\beta_j$ on the
 interior of the support; $|r_j|\le\lambda$ at zero, or only $r_j\ge-\lambda$ under
 $\beta_j\ge0$ and $r_j\le\lambda$ under $\beta_j\le0$; $r_j\le-\lambda$ at a cap $u_j>0$
 and $r_j\ge\lambda$ at a floor $l_j<0$; $\eta\ge0$; and primal feasibility. The

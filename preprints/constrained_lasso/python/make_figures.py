@@ -122,10 +122,10 @@ def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray) -> float:
     :math:`r_j = -\lambda\,\mathrm{sign}\,\beta_j`, one at a cap :math:`u_j>0` needs
     :math:`r_j \le -\lambda` and one at a floor :math:`l_j<0` needs :math:`r_j\ge\lambda`.
     A zero coordinate needs :math:`r_j\ge-\lambda` and :math:`r_j\le\lambda`, less the
-    side a sign constraint (:math:`l_j=0` or :math:`u_j=0`) takes away, and
-    :math:`\eta\ge0`. The multipliers are solved for on the interior coordinates; at
-    :math:`\beta=0`, where nothing pins them down, a linear program picks the ones that
-    violate the conditions least. Primal feasibility is included.
+    side a sign constraint (:math:`l_j=0` or :math:`u_j=0`) takes away. The multipliers
+    are not taken from anywhere: a linear program picks :math:`\kappa` and
+    :math:`\eta\ge0` to make the worst of these violations as small as it can be, which
+    is zero exactly when beta is optimal. Primal feasibility is added on top.
     """
     gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
     tol = 1e-9 * max(1.0, np.abs(beta).max())
@@ -133,33 +133,40 @@ def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray) -> float:
     at_up, at_lo = ~zero & (beta >= prob.upper - tol), ~zero & (beta <= prob.lower + tol)
     inner = ~zero & ~at_up & ~at_lo
     active = prob.c @ beta >= prob.h - tol * max(1.0, np.abs(prob.h).max(initial=1.0))
-    rows = np.vstack([prob.a, prob.c[active]])
-    r = gram @ beta - c
-    eta = np.zeros(0)
-    if rows.shape[0] and inner.any():
-        mult = np.linalg.lstsq(rows[:, inner].T, -lam * np.sign(beta[inner]) - r[inner], rcond=None)[0]
-        r = r + rows.T @ mult
-        eta = mult[prob.a.shape[0]:]
-    elif prob.a.shape[0]:
-        m = prob.a.shape[0]
-        lhs = np.vstack([prob.a.T[prob.lower < 0], -prob.a.T[prob.upper > 0]])
-        rhs = np.concatenate([lam - r[prob.lower < 0], lam + r[prob.upper > 0]])
-        lp = linprog(np.append(np.zeros(m), 1.0), A_ub=np.hstack([lhs, -np.ones((len(rhs), 1))]), b_ub=rhs,
-                     bounds=[(None, None)] * m + [(0.0, None)], method="highs")
-        r = r + prob.a.T @ lp.x[:m]
-    viol = np.concatenate([
-        np.abs(r[inner] + lam * np.sign(beta[inner])),
-        np.maximum(r[at_up] + lam, 0),
-        np.maximum(lam - r[at_lo], 0),
-        np.maximum(r[zero & (prob.lower < 0)] - lam, 0),
-        np.maximum(-r[zero & (prob.upper > 0)] - lam, 0),
+    rows = np.vstack([prob.a, prob.c[active]])  # r = r0 + rows^T mult
+    m, k = prob.a.shape[0], rows.shape[0]
+    r0 = gram @ beta - c
+    # Each condition as  sigma * (r0_j + rows_j^T mult) + offset <= t, for unknowns (mult, t).
+    sigma, offset, coord = [], [], []
+    def need(mask: np.ndarray, sign: float, off: np.ndarray) -> None:
+        for j, o in zip(np.flatnonzero(mask), off[mask], strict=True):
+            sigma.append(sign); offset.append(o); coord.append(j)
+    s_inner = lam * np.sign(beta)
+    need(inner, 1.0, s_inner)              #  r_j + lam s_j <= t
+    need(inner, -1.0, -s_inner)            # -(r_j + lam s_j) <= t
+    need(at_up, 1.0, np.full_like(beta, lam))
+    need(at_lo, -1.0, np.full_like(beta, lam))
+    need(zero & (prob.lower < 0), 1.0, np.full_like(beta, -lam))
+    need(zero & (prob.upper > 0), -1.0, np.full_like(beta, -lam))
+    sigma, offset, coord = np.array(sigma), np.array(offset), np.array(coord, dtype=int)
+    if len(coord):
+        lhs = np.hstack([sigma[:, None] * rows.T[coord], -np.ones((len(coord), 1))])
+        rhs = -(sigma * r0[coord] + offset)
+        lp = linprog(np.append(np.zeros(k), 1.0), A_ub=lhs, b_ub=rhs,
+                     bounds=[(None, None)] * m + [(0.0, None)] * (k - m) + [(0.0, None)], method="highs")
+        # The LP only meets its rows to its own tolerance, so the violation is evaluated
+        # again, exactly, at the multipliers it found: an upper bound that rounding cannot hide.
+        mult = np.concatenate([lp.x[:m], np.maximum(lp.x[m:k], 0.0)])
+        worst = float(np.max(sigma * (r0 + rows.T @ mult)[coord] + offset, initial=0.0))
+    else:
+        worst = 0.0
+    feas = np.concatenate([
         np.abs(prob.a @ beta - prob.b),
         np.maximum(prob.c @ beta - prob.h, 0),
-        np.maximum(-eta, 0),
         np.maximum(beta - prob.upper, 0),
         np.maximum(prob.lower - beta, 0),
     ])
-    return float(viol.max(initial=0.0) / np.abs(c).max())
+    return float(max(worst, feas.max(initial=0.0)) / np.abs(c).max())
 
 
 def reference(prob: Lasso, lam: float) -> np.ndarray:
