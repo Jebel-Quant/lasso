@@ -175,7 +175,12 @@ knot of the LASSO path & turning point of the CLA \\
 \label{tab:dictionary}
 \end{table}
 
-Exact paths of the constrained LASSO are not new. Gaines, Kim and Zhou
+Exact paths of the constrained LASSO are not new. Rosset and Zhu \cite{rosset2007}
+characterise the regularised problems whose solution path is piecewise linear, a class
+that contains it. Zhou and Lange \cite{zhou2013} trace the solution of a quadratic
+program under linear equality and inequality constraints as an exact penalty on the
+constraints grows. The generalised lasso of Tibshirani and Taylor \cite{tibshirani2011},
+with penalty $\lambda\|D\beta\|_1$, has an exact path through its dual. Gaines, Kim and Zhou
 \cite{gaines2018} derive a path algorithm for it from its optimality conditions, which
 tracks the active set and the multipliers of the linear constraints as $\lambda$
 decreases. It takes homogeneous inequality rows as well, and inequality rows under a
@@ -800,6 +805,13 @@ F.~Pedregosa et al.
 \newblock Scikit-learn: machine learning in Python.
 \newblock \emph{Journal of Machine Learning Research}, 12:2825--2830, 2011.
 
+\bibitem{rosset2007}
+S.~Rosset and J.~Zhu.
+\newblock Piecewise linear regularized solution paths.
+\newblock \emph{The Annals of Statistics}, 35(3):1012--1030, 2007.
+\newblock \href{https://doi.org/10.1214/009053606000001370}{\texttt{doi:10.1214/009053606000001370}}.
+
+
 \bibitem{perspective}
 T.~Schmelzer and T.~Hastie.
 \newblock The Critical Line Algorithm and the constrained LASSO: one curve, two
@@ -836,6 +848,12 @@ R.~Tibshirani.
 1996.
 \newblock \href{https://doi.org/10.1111/j.2517-6161.1996.tb02080.x}{\texttt{doi:10.1111/j.2517-6161.1996.tb02080.x}}.
 
+\bibitem{tibshirani2011}
+R.~J. Tibshirani and J.~Taylor.
+\newblock The solution path of the generalized lasso.
+\newblock \emph{The Annals of Statistics}, 39(3):1335--1371, 2011.
+\newblock \href{https://doi.org/10.1214/11-AOS878}{\texttt{doi:10.1214/11-AOS878}}.
+
 \bibitem{tibshirani2013}
 R.~J. Tibshirani.
 \newblock The lasso problem and uniqueness.
@@ -848,6 +866,13 @@ P.~W.~F. Wilson, J.~B. Meigs, L.~Sullivan, et al.
 {F}ramingham {O}ffspring {S}tudy.
 \newblock \emph{Archives of Internal Medicine}, 167(10):1068--1074, 2007.
 \newblock \href{https://doi.org/10.1001/archinte.167.10.1068}{\texttt{doi:10.1001/archinte.167.10.1068}}.
+
+
+\bibitem{zhou2013}
+H.~Zhou and K.~Lange.
+\newblock A path algorithm for constrained estimation.
+\newblock \emph{Journal of Computational and Graphical Statistics}, 22(2):261--283, 2013.
+\newblock \href{https://doi.org/10.1080/10618600.2012.681248}{\texttt{doi:10.1080/10618600.2012.681248}}.
 
 
 \end{thebibliography}
