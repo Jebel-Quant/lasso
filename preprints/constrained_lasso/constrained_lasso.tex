@@ -71,19 +71,12 @@ Schmelzer and Hastie showed that the solution path of the constrained LASSO and 
 path of Markowitz's Critical Line Algorithm (CLA) are the same curve. This note checks
 that identity numerically. It poses a constrained regression as a portfolio, in a
 penalty form or a budget form, and hands it to a released CLA written for portfolios.
-The test problems include coefficient caps on the diabetes data, inequality rows, and
-zero-sum regressions on simulated and real compositional data. The paths reproduce LARS
-to rounding error and an interior-point solver to the solver's accuracy, and on problems
-of up to 500 predictors they meet the LASSO's optimality conditions to within
-$5\times10^{-15}$. Two path algorithms derived for the LASSO agree with the CLA once
-their ridge term or their start is corrected. On problems built to break a path
-algorithm, with columns correlated to \stRho{} or nearly duplicated, the KKT residuals
-stay below \stKKT{}, and where a solve is numerically singular the CLA stops with an
-error. The constraints that put the two encodings on a degenerate start (a monotone
-fit, caps or inequality rows under a zero sum, and weights that sum to one) are traced
-exactly as well: \texttt{cvxcla} relaxes them, extrapolates, and certifies the result.
-So is a zero sum with more predictors than observations, where the Gram matrix is
-singular. Only rows that exclude $\beta=0$ stay out of reach.
+On caps, signs, equality and inequality rows, monotone fits and zero sums, on simulated
+and real data, up to 500 predictors and on problems built to break a path algorithm,
+the paths reproduce LARS and an interior-point solver and meet the LASSO's optimality
+conditions to rounding, or the CLA stops with an error. Only rows that exclude $\beta=0$
+stay out of reach. The checks also exposed two defects in the CLA itself, now fixed,
+that refused ordinary portfolio problems.
 
 \medskip\noindent
 \textbf{Keywords:} constrained LASSO; critical line algorithm; solution path; least angle
@@ -156,7 +149,9 @@ $\lambda$ is a risk tolerance. Portfolio managers have always needed constraints
 as a budget, position limits and sector exposures, and Markowitz built them into the
 CLA from the start. If the identity holds, a CLA written and tested for portfolios
 should return the knots of a constrained LASSO, constraints included, with no change to
-its code. This note checks that prediction. The two encodings,
+its code. This note checks that prediction. It was not quite met: the checks exposed
+two defects in the CLA that also refuse ordinary portfolio problems, and they were
+fixed in \texttt{cvxcla} 2.6.0, the release used here (Section~\ref{sec:limits}). The two encodings,
 Propositions~\ref{prop:penalty} and~\ref{prop:budget}, are proved here from the
 definition of the CLA. They need nothing from \cite{perspective} beyond the classical
 equivalence of the bound and penalty forms of the LASSO; that paper supplies the
@@ -202,17 +197,19 @@ alone, the Python package \texttt{c-lasso} \cite{classo} has a path algorithm wi
 small ridge term added. Neither was derived with portfolios in mind, so
 Section~\ref{sec:evidence} uses both as independent checks. The CLA is an active-set
 method of the same kind, following one family of quadratic programs; the difference is
-that it was written for portfolios and is used here as released. That costs some
-generality: the encodings need a nondegenerate start and cannot take homogeneous
-inequality rows (Section~\ref{sec:limits}). There are two:
+that it was written for portfolios and is used here as released. On their own the
+encodings need a nondegenerate start; where they do not have one, \texttt{cvxcla}
+relaxes the constraint (Section~\ref{sec:limits}). There are two, and both are needed:
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
 parameter, and takes coefficient bounds, general equality constraints $A\beta=b$ and
-inequality rows $C\beta\le h$ with $h>0$. It is the form that solves the example;
+inequality rows $C\beta\le h$. It is the general form, and the one that solves the
+example;
 \item the \emph{budget form} (Section~\ref{sec:budget}) keeps the $\ell_1$ budget, as
 Markowitz's long-only, fully invested problem with a cash asset. It takes homogeneous
 constraints such as the zero sum $\one\trans\beta=0$ of a regression on compositional
-data, which the penalty form cannot start from.
+data directly, in one run. The penalty form reaches a zero sum only by relaxing it,
+which fails on the largest problem here (Table~\ref{tab:encodings}).
 \end{enumerate}
 Each is a few lines on top of a released CLA. Readers who know the CLA can skip
 Section~\ref{sec:cla}.
@@ -226,7 +223,7 @@ constrained LASSO is
 \min_\beta\ \tfrac12\|y-X\beta\|_2^2+\lambda\|\beta\|_1
 \quad\text{s.t.}\quad A\beta=b,\quad C\beta\le h,\quad l\le\beta\le u,
 \end{equation}
-with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$, $h>0$ and $l_j\le0\le u_j$, infinite
+with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$, $h\ge0$ and $l_j\le0\le u_j$, infinite
 entries allowed. With no rows and infinite bounds it is Tibshirani's LASSO. We assume,
 as \cite{perspective} does, that $\mathrm{L}_\lambda$ has a unique minimiser
 $\beta(\lambda)$ for every $\lambda>0$. This is the generic case: for the LASSO without
@@ -753,6 +750,62 @@ One kind of row stays out of reach. A row that excludes $\beta=0$, $C\beta\le h$
 some $h_r<0$, cannot be relaxed into a feasible start, because every encoding here
 starts the path at $\beta=0$; Gaines et al.\ start from a feasible point and take it.
 
+\paragraph{One encoding or two} With the relaxation, the penalty form takes a zero sum
+too, which raises the question whether the budget form is still needed.
+Table~\ref{tab:encodings} sends every zero-sum problem of Tables~\ref{tab:evidence}
+to~\ref{tab:stress} through the penalty form as well, with caps so loose they never
+bind. On all but one it returns the budget form's knots to rounding. On the largest,
+$p=500$ parts and over 500 knots, the extrapolated path fails its certificate and
+\texttt{cvxcla} declines it, while the budget form traces it in one run
+(Table~\ref{tab:scale}). The relaxation also costs a second run of the CLA. So the
+penalty form is the general encoding, and the budget form is the direct one for
+homogeneous constraints, and the one in which a regression is visibly a portfolio
+(Figure~\ref{fig:portfolio}(b)).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrcc}
+\toprule
+problem & budget & penalty & gap & KKT \\
+\midrule
+\input{figures/encodings.tex}
+\end{tabular}
+\caption{Every zero-sum problem through both encodings: the knots of the budget form, and
+of the penalty form with the zero sum relaxed, extrapolated and certified. \emph{Gap}:
+largest knot discrepancy between the two, relative, as in Table~\ref{tab:evidence};
+\emph{KKT}: of the penalty form's path.}
+\label{tab:encodings}
+\end{table}
+
+\paragraph{What the checks did for the CLA} Two of the cases in this section were
+defects of the CLA, not of the encodings, and both refuse ordinary portfolio problems.
+A tie for the largest expected return, two assets with the same forecast, makes the
+starting vertex non-unique; the CLA of \texttt{cvxcla} 2.5.0 refused it, and 2.6.0
+starts on the tied face where the quadratic term is smallest, the fix the flat start
+needed. A covariance of low rank, such as a factor model without specific risk, makes
+the free block singular; 2.5.0 refused it, and 2.6.0 solves it on the null space of the
+active constraints, the fix the case $p>n$ needed. Table~\ref{tab:portfolios} traces
+both with 2.6.0 and checks every turning point against an interior-point solve of the
+same Markowitz problem. Checking the identity on regressions thus made the portfolio
+solver better at portfolios.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrc}
+\toprule
+portfolio problem & $n$ & rank & turning points & worse \\
+\midrule
+\input{figures/portfolios.tex}
+\end{tabular}
+\caption{Two long-only, fully invested Markowitz problems that the CLA of
+\texttt{cvxcla} 2.5.0 refused, traced by 2.6.0. \emph{Worse}: the most by which a
+turning point's objective exceeds an interior-point solve of the same problem, relative
+to the objective's size at the start; it is within the solver's tolerance.}
+\label{tab:portfolios}
+\end{table}
+
 \section{Conclusion}
 
 Schmelzer and Hastie \cite{perspective} prove that a constrained LASSO is a portfolio
@@ -763,7 +816,9 @@ exact knots or stops with an error when its arithmetic cannot be trusted. Where 
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
 certifies the result, so the checks reach monotone fits, caps and rows under a zero sum
 and weights that sum to one; with a singular Gram they reach zero sums with $p>n$. Only
-rows that exclude $\beta=0$ stay out. The practical consequence is simple: \texttt{lars\_path}
+rows that exclude $\beta=0$ stay out. The checks also made the CLA better at
+portfolios, where it now takes tied forecasts and low-rank covariances. The practical
+consequence is simple: \texttt{lars\_path}
 cannot take even a cap on the coefficients, and a CLA that takes general linear rows
 can.
 

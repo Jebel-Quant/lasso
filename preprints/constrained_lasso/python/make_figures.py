@@ -47,6 +47,7 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from cvxcla import CLA as CvxclaCLA
 from cvxcla import Lasso as CvxclaLasso
 from scipy.optimize import linprog, nnls
 from sklearn.datasets import load_diabetes
@@ -630,6 +631,119 @@ def monotone_tex(rows: list[MonotoneRow]) -> str:
 
 
 # --------------------------------------------------------------------------------------
+# One encoding or two: every zero sum through the penalty form alone
+# --------------------------------------------------------------------------------------
+@dataclass
+class EncodingRow:
+    """A zero-sum problem through both encodings: the budget form, and the penalty form relaxed."""
+
+    name: str
+    knots: int  # budget form
+    penalty: int | None  # penalty form, relaxed and extrapolated; None where cvxcla declines
+    gap: float | None  # largest knot discrepancy between the two, relative, as in Table 2
+    kkt: float | None  # of the penalty form's path
+    reason: str | None = None  # cvxcla's reason, where it declines
+
+
+def through_penalty(prob: Lasso) -> Lasso:
+    """The same problem with caps so loose they never bind, which sends cvxcla to the penalty form.
+
+    Under a zero sum the penalty form starts degenerate, so cvxcla relaxes the zero sum,
+    traces twice, extrapolates and certifies (Section 6); the caps change nothing else.
+    """
+    big = 1e6 * max(1.0, float(np.abs(prob.x.T @ prob.y).max()))
+    return Lasso(prob.x, prob.y, a=prob.a, b=prob.b, lower=np.maximum(prob.lower, -big),
+                 upper=np.minimum(prob.upper, big), c=prob.c, h=prob.h)
+
+
+def encodings() -> list[EncodingRow]:
+    """Every zero-sum problem of Tables 2 to 4 through both encodings."""
+    probs = problems()
+    cases = {name: probs[name] for name in ("zero-sum", "zero-sum, signs", "sCD14") if name in probs}
+    cases["wide, zero-sum"] = stress_problems()["wide, zero-sum"][0]
+    n, p = SCALE[-1]
+    cases[f"zero-sum, $p={p}$"] = large_composition(n, p)
+    rows = []
+    for name, prob in cases.items():
+        budget = trace(prob)
+        try:
+            path = trace(through_penalty(prob))
+        except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
+            rows.append(EncodingRow(name, len(budget.lam), None, None, None, str(err).split(":")[0]))
+            continue
+        assert np.abs(path.beta).max() < 1e-3 * through_penalty(prob).upper.max()  # the caps never bind
+        gap = float("nan")
+        if len(path.lam) == len(budget.lam):
+            gap = max(float(np.abs(path.beta - budget.beta).max() / np.abs(budget.beta).max()),
+                      float(np.abs(path.lam - budget.lam).max() / budget.lam[0]))
+        rows.append(EncodingRow(name, len(budget.lam), len(path.lam), gap, certify(prob, path)))
+    return rows
+
+
+def encodings_tex(rows: list[EncodingRow]) -> str:
+    """The body of Table 5, with its closing rule."""
+    def line(r: EncodingRow) -> str:
+        head = f"{r.name:<22} & {r.knots:>3} & "
+        if r.penalty is None:
+            return head + r"\multicolumn{3}{c}{declined}\\" + "\n"
+        return head + f"{r.penalty:>3} & {sci(r.gap)} & {sci(r.kkt)}\\\\\n"
+    return "".join(line(r) for r in rows) + "\\bottomrule\n"
+
+
+# --------------------------------------------------------------------------------------
+# What the checks did for the CLA: two portfolio problems
+# --------------------------------------------------------------------------------------
+@dataclass
+class PortfolioRow:
+    """A long-only, fully invested Markowitz problem, its CLA trace, and an independent check."""
+
+    name: str
+    n: int
+    rank: int  # of the covariance
+    points: int  # turning points
+    worse: float  # most by which the CLA's objective exceeds an interior-point solve's, relative
+
+
+def portfolio_problems() -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Two portfolio problems the CLA of cvxcla 2.5.0 refused, as (mean, covariance)."""
+    rng = np.random.default_rng(SEED)
+    tied = np.array([0.05, 0.08, 0.08, 0.03, 0.06, 0.02, 0.07, 0.04])  # two assets share the top forecast
+    loadings = rng.standard_normal((12, 3))
+    return {
+        "tied maximum return": (tied, np.cov(rng.standard_normal((200, len(tied))), rowvar=False)),
+        "factor model, no specific risk": (0.05 * rng.standard_normal(12), 1e-3 * loadings @ loadings.T),
+    }
+
+
+def portfolios() -> list[PortfolioRow]:
+    """Each portfolio problem traced by cvxcla's CLA, every turning point checked against Clarabel."""
+    rows = []
+    for name, (mean, cov) in portfolio_problems().items():
+        n = len(mean)
+        points = CvxclaCLA(mean=mean, covariance=cov, lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
+                           a=np.ones((1, n)), b=np.ones(1)).turning_points
+        finite = [t for t in points if np.isfinite(t.lamb)]
+        scale = max(t.lamb for t in finite) * float(np.abs(mean).max())  # the objective's size at the start
+        worse = 0.0
+        for t in finite:
+            w = cp.Variable(n)
+            obj = 0.5 * cp.quad_form(w, cp.psd_wrap(cov)) - t.lamb * mean @ w
+            cp.Problem(cp.Minimize(obj), [w >= 0, cp.sum(w) == 1]).solve(**CONIC)
+            mine = 0.5 * t.weights @ cov @ t.weights - t.lamb * mean @ t.weights
+            worse = max(worse, (mine - float(obj.value)) / scale)
+        rows.append(PortfolioRow(name, n, int(np.linalg.matrix_rank(cov)), len(points), worse))
+    return rows
+
+
+def portfolios_tex(rows: list[PortfolioRow]) -> str:
+    """The body of Table 6, with its closing rule."""
+    def worse(x: float) -> str:  # below rounding, the measured value is noise: say so rather than print it
+        return r"$<10^{-15}$" if x < 1e-15 else sci(x)
+    return "".join(f"{r.name:<32} & {r.n:>2} & {r.rank:>2} & {r.points:>2} & {worse(r.worse)}\\\\\n"
+                   for r in rows) + "\\bottomrule\n"
+
+
+# --------------------------------------------------------------------------------------
 # The checks
 # --------------------------------------------------------------------------------------
 def against_lars(prob: Lasso, path: LassoPath, positive: bool = False) -> float:
@@ -914,6 +1028,17 @@ def main() -> None:
             print(f"  {r.name:<22} cond {r.cond:.1e}: {r.knots} knots, {r.reference} gap {r.gap:.1e}, KKT {r.kkt:.1e}, {own}")
     mono = monotone_rows()
     (OUT / "monotone.tex").write_text(monotone_tex(mono))
+    enc = encodings()
+    (OUT / "encodings.tex").write_text(encodings_tex(enc))
+    print("\nzero sums, budget form against the penalty form relaxed:")
+    for r in enc:
+        rest = f"declined ({r.reason})" if r.penalty is None else f"{r.penalty} knots, gap {r.gap:.1e}, KKT {r.kkt:.1e}"
+        print(f"  {r.name:<22} budget {r.knots:3d} knots; penalty {rest}")
+    port = portfolios()
+    (OUT / "portfolios.tex").write_text(portfolios_tex(port))
+    print("\nportfolios cvxcla 2.5.0 refused:")
+    for r in port:
+        print(f"  {r.name:<32} n = {r.n}, rank {r.rank}: {r.points} turning points, worse than Clarabel by {r.worse:.1e}")
     print("\nmonotone fit, rows relaxed to h:")
     for r in mono:
         print(f"  h = {r.h:.0e}: {r.knots} knots, KKT {r.kkt:.1e}, gap to h = 0 {r.gap:.1e} ({r.gap / r.h:.2f} h)")
@@ -1063,6 +1188,24 @@ def test_monotone() -> None:
     for r in rows:
         assert r.kkt < 1e-10, r
         assert abs(r.gap / r.h - 1) < 0.005, r  # the note says: h itself, to two digits
+
+
+def test_encodings() -> None:
+    """The penalty form, relaxed, reproduces the budget form on every zero sum but the largest, which it declines."""
+    rows = encodings()
+    *small, largest = rows
+    for r in small:
+        assert r.penalty == r.knots, r
+        assert r.gap < 1e-12 and r.kkt < 1e-12, r
+    assert largest.penalty is None and "could not be resolved" in largest.reason, largest
+
+
+def test_portfolios() -> None:
+    """Both portfolio problems are traced, and no turning point is beaten by Clarabel beyond its tolerance."""
+    rows = portfolios()
+    assert [r.rank for r in rows] == [8, 3]
+    for r in rows:
+        assert r.points > 2 and r.worse < 1e-7, r
 
 
 def test_cholesterol_row_binds() -> None:
