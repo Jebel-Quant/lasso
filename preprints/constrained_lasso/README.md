@@ -12,10 +12,12 @@ The note opens with the diabetes LASSO, capped: every coefficient must satisfy
 each other and gives HDL a positive coefficient. scikit-learn's `lars_path` takes no
 constraint but `positive`, so it cannot cap. The CLA computes the exact path under
 caps, signs, equality constraints, among them the zero sum of compositional data, and
-inequality rows `Cβ ≤ h` with `h > 0`.
+inequality rows `Cβ ≤ h` with `h ≥ 0`. That includes the cases where an encoding starts
+on a degenerate vertex (a monotone fit, caps or rows under a zero sum, weights that sum
+to one, a zero sum with p > n), which cvxcla relaxes, extrapolates and certifies.
 
 Every path comes from one call, `cvxcla.Lasso` ([`cvxcla`](https://github.com/cvxgrp/cvxcla)
-2.5.0, pinned). This folder holds no CLA and no encoding of its own; it states the
+2.6.0, pinned). This folder holds no CLA and no encoding of its own; it states the
 problems, calls `cvxcla`, and checks the paths without it. `cvxcla.Lasso` runs the CLA in
 Markowitz's general form, `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `Gx ≤ h`,
 `l ≤ x ≤ u`, traced from `γ = ∞` down to 0, through one of the two encodings the note

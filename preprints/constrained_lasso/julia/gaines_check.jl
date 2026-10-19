@@ -145,9 +145,10 @@ function main()
     exact = filter(n -> haskey(started, n) && !(n in wide), names)
     # As shipped every path starts off the exact one and stays off it; from the exact
     # first knot the walk is on it, except where n < p and the algorithm adds its ridge.
-    # Flag it if any of this ever changes.
+    # Flag it if any of this ever changes. "Off" is well above the 1e-13 at which exact
+    # paths agree: on a flat start (Sum to one) the shipped walk comes within 1e-5.
     for n in keys(shipped)
-        @assert shipped[n] > 1e-3 (n, shipped[n])
+        @assert shipped[n] > 1e-6 (n, shipped[n])
     end
     for n in exact
         @assert started[n] < 1e-10 (n, started[n])

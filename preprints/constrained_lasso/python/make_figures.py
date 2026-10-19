@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "cvxcla==2.5.0",
+#     "cvxcla==2.6.0",
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
 #     "numpy==2.5.4",
@@ -422,6 +422,27 @@ def signed_parts(p: int) -> np.ndarray:
     return np.arange(p) % 2 == 0
 
 
+def donors(seed: int = SEED, t: int = 40, j: int = 20) -> tuple[np.ndarray, np.ndarray]:
+    """A unit's outcomes over t periods as a combination of j donors' outcomes, synthetic-control style.
+
+    The donors share three factors; the truth weights three of them, 0.6, 0.5 and -0.1,
+    which sum to one.
+    """
+    rng = np.random.default_rng(seed)
+    f = rng.standard_normal((t, 3))
+    x = f @ rng.standard_normal((3, j)) + 0.5 * rng.standard_normal((t, j))
+    w = np.zeros(j)
+    w[[2, 5, 11]] = [0.6, 0.5, -0.1]
+    return x, x @ w + 0.2 * rng.standard_normal(t)
+
+
+def zero_sum_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """The least-squares fit under sum(beta) = 0, from its bordered normal equations."""
+    p = x.shape[1]
+    kkt = np.block([[x.T @ x, np.ones((p, 1))], [np.ones((1, p)), np.zeros((1, 1))]])
+    return np.linalg.solve(kkt, np.append(x.T @ y, 0.0))[:p]
+
+
 def problems() -> dict[str, Lasso]:
     """Every problem the note reports, by the name its table uses."""
     xd, yd, _ = diabetes()
@@ -434,6 +455,9 @@ def problems() -> dict[str, Lasso]:
     _, _, names = diabetes()
     chol = np.isin(names, ["s1", "s2", "s3"]).astype(float)
     net = 0.5 * abs(chol @ ols)  # half the least-squares net effect of the cholesterol measures
+    zcap = 0.5 * np.abs(zero_sum_fit(xc, yc)).max()  # half the largest zero-sum least-squares coefficient
+    q = xc.shape[1]
+    xs, ys = donors()
     return {
         "plain": Lasso(xd, yd),
         "nonnegative": Lasso(xd, yd, lower=np.zeros(p)),
@@ -444,6 +468,9 @@ def problems() -> dict[str, Lasso]:
         "zero-sum": Lasso(xc, yc, a=np.ones(xc.shape[1]), b=np.zeros(1)),
         "zero-sum, signs": Lasso(xc, yc, a=np.ones(xc.shape[1]), b=np.zeros(1),
                                  lower=np.where(signed_parts(xc.shape[1]), 0.0, -np.inf)),
+        "zero-sum, caps": Lasso(xc, yc, a=np.ones(q), b=np.zeros(1), lower=np.full(q, -zcap), upper=np.full(q, zcap)),
+        "monotone": monotone(0.0),
+        "sum to one": Lasso(xs, ys, a=np.ones(xs.shape[1]), b=np.ones(1)),
     } | ({"sCD14": scd14()[0]} if SCD14.exists() else {})
 
 
@@ -593,6 +620,7 @@ def monotone_tex(rows: list[MonotoneRow]) -> str:
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "moP": str(len(MONOTONE_TRUTH)),
         "moKnots": str(rows[0].knots),
+        "moExact": str(len(trace(monotone(0.0)).lam)),  # the h = 0 path, from cvxcla's extrapolation
         "moRatioLo": f"{min(ratios):.2f}",
         "moRatioHi": f"{max(ratios):.2f}",
         "moKKT": sci(max(r.kkt for r in rows)),
@@ -996,6 +1024,9 @@ def test_scale() -> None:
 def test_stress() -> None:
     """On the hostile problems the path is exact or declined, never wrong.
 
+    Only the near-duplicate without a cap is declined; Wide, zero-sum, which needs a
+    singular Gram solved on the zero sum's null space, is traced (cvxcla 2.6.0).
+
     Against LARS, two exact paths can part by as much as the conditioning allows,
     cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
     rounding. Against the interior-point solver, the solver's objective is never better
@@ -1004,11 +1035,12 @@ def test_stress() -> None:
     """
     rows = {r.name: r for r in stress()}
     every = len(STRESS_SEEDS)
-    assert {n: r.declined for n, r in rows.items() if r.declined} == {"duplicate 1e-06": every, "wide, zero-sum": every}
+    assert {n: r.declined for n, r in rows.items() if r.declined} == {"duplicate 1e-06": every}
     for r in rows.values():
         if r.declined:
             continue
-        assert r.kkt < 1e-12, r
+        # Wide, zero-sum has cond(X) near 1e16, and its residuals reach a few 1e-12.
+        assert r.kkt < 1e-11, r
         if r.reference == "LARS":
             assert r.gap < r.cond**2 * np.finfo(float).eps, r
             assert r.ref_kkt < 1e-12, r
@@ -1017,9 +1049,15 @@ def test_stress() -> None:
 
 
 def test_monotone() -> None:
-    """h = 0 is refused; each relaxed path is exact for its h, keeps its knots, and lies h from h = 0."""
-    with pytest.raises(ValueError, match="strictly positive"):
-        trace(monotone(0.0))
+    """The h = 0 path is exact; each relaxed path is exact for its h, keeps its knots, and lies h from h = 0.
+
+    The second half is why the first works: cvxcla traces h = eps and h = 2 eps and
+    extrapolates, which is exact when the knots move linearly with h.
+    """
+    prob = monotone(0.0)
+    path = trace(prob)
+    assert certify(prob, path) < 1e-12
+    assert (prob.c @ path.beta.T <= 1e-12).all()
     rows = monotone_rows()
     assert len({r.knots for r in rows}) == 1
     for r in rows:
