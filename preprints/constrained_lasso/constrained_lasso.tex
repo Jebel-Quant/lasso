@@ -42,6 +42,8 @@
 \input{figures/classo.tex}
 \input{figures/gaines.tex}
 \input{figures/monotone.tex}
+\input{figures/floor.tex}
+\input{figures/encodings_numbers.tex}
 \input{figures/stress_numbers.tex}
 \input{figures/wide_numbers.tex}
 
@@ -153,7 +155,7 @@ CLA from the start. If the identity holds, a CLA written and tested for portfoli
 should return the knots of a constrained LASSO, constraints included, with no change to
 its code. This note checks that prediction. It was not quite met, in two ways. The
 checks exposed two defects in the CLA that also refuse ordinary portfolio problems,
-and they were fixed in \texttt{cvxcla} 2.6.0, the release used here. And where an
+and they were fixed in \texttt{cvxcla} 2.6.0; the release used here is 2.7.0. And where an
 encoding starts degenerate, the CLA alone does not suffice: \texttt{cvxcla.Lasso} runs
 it twice on a relaxed problem and combines the two paths, outside the CLA
 (Section~\ref{sec:limits}). The two encodings,
@@ -224,7 +226,7 @@ example;
 Markowitz's long-only, fully invested problem with a cash asset. It takes homogeneous
 constraints such as the zero sum $\one\trans\beta=0$ of a regression on compositional
 data directly, in one run. The penalty form reaches a zero sum only by relaxing it,
-which fails on the largest problem here (Table~\ref{tab:encodings}).
+at the cost of a second run (Table~\ref{tab:encodings}).
 \end{enumerate}
 Each is a few lines on top of a released CLA. Readers who know the CLA can skip
 Section~\ref{sec:cla}.
@@ -249,8 +251,10 @@ constrained LASSO is
 \min_\beta\ \tfrac12\|y-X\beta\|_2^2+\lambda\|\beta\|_1
 \quad\text{s.t.}\quad A\beta=b,\quad C\beta\le h,\quad l\le\beta\le u,
 \end{equation}
-with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$, $h\ge0$ and $l_j\le0\le u_j$, infinite
-entries allowed. With no rows and infinite bounds it is Tibshirani's LASSO. We assume,
+with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$ and $l_j\le0\le u_j$, infinite
+entries allowed, and a nonempty feasible set. A bound that excludes zero, such as
+$\beta_j\ge\ell$ with $\ell>0$, is written as the row $-\beta_j\le-\ell$. With no rows
+and infinite bounds it is Tibshirani's LASSO. We assume,
 as \cite{perspective} does, that $\mathrm{L}_\lambda$ has a unique minimiser
 $\beta(\lambda)$ for every $\lambda>0$. This is the generic case: for the LASSO without
 constraints it holds whenever the columns of $X$ are in general position
@@ -489,12 +493,12 @@ leaves zero. A turning point at $\gamma$ with budget multiplier $\eta$ is the kn
 $\beta=Sw/\gamma$ at $\lambda=\eta/\gamma$.
 \item Otherwise use the penalty form of Proposition~\ref{prop:penalty} and run the CLA
 from $\gamma=\infty$ to $0$. A turning point at $\gamma$ is the knot $\beta=Sz$ at
-$\lambda=\gamma$. With $b\ne0$ the start must be a unique vertex
-(Section~\ref{sec:limits}).
+$\lambda=\gamma$. With $b\ne0$, or a row with $h_r<0$, the start is the feasible point
+of smallest $\ell_1$ norm (Section~\ref{sec:limits}).
 \item Between two knots $\beta$ is affine in $\lambda$, so any other point on the path is
 an interpolation.
 \end{enumerate}
-\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.6.0)
+\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.7.0)
 carries out steps~1--4 and returns the knots. With no constraint at all it traces the
 plain LASSO by a homotopy instead.
 \end{minipage}}
@@ -554,7 +558,7 @@ interior-point solve at the midpoint of every segment (circles).}
 \label{fig:real}
 \end{figure}
 
-Every path comes from \texttt{cvxcla.Lasso} 2.6.0, with the bounds passed even where
+Every path comes from \texttt{cvxcla.Lasso} 2.7.0, with the bounds passed even where
 they are infinite, so that the CLA computes it. Where LARS applies it is the reference,
 compared knot by knot in both $\lambda$ and $\beta$. Elsewhere the reference is an
 interior-point solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midpoint of
@@ -748,7 +752,8 @@ interior-point solver, the worst over \stSeeds{} seeds. None is declined.}
 \label{sec:limits}
 
 Alone, the two forms cover bounds, equality rows with a nondegenerate start, inequality
-rows with $h>0$, and homogeneous rows with signs. Where they stop, the obstacle is at
+rows that are slack at $\beta=0$ ($h>0$) or exclude it ($h<0$), and homogeneous rows with
+signs. Where they stop, the obstacle is at
 the start, in the shape of the constraint, or in the arithmetic. This section says
 where, and how \texttt{cvxcla} carries on past the first two.
 
@@ -824,19 +829,32 @@ $\varepsilon$ from the path at $h=0$, to two digits: the knots move linearly in
 $\varepsilon$, as the extrapolation needs. Some of its segments shrink to a point at
 $h=0$, where the exact path has \moExact{} knots.
 
-One kind of row stays out of reach. A row that excludes $\beta=0$, $C\beta\le h$ with
-some $h_r<0$, cannot be relaxed into a feasible start, because every encoding here
-starts the path at $\beta=0$; Gaines et al.\ and CLASSO \cite{hobson2026} start from a
-feasible point and take it.
+\paragraph{Rows that exclude $\beta=0$} A row $C\beta\le h$ with $h_r<0$ leaves
+$\beta=0$ infeasible. The budget form starts at $\beta=0$ and cannot take it. The penalty
+form starts where the linear program of Section~\ref{sec:cla} puts it, at the feasible
+point of smallest $\ell_1$ norm, as it does for a nonhomogeneous equality row
+(\emph{Pinned}); a tie for that point gives a flat start, the case \emph{Sum to one}
+tests. Gaines et al.\ and CLASSO
+\cite{hobson2026} also start from a feasible point. \emph{Floor} tests this: the
+diabetes LASSO with $\beta_{\texttt{bmi}}$ at least half its least-squares value. Its path
+starts on the floor, with \texttt{bmi} alone, has \flKnots{} knots, lies within \flGap{}
+of an interior-point solve at every midpoint and meets the optimality conditions to
+\flKKT{}.
 
 \paragraph{One encoding or two} With the relaxation, the penalty form takes a zero sum
 too, which raises the question whether the budget form is still needed.
 Table~\ref{tab:encodings} sends every zero-sum problem of Tables~\ref{tab:evidence}
 to~\ref{tab:stress} through the penalty form as well, with caps so loose they never
-bind. On all but one it returns the budget form's knots to rounding. On the largest,
-$p=500$ parts and over 500 knots, the extrapolated path fails its certificate and
-\texttt{cvxcla} declines it, while the budget form traces it in one run
-(Table~\ref{tab:scale}). The relaxation also costs a second run of the CLA. So the
+bind. On every one it returns the budget form's knots to rounding. The largest,
+$p=500$ parts and over 500 knots, was declined by \texttt{cvxcla} 2.6.0, which tried a
+single relaxation. Its knots crowd together, the closest two \encSpacing{} times
+$\lambda_{\max}$ apart, and where two knots lie closer than the relaxation moves them,
+the two relaxed runs can meet them in different orders. The extrapolation then pairs
+knots of different events, and the certificate rejects the result. Release 2.7.0 retries
+with smaller relaxations until the two runs agree, and returns the path only once it
+passes the certificate. The budget form traces the
+same path in one run (Table~\ref{tab:scale}), while the relaxation costs at least a
+second. So the
 penalty form is the general encoding, and the budget form is the direct one for
 homogeneous constraints, and the one in which a regression is visibly a portfolio
 (Figure~\ref{fig:portfolio}(b)).
@@ -865,7 +883,7 @@ starts on the tied face where the quadratic term is smallest, the fix the flat s
 needed. A covariance of low rank, such as a factor model without specific risk, makes
 the free block singular; 2.5.0 refused it, and 2.6.0 solves it on the null space of the
 active constraints, the fix the case $p>n$ needed. Table~\ref{tab:portfolios} traces
-both with 2.6.0 and checks every turning point against an interior-point solve of the
+both with 2.7.0 and checks every turning point against an interior-point solve of the
 same Markowitz problem. Checking the identity on regressions thus made the portfolio
 solver better at portfolios.
 
@@ -879,7 +897,7 @@ portfolio problem & $n$ & rank & turning points & worse \\
 \input{figures/portfolios.tex}
 \end{tabular}
 \caption{Two long-only, fully invested Markowitz problems that the CLA of
-\texttt{cvxcla} 2.5.0 refused, traced by 2.6.0. \emph{Worse}: the most by which a
+\texttt{cvxcla} 2.5.0 refused, traced since 2.6.0. \emph{Worse}: the most by which a
 turning point's objective exceeds an interior-point solve of the same problem, relative
 to the objective's size at the start; it is within the solver's tolerance.}
 \label{tab:portfolios}
@@ -893,11 +911,12 @@ Theorem~1 and Corollary~1). The checks here support the identity wherever the
 encodings reach. On every problem, a CLA written for portfolios either returns the
 exact knots or stops with an error when its arithmetic cannot be trusted. Where an
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
-certifies the result, so the checks reach monotone fits, caps and rows under a zero sum
-and weights that sum to one. With $p>n$ they stay exact, with no ridge, under bounds,
-signs, inequality rows and zero sums, where the other path algorithms for general
-constraints trace a ridged problem that ends elsewhere. Only rows that exclude $\beta=0$
-stay out. The checks also made the CLA better at
+certifies the result, so the checks reach monotone fits and caps and rows under a zero
+sum. Two other starts need no relaxation: weights that sum to one start on a flat
+segment, and rows that exclude $\beta=0$ start at the feasible point of smallest
+$\ell_1$ norm. With $p>n$ the paths stay exact, with no ridge, under bounds, signs,
+inequality rows and zero sums, where the other path algorithms for general constraints
+trace a ridged problem that ends elsewhere. The checks also made the CLA better at
 portfolios, where it now takes tied forecasts and low-rank covariances. The practical
 consequence is simple: \texttt{lars\_path}
 cannot take even a cap on the coefficients, and a CLA that takes general linear rows
@@ -909,7 +928,7 @@ The software is in the directory \texttt{preprints/constrained\_lasso/} of
 \url{https://github.com/Jebel-Quant/lasso}, under the MIT licence. Each script declares
 its pinned dependencies and has a lockfile next to it that fixes Python 3.12 and every
 package by version and hash. \texttt{python/make\_figures.py} computes every path with
-\texttt{cvxcla.Lasso} 2.6.0 \cite{cvxcla}, holds every check, and writes every figure, table and number
+\texttt{cvxcla.Lasso} 2.7.0 \cite{cvxcla}, holds every check, and writes every figure, table and number
 the text quotes; its \texttt{test} mode runs the checks and \texttt{timings} the cost
 ratios. \texttt{python/classo\_check.py} runs \texttt{c-lasso} 1.0.11 under NumPy~1.26.
 \texttt{julia/classopath.jl} is the port of the path algorithm of

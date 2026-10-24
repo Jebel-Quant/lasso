@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "cvxcla==2.6.0",
+#     "cvxcla==2.7.0",
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
 #     "numpy==2.5.4",
@@ -75,7 +75,7 @@ class Lasso:
     lower: np.ndarray | None = None  # each entry <= 0
     upper: np.ndarray | None = None  # each entry >= 0
     c: np.ndarray | None = None  # inequality rows C beta <= h
-    h: np.ndarray | None = None  # each entry > 0
+    h: np.ndarray | None = None  # any sign; h_r < 0 excludes beta = 0
 
     def __post_init__(self) -> None:
         """Fill in the absent constraints as the empty ones."""
@@ -754,6 +754,48 @@ def monotone_tex(rows: list[MonotoneRow]) -> str:
 
 
 # --------------------------------------------------------------------------------------
+# A row that excludes beta = 0
+# --------------------------------------------------------------------------------------
+def floor() -> Lasso:
+    """Diabetes with beta_bmi at least half its least-squares value: one row -beta_bmi <= -h, h > 0.
+
+    The row excludes beta = 0, so the penalty form starts where the CLA's linear program
+    puts it, at the feasible point of smallest l1 norm: bmi alone, on the floor.
+    """
+    xd, yd, names = diabetes()
+    row = -(np.array(names) == "bmi").astype(float)
+    ols = np.linalg.lstsq(xd, yd, rcond=None)[0]
+    return Lasso(xd, yd, c=row, h=np.array([0.5 * (row @ ols)]))
+
+
+@dataclass
+class FloorRow:
+    """The floor problem's path and its checks."""
+
+    knots: int
+    gap: float  # against the interior-point solver at every midpoint, relative, as in Table 2
+    kkt: float
+    start: float  # the row's slack at the first knot, which sits on the floor
+
+
+def floor_row() -> FloorRow:
+    """Trace the floor problem and check it."""
+    prob = floor()
+    path = trace(prob)
+    slack = float((prob.h - prob.c @ path.beta[0])[0])
+    return FloorRow(len(path.lam), against_solver(prob, path), certify(prob, path), slack)
+
+
+def floor_tex(r: FloorRow) -> str:
+    """The floor problem's numbers as LaTeX macros, for the note to input."""
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "flKnots": str(r.knots),
+        "flGap": sci(r.gap),
+        "flKKT": sci(r.kkt),
+    }.items())
+
+
+# --------------------------------------------------------------------------------------
 # One encoding or two: every zero sum through the penalty form alone
 # --------------------------------------------------------------------------------------
 @dataclass
@@ -765,6 +807,7 @@ class EncodingRow:
     penalty: int | None  # penalty form, relaxed and extrapolated; None where cvxcla declines
     gap: float | None  # largest knot discrepancy between the two, relative, as in Table 2
     kkt: float | None  # of the penalty form's path
+    spacing: float  # the closest two knots of the budget form's path, relative to lambda_max
     reason: str | None = None  # cvxcla's reason, where it declines
 
 
@@ -789,18 +832,24 @@ def encodings() -> list[EncodingRow]:
     rows = []
     for name, prob in cases.items():
         budget = trace(prob)
+        spacing = float(-np.diff(budget.lam).max() / budget.lam[0])  # lam falls, so the smallest step is -max
         try:
             path = trace(through_penalty(prob))
         except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
-            rows.append(EncodingRow(name, len(budget.lam), None, None, None, str(err).split(":")[0]))
+            rows.append(EncodingRow(name, len(budget.lam), None, None, None, spacing, str(err).split(":")[0]))
             continue
         assert np.abs(path.beta).max() < 1e-3 * through_penalty(prob).upper.max()  # the caps never bind
         gap = float("nan")
         if len(path.lam) == len(budget.lam):
             gap = max(float(np.abs(path.beta - budget.beta).max() / np.abs(budget.beta).max()),
                       float(np.abs(path.lam - budget.lam).max() / budget.lam[0]))
-        rows.append(EncodingRow(name, len(budget.lam), len(path.lam), gap, certify(prob, path)))
+        rows.append(EncodingRow(name, len(budget.lam), len(path.lam), gap, certify(prob, path), spacing))
     return rows
+
+
+def encodings_numbers(rows: list[EncodingRow]) -> str:
+    """The numbers the text quotes about the largest zero sum, as LaTeX macros."""
+    return rf"\newcommand{{\encSpacing}}{{{sci(rows[-1].spacing)}}}" + "\n"
 
 
 def encodings_tex(rows: list[EncodingRow]) -> str:
@@ -1158,8 +1207,13 @@ def main() -> None:
               f"IPM objective worse by {r.ref_excess:.1e}")
     mono = monotone_rows()
     (OUT / "monotone.tex").write_text(monotone_tex(mono))
+    fl = floor_row()
+    (OUT / "floor.tex").write_text(floor_tex(fl))
+    print(f"\nfloor, a row that excludes beta = 0: {fl.knots} knots, IPM gap {fl.gap:.1e}, KKT {fl.kkt:.1e}, "
+          f"slack at the start {fl.start:.1e}")
     enc = encodings()
     (OUT / "encodings.tex").write_text(encodings_tex(enc))
+    (OUT / "encodings_numbers.tex").write_text(encodings_numbers(enc))
     print("\nzero sums, budget form against the penalty form relaxed:")
     for r in enc:
         rest = f"declined ({r.reason})" if r.penalty is None else f"{r.penalty} knots, gap {r.gap:.1e}, KKT {r.kkt:.1e}"
@@ -1361,13 +1415,20 @@ def test_monotone() -> None:
 
 
 def test_encodings() -> None:
-    """The penalty form, relaxed, reproduces the budget form on every zero sum but the largest, which it declines."""
+    """The penalty form, relaxed, reproduces the budget form on every zero sum, the largest included."""
     rows = encodings()
-    *small, largest = rows
-    for r in small:
+    for r in rows:
         assert r.penalty == r.knots, r
         assert r.gap < 1e-12 and r.kkt < 1e-12, r
-    assert largest.penalty is None and "could not be resolved" in largest.reason, largest
+    assert rows[-1].spacing < 1e-6, rows[-1]  # the note says: knots closer than a millionth of lambda_max
+
+
+def test_floor() -> None:
+    """A row that excludes beta = 0 is traced exactly, from a start on the row."""
+    r = floor_row()
+    assert r.knots > 2, r
+    assert r.gap < 1e-7 and r.kkt < 1e-12, r
+    assert abs(r.start) < 1e-12, r  # the path starts on the floor, not at beta = 0
 
 
 def test_portfolios() -> None:
