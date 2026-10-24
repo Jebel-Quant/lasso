@@ -147,9 +147,12 @@ $\lambda$ is a risk tolerance. Portfolio managers have always needed constraints
 as a budget, position limits and sector exposures, and Markowitz built them into the
 CLA from the start. If the identity holds, a CLA written and tested for portfolios
 should return the knots of a constrained LASSO, constraints included, with no change to
-its code. This note checks that prediction. It was not quite met: the checks exposed
-two defects in the CLA that also refuse ordinary portfolio problems, and they were
-fixed in \texttt{cvxcla} 2.6.0, the release used here (Section~\ref{sec:limits}). The two encodings,
+its code. This note checks that prediction. It was not quite met, in two ways. The
+checks exposed two defects in the CLA that also refuse ordinary portfolio problems,
+and they were fixed in \texttt{cvxcla} 2.6.0, the release used here. And where an
+encoding starts degenerate, the CLA alone does not suffice: \texttt{cvxcla.Lasso} runs
+it twice on a relaxed problem and combines the two paths, outside the CLA
+(Section~\ref{sec:limits}). The two encodings,
 Propositions~\ref{prop:penalty} and~\ref{prop:budget}, are proved here from the
 definition of the CLA. They need nothing from \cite{perspective} beyond the classical
 equivalence of the bound and penalty forms of the LASSO; that paper supplies the
@@ -377,7 +380,8 @@ The shares are read off the path: at budget $t$ the books hold $\sum_j\beta_j^\p
 \section{The budget form}
 \label{sec:budget}
 
-The penalty form cannot take a zero sum: with $A\beta=0$ its start is degenerate
+The penalty form cannot take a zero sum directly: with $A\beta=0$ its start is
+degenerate, and it reaches one only by relaxing the constraint
 (Section~\ref{sec:limits}). The second encoding starts instead from Tibshirani's
 original statement, the budget $\|\beta\|_1\le t$, and divides by $t$. The split
 coefficients then add up to at most one, which is Markowitz's own setting: a long-only
@@ -593,7 +597,8 @@ hold to rounding. For a sense of cost, a grid of 100 interior-point solves (Clar
 through CVXPY, compiled once with $\lambda$ as a parameter) costs about 100 times as
 much as the whole CLA path at $p=100$ and 350 times at $p=500$, and 14 to 100 times on
 the constrained diabetes and zero-sum problems of Table~\ref{tab:evidence}, in ratios of
-the fastest of several runs on one machine; \texttt{timings} measures them on another.
+the fastest of several runs on one machine, an Apple M4 Pro; \texttt{timings} measures
+them on another.
 The grid also misses every knot between grid points.
 
 \paragraph{Hostile problems} The problems so far are easy for any path algorithm.
