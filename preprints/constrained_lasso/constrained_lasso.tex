@@ -43,6 +43,7 @@
 \input{figures/gaines.tex}
 \input{figures/monotone.tex}
 \input{figures/stress_numbers.tex}
+\input{figures/wide_numbers.tex}
 
 \newtheorem{proposition}{Proposition}
 \theoremstyle{remark}
@@ -74,7 +75,10 @@ penalty form or a budget form, and hands it to a released CLA written for portfo
 On caps, signs, equality and inequality rows, monotone fits and zero sums, on simulated
 and real data, up to 500 predictors and on problems built to break a path algorithm,
 the paths reproduce LARS and an interior-point solver and meet the LASSO's optimality
-conditions to rounding, or the CLA stops with an error. 
+conditions to rounding, or the CLA stops with an error. With more predictors than
+observations the paths stay exact under bounds, signs, inequality rows and zero sums.
+The path algorithms for general constraints add a ridge there, and the ridge moves the
+end of the path.
 
 \medskip\noindent
 \textbf{Keywords:} constrained LASSO; critical line algorithm; solution path;
@@ -196,7 +200,9 @@ under a zero sum; \texttt{cvxcla} reaches those by relaxing the constraint
 (Section~\ref{sec:limits}). For $C\beta=0$
 alone, the Python package \texttt{c-lasso} \cite{classo} has a path algorithm with a
 small ridge term added. Neither was derived with portfolios in mind, so
-Section~\ref{sec:evidence} uses both as independent checks. Hobson, Butcher and Lentati
+Section~\ref{sec:evidence} uses both as independent checks. For zero sums on blocks of
+coefficients, the comlasso algorithm of Jeon et al.\ \cite{jeon2020} traces the exact
+path, also with $p>n$; it takes no bounds or inequality rows. Hobson, Butcher and Lentati
 \cite{hobson2026} revisit Gaines et al.\ with an algorithm of their own, CLASSO. The
 linear system of Gaines et al.\ is singular whenever a binding row vanishes on the
 active coefficients, as a sign constraint on a zero coefficient does, so CLASSO takes
@@ -222,6 +228,17 @@ which fails on the largest problem here (Table~\ref{tab:encodings}).
 \end{enumerate}
 Each is a few lines on top of a released CLA. Readers who know the CLA can skip
 Section~\ref{sec:cla}.
+
+\paragraph{More predictors than observations} With $p>n$ the encodings part from the
+other path algorithms for general constraints. Gaines et al., CLASSO and
+\texttt{c-lasso} add a ridge to $X\trans X$ there, and so trace a nearby problem. With
+$p>n$ that problem is not close at its end: the ridge decides which interpolating fit the
+path runs to. As shipped, \texttt{c-lasso} ends up to \clWideGapHi{} times the largest
+coefficient away from the exact path on a zero-sum problem with $p>n$
+(Section~\ref{sec:evidence}). The CLA needs no ridge, and traces the exact path under
+bounds, signs, inequality rows and zero sums alike (Table~\ref{tab:wide}). Microbiome
+studies often have more taxa than samples, so this is the case a user of the zero-sum
+LASSO meets first.
 
 \paragraph{Notation} The design is $X\in\R^{n\times p}$, with $n$ observations and $p$
 predictors, and the response is $y\in\R^n$. Write $G=X\trans X$ and $c=X\trans y$. The
@@ -628,6 +645,19 @@ zero-sum}, where $X\trans X$ is singular, is traced, and with $\operatorname{con
 near $10^{16}$ it has the largest residual in the table, \stKKT{}
 (Section~\ref{sec:limits}).
 
+\paragraph{More predictors than observations} \emph{Wide, zero-sum} is the only
+problem so far with both $p>n$ and a constraint, and a zero sum alone has an exact path
+in comlasso \cite{jeon2020} too. Table~\ref{tab:wide} puts on \emph{Wide}, again with
+$n=\wdN$, $p=\wdP$ and \stSeeds{} seeds, the constraints comlasso does not take:
+nonnegativity; a box at half the largest coefficient of the least-squares fit of
+smallest norm; two inequality rows that cap the net effect of three predictors, as in
+\emph{Cholesterol}, and bind; the row of \emph{Pinned}; and a zero sum with the signs
+of \emph{Zero-sum, signs} or with the caps of the box. \texttt{cvxcla} declines none of
+them. Every path meets the optimality conditions to \wdKKT{} or better along every
+segment, and the interior-point solver agrees to \wdGap{}. Its objective is never lower
+than the path's by more than \wdIpmBetter{}, relative, and that only near the end of a
+path, where the fit almost interpolates and the objective is small.
+
 \paragraph{Two independent path algorithms} Two path algorithms derived for the LASSO,
 with no reference to portfolios, can be run against the CLA. Both trace the same path.
 
@@ -654,11 +684,15 @@ multipliers of that start (\texttt{lsq\_classopath.m}, lines 165--189, 242 and 2
 its start can differ from the one measured here.
 
 \texttt{c-lasso} \cite{classo} has a path algorithm for $C\beta=0$ alone, without bounds
-or signs, so it runs on \emph{Zero-sum} and \emph{sCD14}. It adds a ridge term
-$10^{-3}I$ to $X\trans X$, fixed in the package, and that term is the whole of its
-distance to the CLA: its \clPoints{} grid points lie up to \clGap{} from the CLA path as
-shipped, relative to the largest coefficient, and \clGapUnridged{} with the ridge set
-to $10^{-12}$ by hand.
+or signs, so it runs on \emph{Zero-sum}, \emph{sCD14} and \emph{Wide, zero-sum}. It
+adds a ridge term $10^{-3}I$ to $X\trans X$, fixed in the package, and that term is the
+whole of its distance to the CLA: on the first two its \clPoints{} grid points lie up to
+\clGap{} from the CLA path as shipped, relative to the largest coefficient, and
+\clGapUnridged{} with the ridge set to $10^{-12}$ by hand. With $p>n$ the same ridge is
+not small. On \emph{Wide, zero-sum}, with its grid carried down to \clWideLamin{} times
+its largest $\lambda$ so that it reaches the end of the path, \texttt{c-lasso} as
+shipped lies \clWideGapLo{} to \clWideGapHi{} times the largest coefficient from the CLA
+over the \stSeeds{} seeds, and \clWideGapUnridged{} with the ridge at $10^{-12}$.
 
 Two further packages fit on a grid of $\lambda$ rather than tracing the path, so they
 cannot check the knots and are not run: \texttt{zeroSum} \cite{zerosum}, for zero-sum
@@ -694,6 +728,21 @@ duplicate column is \texttt{bmi} plus noise of the given size, relative to its s
 \label{tab:stress}
 \end{table}
 
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrcc}
+\toprule
+\emph{Wide} with & knots & gap & KKT \\
+\midrule
+\input{figures/wide.tex}
+\end{tabular}
+\caption{More predictors than observations, $n=\wdN$ and $p=\wdP$, under constraints
+beyond a zero sum, through the checks of Table~\ref{tab:evidence} against the
+interior-point solver, the worst over \stSeeds{} seeds. None is declined.}
+\label{tab:wide}
+\end{table}
+
 
 \section{Where the two forms stop}
 \label{sec:limits}
@@ -716,12 +765,18 @@ then solved on the null space of the active constraints, which keep it nonsingul
 The path ends where the fit first interpolates, the limit $\lambda\to0^+$: the
 interpolating fit of smallest $\ell_1$ norm under the constraints. Past it the CLA would
 run on through interpolating fits of larger norm, which are not on the LASSO path, so
-\texttt{cvxcla} stops there. \emph{Wide, zero-sum} (Table~\ref{tab:stress}) tests this.
-The other path algorithms tested here do not give this path: Gaines et al.\ add a ridge
-of $10^{-4}$ when $n<p$, and \texttt{c-lasso} always adds one of $10^{-3}$. Nor does
-CLASSO \cite{hobson2026}, not run here, which adds one of $10^{-4}\max_j G_{jj}$. It is the
-case a user of the zero-sum LASSO meets first, since microbiome data often have more
-taxa than samples.
+\texttt{cvxcla} stops there. \emph{Wide, zero-sum} (Table~\ref{tab:stress}) tests this,
+and Table~\ref{tab:wide} tests it under bounds, signs and inequality rows. The other path
+algorithms for general constraints do not give this path. Gaines et al.\ add a ridge of
+$10^{-4}$ when $n<p$, \texttt{c-lasso} always adds one of $10^{-3}$, and CLASSO
+\cite{hobson2026}, not run here, adds one of $10^{-4}\max_j G_{jj}$. Each then traces a
+nearby problem whose path ends elsewhere. On \emph{Wide, zero-sum} the ridge of
+\texttt{c-lasso} moves its path by up to \clWideGapHi{} times the largest coefficient
+(Section~\ref{sec:evidence}). On their own problems with $p>n$, Hobson et al.\ report
+objectives up to $4\times10^{-2}$, relative, above the unregularised ones at their
+default ridge
+\cite[Table~3]{hobson2026}. For a zero sum alone, comlasso \cite{jeon2020} traces the
+exact path with $p>n$ and no ridge, and its authors make the same case against one.
 
 \paragraph{Numerically singular free blocks} The bordered system \eqref{eq:border}
 needs the columns on the free set to be independent. When two columns nearly coincide
@@ -839,8 +894,10 @@ encodings reach. On every problem, a CLA written for portfolios either returns t
 exact knots or stops with an error when its arithmetic cannot be trusted. Where an
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
 certifies the result, so the checks reach monotone fits, caps and rows under a zero sum
-and weights that sum to one; with a singular Gram they reach zero sums with $p>n$. Only
-rows that exclude $\beta=0$ stay out. The checks also made the CLA better at
+and weights that sum to one. With $p>n$ they stay exact, with no ridge, under bounds,
+signs, inequality rows and zero sums, where the other path algorithms for general
+constraints trace a ridged problem that ends elsewhere. Only rows that exclude $\beta=0$
+stay out. The checks also made the CLA better at
 portfolios, where it now takes tied forecasts and low-rank covariances. The practical
 consequence is simple: \texttt{lars\_path}
 cannot take even a cap on the coefficients, and a CLA that takes general linear rows
@@ -937,6 +994,12 @@ website advertising.
 \newblock \emph{Journal of the American Statistical Association}, 115(529):107--122,
 2020.
 \newblock \href{https://doi.org/10.1080/01621459.2019.1609970}{\texttt{doi:10.1080/01621459.2019.1609970}}.
+
+\bibitem{jeon2020}
+J.-J. Jeon, Y.~Kim, S.~Won, and H.~Choi.
+\newblock Primal path algorithm for compositional data analysis.
+\newblock \emph{Computational Statistics \& Data Analysis}, 148:106958, 2020.
+\newblock \href{https://doi.org/10.1016/j.csda.2020.106958}{\texttt{doi:10.1016/j.csda.2020.106958}}.
 
 
 \bibitem{lawson1974}

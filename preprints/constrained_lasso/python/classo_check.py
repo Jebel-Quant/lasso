@@ -16,7 +16,8 @@ c-lasso (Simpson, Combettes and Mueller, 2021) is the Python package built for t
 LASSO under ``C beta = 0``. Its last release, 1.0.11, uses ``np.infty``, which NumPy 2
 removed, so it runs here in its own environment, pinned to NumPy 1.26, and talks to
 ``make_figures.py`` through a file: that script writes the exact paths of the Zero-sum
-problem and of the sCD14 data to ``figures/zero_sum_paths.npz``, and this one runs
+problem, of the sCD14 data and of Wide, zero-sum (p > n, one per seed) to
+``figures/zero_sum_paths.npz``, and this one runs
 c-lasso's ``Path-Alg`` on the same problems, measures how far its answers lie from the
 exact path, and writes the numbers the note quotes to ``figures/classo.tex``. c-lasso
 also imports pandas and matplotlib without declaring them, hence the two pins above.
@@ -25,6 +26,9 @@ Path-Alg computes the breakpoints of a slightly regularised problem: it adds
 ``eps_L2 * I``, with ``eps_L2 = 1e-3``, to ``X^T X``, a default of ``parameters_for_update``
 that no public setting reaches. That ridge term is all of its distance to the exact path,
 so the script runs it twice, as shipped and with the ridge lowered to ``RIDGE`` by hand.
+With n >= p the ridge moves the path only slightly. With p > n it decides where the path
+ends: the ridged path heads for a different interpolating fit. There c-lasso's grid is
+carried down to ``WIDE_LAMIN`` times its largest lambda, so that it reaches the end.
 
 The line ``# run: after figures`` above makes ``make figures`` run this script after
 ``make_figures.py``, here and in CI.
@@ -46,9 +50,10 @@ FIGURES = Path(__file__).resolve().parent.parent / "figures"
 POINTS = 100  # the grid c-lasso reports its path on
 REPEATS = 5  # each run timed this often, and the fastest counts
 RIDGE = 1e-12  # eps_L2 for the second run, in place of the shipped 1e-3
+WIDE_LAMIN = 1e-9  # c-lasso's smallest lambda, relative, for p > n; the shipped 1e-3 stops short of the end
 
 
-def classo_path(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+def classo_path(x: np.ndarray, y: np.ndarray, lamin: float = 1e-3) -> tuple[np.ndarray, np.ndarray, float]:
     """c-lasso's Path-Alg on the zero-sum LASSO: lambda in the note's scaling, beta, seconds.
 
     c-lasso's R1 problem is ``||y - X b||^2 + lam ||b||_1`` under ``C b = 0``, without
@@ -64,6 +69,7 @@ def classo_path(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, f
         selection.PATH, selection.CV, selection.StabSel, selection.LAMfixed = True, False, False, False
         selection.PATHparameters.numerical_method = "Path-Alg"
         selection.PATHparameters.Nlam = POINTS
+        selection.PATHparameters.lamin = lamin
         start = time.perf_counter()
         problem.solve()
         best = min(best, time.perf_counter() - start)
@@ -101,22 +107,32 @@ def main() -> None:
     shipped, unridged = {}, {}
     for name in sorted({key.split(".")[0] for key in data.files}):
         x, y, knots, exact = data[f"{name}.x"], data[f"{name}.y"], data[f"{name}.lam"], data[f"{name}.beta"]
-        lam, beta, seconds = classo_path(x, y)
+        lamin = WIDE_LAMIN if name.startswith("wide") else 1e-3
+        lam, beta, seconds = classo_path(x, y, lamin)
         shipped[name] = gap(lam, beta, knots, exact)
         with_ridge(RIDGE)
-        lam, beta, _ = classo_path(x, y)
+        lam, beta, _ = classo_path(x, y, lamin)
         unridged[name] = gap(lam, beta, knots, exact)
         with_ridge(1e-3)
         print(f"{name}: c-lasso Path-Alg, {len(lam)} grid points in {seconds * 1e3:.1f} ms, largest gap to "
               f"the exact path {shipped[name]:.1e}, and {unridged[name]:.1e} with the ridge at {RIDGE:.0e}")
-        # As shipped c-lasso is close to the path but off it by its ridge; without the
-        # ridge it is on it. Flag it if either ever changes.
-        assert 1e-9 < shipped[name] < 1e-2, shipped[name]
+        # As shipped c-lasso is close to the path but off it by its ridge, and with p > n
+        # far off it; without the ridge it is on it. Flag it if any of that ever changes.
+        if name.startswith("wide"):
+            assert shipped[name] > 1e-1, shipped[name]
+        else:
+            assert 1e-9 < shipped[name] < 1e-2, shipped[name]
         assert unridged[name] < 1e-10, unridged[name]
+    square = [name for name in shipped if not name.startswith("wide")]
+    wide = [name for name in shipped if name.startswith("wide")]
     (FIGURES / "classo.tex").write_text(
         rf"\newcommand{{\clPoints}}{{{POINTS}}}" + "\n"
-        + rf"\newcommand{{\clGap}}{{{sci(max(shipped.values()))}}}" + "\n"
-        + rf"\newcommand{{\clGapUnridged}}{{{sci(max(unridged.values()))}}}" + "\n"
+        + rf"\newcommand{{\clGap}}{{{sci(max(shipped[n] for n in square))}}}" + "\n"
+        + rf"\newcommand{{\clGapUnridged}}{{{sci(max(unridged[n] for n in square))}}}" + "\n"
+        + rf"\newcommand{{\clWideGapLo}}{{{min(shipped[n] for n in wide):.2f}}}" + "\n"
+        + rf"\newcommand{{\clWideGapHi}}{{{max(shipped[n] for n in wide):.2f}}}" + "\n"
+        + rf"\newcommand{{\clWideGapUnridged}}{{{sci(max(unridged[n] for n in wide))}}}" + "\n"
+        + rf"\newcommand{{\clWideLamin}}{{{sci(WIDE_LAMIN)}}}" + "\n"
     )
 
 

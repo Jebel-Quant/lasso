@@ -396,6 +396,35 @@ def stress_problems(seed: int = SEED) -> dict[str, tuple[Lasso, str]]:
     return out
 
 
+def wide_problems(seed: int = SEED) -> dict[str, tuple[Lasso, str]]:
+    """Wide, p > n, under constraints beyond a zero sum, by the names Table 5 uses, for one seed.
+
+    The zero sum alone has an exact path for p > n elsewhere too (comlasso, Jeon et al.,
+    2020); the general path algorithms add a ridge. These take what comlasso does not:
+    bounds, signs, inequality rows and a nonhomogeneous row, alone or under the zero sum.
+    Caps and the inequality rows are set as in Box and Cholesterol, from the least-squares
+    fit, here the one of smallest norm.
+    """
+    x, y = wide(seed=seed)
+    x, y = x - x.mean(axis=0), y - y.mean()
+    p = x.shape[1]
+    one = np.ones(p)
+    fit = np.linalg.lstsq(x, y, rcond=None)[0]
+    cap = 0.5 * np.abs(fit).max()
+    net = np.zeros(p)
+    net[:3] = 1.0  # the net effect of the first three predictors, as Cholesterol caps three
+    zero_sum = {"a": one, "b": np.zeros(1)}
+    probs = {
+        "nonnegative": Lasso(x, y, lower=np.zeros(p)),
+        "box": Lasso(x, y, lower=-cap * one, upper=cap * one),
+        "inequality rows": Lasso(x, y, c=np.vstack([net, -net]), h=np.full(2, 0.5 * abs(net @ fit))),
+        "pinned": Lasso(x, y, a=x[:1], b=y[:1]),
+        "zero-sum, signs": Lasso(x, y, **zero_sum, lower=np.where(signed_parts(p), 0.0, -np.inf)),
+        "zero-sum, caps": Lasso(x, y, **zero_sum, lower=-cap * one, upper=cap * one),
+    }
+    return {name: (prob, "IPM") for name, prob in probs.items()}
+
+
 def objective(prob: Lasso, lam: float, beta: np.ndarray) -> float:
     """The LASSO objective at ``lam``."""
     return float(0.5 * np.sum((prob.y - prob.x @ beta) ** 2) + lam * np.abs(beta).sum())
@@ -419,16 +448,19 @@ class StressRow:
     reason: str | None = None  # its reason, when it declines
 
 
-def stress() -> list[StressRow]:
+def stress(
+    drawn: Callable[[int], dict[str, tuple[Lasso, str]]] = stress_problems,
+) -> list[StressRow]:
     """The hostile problems over every seed, through the checks of Table 2, and the reference's accuracy.
 
     Where the path and its reference part, the reference is checked as well: LARS by the
     same KKT residual, the interior-point solver by its objective, which beats the path's by
-    no more than the solver's tolerance when the gap is the solver's.
+    no more than the solver's tolerance when the gap is the solver's. ``drawn`` gives the
+    problems for one seed; Table 5 passes ``wide_problems``.
     """
     rows: dict[str, StressRow] = {}
     for seed in STRESS_SEEDS:
-        for name, (prob, ref) in stress_problems(seed).items():
+        for name, (prob, ref) in drawn(seed).items():
             row = rows.setdefault(name, StressRow(name, *prob.x.shape, ref))
             row.cond = max(row.cond, float(np.linalg.cond(prob.x)))
             try:
@@ -483,6 +515,25 @@ def stress_numbers(rows: list[StressRow]) -> str:
         "stLarsKKT": sci(max(r.ref_kkt for r in traced if r.ref_kkt is not None)),
         "stIpmGap": sci(max(r.gap for r in traced if r.reference == "IPM")),
         "stIpmBetter": sci(max(0.0, -min(r.ref_excess for r in traced if r.ref_excess is not None))),
+    }.items())
+
+
+def wide_tex(rows: list[StressRow]) -> str:
+    """The body of Table 5, with its closing rule."""
+    def line(r: StressRow) -> str:
+        knots = f"{r.knots[0]}" if r.knots[0] == r.knots[1] else f"{r.knots[0]}--{r.knots[1]}"
+        return f"{r.name:<16} & {knots:>7} & {sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
+    return "".join(line(r) for r in rows) + "\\bottomrule\n"
+
+
+def wide_numbers(rows: list[StressRow]) -> str:
+    """The numbers the text quotes about Table 5, as LaTeX macros."""
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "wdN": f"{rows[0].n}",
+        "wdP": f"{rows[0].p}",
+        "wdKKT": sci(max(r.kkt for r in rows)),
+        "wdGap": sci(max(r.gap for r in rows)),
+        "wdIpmBetter": sci(max(0.0, -min(r.ref_excess for r in rows))),
     }.items())
 
 
@@ -753,7 +804,7 @@ def encodings() -> list[EncodingRow]:
 
 
 def encodings_tex(rows: list[EncodingRow]) -> str:
-    """The body of Table 5, with its closing rule."""
+    """The body of Table 6, with its closing rule."""
     def line(r: EncodingRow) -> str:
         head = f"{r.name:<22} & {r.knots:>3} & "
         if r.penalty is None:
@@ -808,7 +859,7 @@ def portfolios() -> list[PortfolioRow]:
 
 
 def portfolios_tex(rows: list[PortfolioRow]) -> str:
-    """The body of Table 6, with its closing rule."""
+    """The body of Table 7, with its closing rule."""
     def worse(x: float) -> str:  # below rounding, the measured value is noise: say so rather than print it
         return r"$<10^{-15}$" if x < 1e-15 else sci(x)
     return "".join(f"{r.name:<32} & {r.n:>2} & {r.rank:>2} & {r.points:>2} & {worse(r.worse)}\\\\\n"
@@ -1098,6 +1149,13 @@ def main() -> None:
         else:
             own = f"LARS's own KKT {r.ref_kkt:.1e}" if r.ref_kkt is not None else f"IPM objective worse by {r.ref_excess:.1e}"
             print(f"  {r.name:<22} cond {r.cond:.1e}: {r.knots} knots, {r.reference} gap {r.gap:.1e}, KKT {r.kkt:.1e}, {own}")
+    wide_rows = stress(wide_problems)
+    (OUT / "wide.tex").write_text(wide_tex(wide_rows))
+    (OUT / "wide_numbers.tex").write_text(wide_numbers(wide_rows))
+    print("\nwide, p > n, under constraints beyond a zero sum:")
+    for r in wide_rows:
+        print(f"  {r.name:<16} {r.knots} knots, IPM gap {r.gap:.1e}, KKT {r.kkt:.1e}, "
+              f"IPM objective worse by {r.ref_excess:.1e}")
     mono = monotone_rows()
     (OUT / "monotone.tex").write_text(monotone_tex(mono))
     enc = encodings()
@@ -1120,8 +1178,10 @@ def main() -> None:
     print(f"{'problem':<16} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} {'KKT':>9}")
     for r in rows:
         print(f"{r.name:<16} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} {r.gap:9.1e} {r.kkt:9.1e}")
-    # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment.
+    # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment:
+    # Zero-sum, sCD14 and, for p > n, Wide, zero-sum for every seed of Table 4.
     saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
+    saved |= {f"wide-{seed}": stress_problems(seed)["wide, zero-sum"][0] for seed in STRESS_SEEDS}
     arrays = {}
     for name, prob in saved.items():
         path = trace(prob)
@@ -1260,6 +1320,27 @@ def test_stress() -> None:
             assert r.ref_kkt < 1e-12, r
         else:
             assert r.ref_excess > -1e-12, r  # the solver beats the path by no more than its tolerance
+
+
+def test_wide() -> None:
+    """With p > n the path is exact under bounds, signs and rows, with no ridge, for every seed.
+
+    None is declined, every path meets the optimality conditions to rounding along whole
+    segments, and where the interior-point solver parts from it, its objective is never
+    better by more than rounding. That bound is looser than Table 4's: near the end of a
+    path with p > n the fit almost interpolates, the objective falls to 1e-4 of its value
+    at beta = 0, and a difference at the rounding of the sum of squares is a few 1e-12 of
+    it. The inequality rows bind, so they are tested.
+    """
+    rows = stress(wide_problems)
+    for r in rows:
+        assert r.declined == 0, r
+        assert r.kkt < 1e-11, r
+        assert r.ref_excess > -1e-11, r
+    for seed in STRESS_SEEDS:
+        prob = wide_problems(seed)["inequality rows"][0]
+        end = trace(prob).beta[-1]
+        assert np.isclose(np.abs(prob.c[0] @ end), prob.h[0])
 
 
 def test_monotone() -> None:
