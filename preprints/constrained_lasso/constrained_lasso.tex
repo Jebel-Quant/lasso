@@ -542,7 +542,7 @@ interior-point solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midp
 every segment, where the path is affine in $\lambda$ and so known exactly from its two
 ends. This comparison is only as sharp as the solver, which reaches about $10^{-8}$
 relative. The third check evaluates the optimality conditions of \eqref{eq:lasso}
-directly at every knot and every midpoint. A linear program picks the multipliers
+directly at every knot and along every segment. A linear program picks the multipliers
 $\kappa$ of $A\beta=b$ and $\eta\ge0$ of the active rows of $C\beta\le h$ that satisfy
 the conditions best, and the violation is then evaluated exactly at those multipliers,
 so the solver's own tolerance cannot hide one. With
@@ -550,8 +550,17 @@ $r=G\beta-c+A\trans\kappa+C\trans\eta$ the conditions are
 $r_j=-\lambda\operatorname{sign}\beta_j$ on the interior of the support;
 $|r_j|\le\lambda$ at zero, or only $r_j\ge-\lambda$ under $\beta_j\ge0$ and
 $r_j\le\lambda$ under $\beta_j\le0$; $r_j\le-\lambda$ at a cap $u_j>0$ and
-$r_j\ge\lambda$ at a floor $l_j<0$; $\eta\ge0$; and primal feasibility. The largest
-violation, relative to $\|c\|_\infty$, is the last column of the table.
+$r_j\ge\lambda$ at a floor $l_j<0$; $\eta\ge0$; and primal feasibility. The check
+covers each segment whole, not only its midpoint, as Hobson et al.\ \cite{hobson2026}
+do. Which coefficients are zero, at a bound or free, and which rows are active, is
+read off the midpoint. With that fixed, every condition is affine in $\lambda$ once the
+multipliers are taken affine between the two ends, so it holds along the whole segment
+if it holds at both ends. A linear program finds multipliers at both ends under the
+midpoint's pattern, and both ends must fit that pattern: no coefficient may change sign
+or leave a bound, and no row may come loose, inside a segment. A path that is right at
+both ends of a segment and at its midpoint, but cuts across a knot, fails this check;
+the published tests include one. The largest violation, relative to
+$\|c\|_\infty$, is the last column of the table.
 
 \begin{table}[t]
 \centering
@@ -565,7 +574,7 @@ problem & $n$ & $p$ & knots & ref. & gap & KKT \\
 \caption{The CLA against LARS (knot by knot) and against an interior-point solver (IPM,
 at segment midpoints). \emph{Gap}: largest discrepancy, relative to the largest
 coefficient. \emph{KKT}: largest violation of the optimality conditions of
-\eqref{eq:lasso} over all knots and midpoints, relative to $\|c\|_\infty$.}
+\eqref{eq:lasso} at every knot and along every segment, relative to $\|c\|_\infty$.}
 \label{tab:evidence}
 \end{table}
 
@@ -661,7 +670,7 @@ $n$ & $p$ & knots & KKT \\
 \input{figures/scale.tex}
 \end{tabular}
 \caption{The budget form on simulated zero-sum problems of growing size: the largest KKT
-violation over all knots and midpoints, as in Table~\ref{tab:evidence}.}
+violation at every knot and along every segment, as in Table~\ref{tab:evidence}.}
 \label{tab:scale}
 \end{table}
 
