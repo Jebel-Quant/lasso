@@ -34,7 +34,7 @@ describes:
 
 On the diabetes data, a p > n design and compositional data with `Σβ = 0`, every LARS knot
 comes back to 1e-13. The constrained cases match an interior-point solver to its own
-accuracy, and every knot and segment midpoint satisfies the LASSO's KKT conditions to 1e-15.
+accuracy, and every knot, and every segment from end to end, satisfies the LASSO's KKT conditions to 1e-15.
 
 The note's own CLA was removed in favour of `cvxcla`'s. That switch exposed a bug in it:
 under tight caps it returned paths that broke the optimality conditions without saying

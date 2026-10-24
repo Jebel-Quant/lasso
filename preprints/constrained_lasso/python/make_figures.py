@@ -115,6 +115,88 @@ def trace(prob: Lasso) -> LassoPath:
     return LassoPath(lam=np.array([k.lam for k in path]), beta=np.array([k.beta for k in path]))
 
 
+@dataclass
+class Pattern:
+    """Which coordinates are zero, inside their box or at a bound, and which rows bind."""
+
+    zero: np.ndarray
+    at_up: np.ndarray
+    at_lo: np.ndarray
+    inner: np.ndarray
+    sign: np.ndarray
+    active: np.ndarray
+
+
+def pattern(prob: Lasso, beta: np.ndarray) -> Pattern:
+    """The pattern of beta, to a tolerance relative to its size."""
+    tol = 1e-9 * max(1.0, np.abs(beta).max())
+    zero = np.abs(beta) <= tol
+    at_up, at_lo = ~zero & (beta >= prob.upper - tol), ~zero & (beta <= prob.lower + tol)
+    active = prob.c @ beta >= prob.h - tol * max(1.0, np.abs(prob.h).max(initial=1.0))
+    return Pattern(zero, at_up, at_lo, ~zero & ~at_up & ~at_lo, np.sign(beta), active)
+
+
+def conditions(prob: Lasso, pat: Pattern, lam: float, beta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    r"""The optimality conditions under a pattern, as rows ``coef @ mult + const <= t``.
+
+    The unknowns are the multipliers :math:`\kappa` of :math:`A\beta=b` and :math:`\eta`
+    of the rows of :math:`C\beta\le h` that the pattern makes active, in that order.
+    """
+    rows = np.vstack([prob.a, prob.c[pat.active]])  # r = r0 + rows^T mult
+    r0 = prob.x.T @ (prob.x @ beta - prob.y)
+    # Each condition as  sigma * (r0_j + rows_j^T mult) + offset <= t.
+    sigma, offset, coord = [], [], []
+    def need(mask: np.ndarray, sign: float, off: np.ndarray) -> None:
+        for j, o in zip(np.flatnonzero(mask), off[mask], strict=True):
+            sigma.append(sign); offset.append(o); coord.append(j)
+    s_inner = lam * pat.sign
+    need(pat.inner, 1.0, s_inner)              #  r_j + lam s_j <= t
+    need(pat.inner, -1.0, -s_inner)            # -(r_j + lam s_j) <= t
+    need(pat.at_up, 1.0, np.full_like(beta, lam))
+    need(pat.at_lo, -1.0, np.full_like(beta, lam))
+    need(pat.zero & (prob.lower < 0), 1.0, np.full_like(beta, -lam))
+    need(pat.zero & (prob.upper > 0), -1.0, np.full_like(beta, -lam))
+    sigma, offset, coord = np.array(sigma), np.array(offset), np.array(coord, dtype=int)
+    return sigma[:, None] * rows.T[coord], sigma * r0[coord] + offset
+
+
+def feasibility(prob: Lasso, beta: np.ndarray) -> np.ndarray:
+    """How far beta is outside each constraint."""
+    return np.concatenate([
+        np.abs(prob.a @ beta - prob.b),
+        np.maximum(prob.c @ beta - prob.h, 0),
+        np.maximum(beta - prob.upper, 0),
+        np.maximum(prob.lower - beta, 0),
+    ])
+
+
+def best_multipliers(prob: Lasso, pat: Pattern, ends: list[tuple[float, np.ndarray]]) -> float:
+    """The worst condition at the given points, under one pattern, at the best multipliers for each.
+
+    A linear program picks the multipliers to make the worst violation as small as it can
+    be. It only meets its rows to its own tolerance, so the violation is evaluated again,
+    exactly, at the multipliers it found: an upper bound that rounding cannot hide.
+    """
+    m, k = prob.a.shape[0], prob.a.shape[0] + int(pat.active.sum())
+    blocks = [conditions(prob, pat, lam, beta) for lam, beta in ends]
+    if not sum(len(const) for _, const in blocks):
+        return 0.0
+    lhs = np.vstack([
+        np.hstack([np.zeros((len(const), i * k)), coef, np.zeros((len(const), (len(ends) - 1 - i) * k)),
+                   -np.ones((len(const), 1))])
+        for i, (coef, const) in enumerate(blocks)
+    ])
+    rhs = -np.concatenate([const for _, const in blocks])
+    bounds = ([(None, None)] * m + [(0.0, None)] * (k - m)) * len(ends) + [(0.0, None)]
+    lp = linprog(np.append(np.zeros(k * len(ends)), 1.0), A_ub=lhs, b_ub=rhs, bounds=bounds, method="highs")
+    worst = 0.0
+    for i, (coef, const) in enumerate(blocks):
+        mult = lp.x[i * k:(i + 1) * k].copy()
+        mult[m:] = np.maximum(mult[m:], 0.0)
+        worst = max(worst, float(np.max(coef @ mult + const, initial=0.0)))
+    return worst
+
+
 def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray) -> float:
     r"""Largest violation of the LASSO's optimality conditions, relative to lambda_max.
 
@@ -129,46 +211,36 @@ def kkt_residual(prob: Lasso, lam: float, beta: np.ndarray) -> float:
     :math:`\eta\ge0` to make the worst of these violations as small as it can be, which
     is zero exactly when beta is optimal. Primal feasibility is added on top.
     """
-    gram, c = prob.x.T @ prob.x, prob.x.T @ prob.y
-    tol = 1e-9 * max(1.0, np.abs(beta).max())
-    zero = np.abs(beta) <= tol
-    at_up, at_lo = ~zero & (beta >= prob.upper - tol), ~zero & (beta <= prob.lower + tol)
-    inner = ~zero & ~at_up & ~at_lo
-    active = prob.c @ beta >= prob.h - tol * max(1.0, np.abs(prob.h).max(initial=1.0))
-    rows = np.vstack([prob.a, prob.c[active]])  # r = r0 + rows^T mult
-    m, k = prob.a.shape[0], rows.shape[0]
-    r0 = gram @ beta - c
-    # Each condition as  sigma * (r0_j + rows_j^T mult) + offset <= t, for unknowns (mult, t).
-    sigma, offset, coord = [], [], []
-    def need(mask: np.ndarray, sign: float, off: np.ndarray) -> None:
-        for j, o in zip(np.flatnonzero(mask), off[mask], strict=True):
-            sigma.append(sign); offset.append(o); coord.append(j)
-    s_inner = lam * np.sign(beta)
-    need(inner, 1.0, s_inner)              #  r_j + lam s_j <= t
-    need(inner, -1.0, -s_inner)            # -(r_j + lam s_j) <= t
-    need(at_up, 1.0, np.full_like(beta, lam))
-    need(at_lo, -1.0, np.full_like(beta, lam))
-    need(zero & (prob.lower < 0), 1.0, np.full_like(beta, -lam))
-    need(zero & (prob.upper > 0), -1.0, np.full_like(beta, -lam))
-    sigma, offset, coord = np.array(sigma), np.array(offset), np.array(coord, dtype=int)
-    if len(coord):
-        lhs = np.hstack([sigma[:, None] * rows.T[coord], -np.ones((len(coord), 1))])
-        rhs = -(sigma * r0[coord] + offset)
-        lp = linprog(np.append(np.zeros(k), 1.0), A_ub=lhs, b_ub=rhs,
-                     bounds=[(None, None)] * m + [(0.0, None)] * (k - m) + [(0.0, None)], method="highs")
-        # The LP only meets its rows to its own tolerance, so the violation is evaluated
-        # again, exactly, at the multipliers it found: an upper bound that rounding cannot hide.
-        mult = np.concatenate([lp.x[:m], np.maximum(lp.x[m:k], 0.0)])
-        worst = float(np.max(sigma * (r0 + rows.T @ mult)[coord] + offset, initial=0.0))
-    else:
-        worst = 0.0
-    feas = np.concatenate([
-        np.abs(prob.a @ beta - prob.b),
-        np.maximum(prob.c @ beta - prob.h, 0),
-        np.maximum(beta - prob.upper, 0),
-        np.maximum(prob.lower - beta, 0),
-    ])
-    return float(max(worst, feas.max(initial=0.0)) / np.abs(c).max())
+    worst = best_multipliers(prob, pattern(prob, beta), [(lam, beta)])
+    return float(max(worst, feasibility(prob, beta).max(initial=0.0)) / np.abs(prob.x.T @ prob.y).max())
+
+
+def segment_residual(prob: Lasso, lam0: float, beta0: np.ndarray, lam1: float, beta1: np.ndarray) -> float:
+    """Largest violation of the optimality conditions anywhere on one segment, not only at sampled points.
+
+    The pattern of the open segment is read off its midpoint. Under a fixed pattern every
+    condition is affine in (lambda, beta, multipliers) jointly, and on the segment beta is
+    affine in lambda; take the multipliers affine too, between a certificate at each end,
+    and every condition is affine in lambda. It then holds on the whole segment exactly
+    when it holds at both ends, under the segment's pattern rather than each end's own.
+    Both ends must also be consistent with that pattern: zero coordinates zero, capped
+    ones at the cap, active rows tight, and the support of the same sign as at the
+    midpoint, so that nothing crosses zero or leaves a bound inside the segment without a
+    knot. This is the check of Hobson, Butcher and Lentati (arXiv:2610.17024, Section 8.4).
+    """
+    pat = pattern(prob, 0.5 * (beta0 + beta1))
+    worst = best_multipliers(prob, pat, [(lam0, beta0), (lam1, beta1)])
+    for beta in (beta0, beta1):
+        consistent = np.concatenate([
+            np.abs(beta[pat.zero]),
+            np.abs(beta - prob.upper)[pat.at_up],
+            np.abs(beta - prob.lower)[pat.at_lo],
+            np.maximum(-pat.sign * beta, 0)[~pat.zero],
+            np.abs(prob.c @ beta - prob.h)[pat.active],
+            feasibility(prob, beta),
+        ])
+        worst = max(worst, float(consistent.max(initial=0.0)))
+    return float(worst / np.abs(prob.x.T @ prob.y).max())
 
 
 def reference(prob: Lasso, lam: float) -> np.ndarray:
@@ -769,11 +841,11 @@ def against_solver(prob: Lasso, path: LassoPath) -> float:
 
 
 def certify(prob: Lasso, path: LassoPath) -> float:
-    """Largest KKT violation over every knot and every segment midpoint."""
-    lam, beta = midpoints(path)
+    """Largest KKT violation at every knot, and anywhere on every segment."""
     knots = [kkt_residual(prob, *z) for z in zip(path.lam, path.beta, strict=True)]
-    mids = [kkt_residual(prob, *z) for z in zip(lam, beta, strict=True)]
-    return max(knots + mids)
+    segments = [segment_residual(prob, path.lam[i], path.beta[i], path.lam[i + 1], path.beta[i + 1])
+                for i in range(len(path.lam) - 1)]
+    return max(knots + segments)
 
 
 @dataclass
@@ -1103,9 +1175,26 @@ def test_solver_midpoints(rows: list[Row]) -> None:
 
 
 def test_kkt(rows: list[Row]) -> None:
-    """Every knot and midpoint satisfies the LASSO's optimality conditions to rounding."""
+    """Every knot, and every segment throughout, satisfies the LASSO's optimality conditions to rounding."""
     for r in rows:
         assert r.kkt < 1e-10, r
+
+
+def test_segment_check_sees_between_samples() -> None:
+    """A wrong segment that is right at both ends and at its midpoint fails the whole-segment check.
+
+    With p = 1, y = 1 and a cap of 1/2 the path is 0 down to lambda = 1, then 1 - lambda
+    up to the cap at lambda = 1/2, then the cap. One straight segment from (5/4, 0) to
+    (1/4, 1/2) misses both knots, yet meets the path at its ends and its midpoint, so a
+    check at those three points alone passes it.
+    """
+    prob = Lasso(np.eye(1), np.ones(1), upper=np.full(1, 0.5))
+    fake = LassoPath(lam=np.array([1.25, 0.25]), beta=np.array([[0.0], [0.5]]))
+    lam, beta = midpoints(fake)
+    sampled = max(kkt_residual(prob, *z) for z in zip([*fake.lam, *lam], [*fake.beta, *beta], strict=True))
+    assert sampled < 1e-12
+    assert certify(prob, fake) > 0.2
+    assert certify(prob, trace(prob)) < 1e-12
 
 
 def test_table_tex(rows: list[Row]) -> None:
