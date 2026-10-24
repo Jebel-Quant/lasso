@@ -850,7 +850,12 @@ def encodings() -> list[EncodingRow]:
 
 def encodings_numbers(rows: list[EncodingRow]) -> str:
     """The numbers the text quotes about the largest zero sum, as LaTeX macros."""
-    return rf"\newcommand{{\encSpacing}}{{{sci(rows[-1].spacing)}}}" + "\n"
+    largest = rows[-1]
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "encSpacing": sci(largest.spacing),
+        "encLargestKnots": str(largest.penalty),
+        "encLargestGap": sci(largest.gap),
+    }.items())
 
 
 def encodings_tex(rows: list[EncodingRow]) -> str:
@@ -960,6 +965,8 @@ def evidence_numbers(rows: list[Row]) -> str:
         "evPlainKnots": str(by["plain"].knots),
         "evPlainGap": sci(by["plain"].gap),
         "evPlainNorm": f"{np.abs(plain.beta[-1]).sum():.0f}",  # ||beta(0)||_1, where cash enters
+        "evPinnedHold": f"{trace(probs['pinned']).lam[0]:.0f}",  # the first knot, where Pinned starts to move
+        "evIpmWorst": sci(max(r.gap for r in rows if r.reference == "IPM")),
         "evLarsEnd": f"{lam_end:.2f}",
         "evLarsKKT": sci(kkt_end),
     }.items())
@@ -1099,14 +1106,26 @@ def fig_portfolio(out: Path) -> None:
     plt.close(fig)
 
 
-def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath) -> None:
-    """A CLA path against lambda, with interior-point solves at the segment midpoints."""
+SCD14_SHOWN = 8  # Figure 3 draws the coefficients largest at lambda = 0 in colour, the rest in grey
+SCD14_STRIDE = 3  # and marks the interior-point solve at every third segment midpoint
+
+
+def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath, shown: int, stride: int) -> None:
+    """A CLA path against lambda, with interior-point solves at some segment midpoints.
+
+    Sixty coefficients and a solve at every midpoint overplot into a solid band, so only
+    the ``shown`` coefficients largest at the end are drawn in colour and marked, at every
+    ``stride``-th midpoint. Table 2 checks every midpoint of every coefficient.
+    """
     lam, _ = midpoints(path)
-    lam = lam[lam > 1e-6 * path.lam[0]]
+    lam = lam[lam > 1e-6 * path.lam[0]][::stride]
     ref = np.array([reference(prob, v) for v in lam])
+    top = np.argsort(-np.abs(path.beta[-1]))[:shown]
+    rest = np.setdiff1d(np.arange(path.beta.shape[1]), top)
     ax.axhline(0, color=MUTED, lw=0.6)
-    ax.plot(path.lam, path.beta, "-", color=BLUE, lw=1.1, zorder=2)
-    ax.plot(lam, ref, "o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8, zorder=3)
+    ax.plot(path.lam, path.beta[:, rest], "-", color=GRID, lw=0.7, zorder=1)
+    ax.plot(path.lam, path.beta[:, top], "-", color=BLUE, lw=1.1, zorder=2)
+    ax.plot(lam, ref[:, top], "o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8, zorder=3)
     ax.set_xscale("symlog", linthresh=path.lam[0] / 50)
     ax.set_xlim(path.lam[0] * 1.05, 0)
     ax.set_xlabel(r"penalty $\lambda$ (decreasing)")
@@ -1116,18 +1135,19 @@ def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath) -> None:
 def path_legend(fig: plt.Figure) -> None:
     """The legend shared by the path panels."""
     handles = [
-        plt.Line2D([], [], color=BLUE, lw=1.1, label="CLA path"),
+        plt.Line2D([], [], color=BLUE, lw=1.1, label=f"CLA path, {SCD14_SHOWN} largest"),
+        plt.Line2D([], [], color=GRID, lw=0.7, label="the other genera"),
         plt.Line2D([], [], ls="none", marker="o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8,
                    label="interior-point solve, mid-segment"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncols=2)
+    fig.legend(handles=handles, loc="lower center", ncols=3)
 
 
 def fig_scd14(out: Path) -> None:
     """The real-data example: the zero-sum path of sCD14 on 60 genera."""
     prob, _ = scd14()
     fig, ax = plt.subplots(figsize=(4.8, 3.2))
-    path_panel(ax, prob, trace(prob))
+    path_panel(ax, prob, trace(prob), SCD14_SHOWN, SCD14_STRIDE)
     ax.set_title("sCD14 on 60 genera, zero-sum LASSO by the CLA", fontsize=8, color=INK)
     path_legend(fig)
     fig.tight_layout(rect=(0, 0.08, 1, 1))
