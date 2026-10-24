@@ -27,6 +27,8 @@ interior-point solver and the LASSO's optimality conditions.
                                          # Table 4 of hostile problems as figures/stress.tex
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
     uv run python/make_figures.py timings  # the cost ratios the note quotes, and the machine
+    uv run python/make_figures.py export   # only figures/zero_sum_paths.npz, for the checks that
+                                         # run c-lasso and comlasso on it
 
 Seeded and offline: the diabetes data ship with scikit-learn.
 """
@@ -1228,6 +1230,23 @@ def table_tex(rows: list[Row]) -> str:
     ) + "\\bottomrule\n"
 
 
+def export_zero_sum_paths() -> None:
+    """Write the exact zero-sum paths to figures/zero_sum_paths.npz.
+
+    For the checks that run other path algorithms in their own environments,
+    classo_check.py (c-lasso) and R/comlasso_check.R (comlasso): Zero-sum, sCD14 and, for
+    p > n, Wide, zero-sum for every seed of Table 4.
+    """
+    OUT.mkdir(exist_ok=True)
+    saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
+    saved |= {f"wide-{seed}": stress_problems(seed)["wide, zero-sum"][0] for seed in STRESS_SEEDS}
+    arrays = {}
+    for name, prob in saved.items():
+        path = trace(prob)
+        arrays |= {f"{name}.x": prob.x, f"{name}.y": prob.y, f"{name}.lam": path.lam, f"{name}.beta": path.beta}
+    np.savez(OUT / "zero_sum_paths.npz", **arrays)
+
+
 def main() -> None:
     """Write the figures and Table 2, and print the table."""
     OUT.mkdir(exist_ok=True)
@@ -1286,15 +1305,7 @@ def main() -> None:
     print(f"{'problem':<16} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} {'KKT':>9}")
     for r in rows:
         print(f"{r.name:<16} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} {r.gap:9.1e} {r.kkt:9.1e}")
-    # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment:
-    # Zero-sum, sCD14 and, for p > n, Wide, zero-sum for every seed of Table 4.
-    saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
-    saved |= {f"wide-{seed}": stress_problems(seed)["wide, zero-sum"][0] for seed in STRESS_SEEDS}
-    arrays = {}
-    for name, prob in saved.items():
-        path = trace(prob)
-        arrays |= {f"{name}.x": prob.x, f"{name}.y": prob.y, f"{name}.lam": path.lam, f"{name}.beta": path.beta}
-    np.savez(OUT / "zero_sum_paths.npz", **arrays)
+    export_zero_sum_paths()
     # Every problem of Table 2 with its exact path, for julia/gaines_check.jl, which runs
     # ConstrainedLasso.jl on them.
     arrays = {}
@@ -1594,4 +1605,6 @@ if __name__ == "__main__":
         sys.exit(pytest.main([__file__, "-q"]))
     if sys.argv[1:] == ["timings"]:
         sys.exit(timings())
+    if sys.argv[1:] == ["export"]:
+        sys.exit(export_zero_sum_paths())
     main()
