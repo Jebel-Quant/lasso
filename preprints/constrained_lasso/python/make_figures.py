@@ -27,6 +27,8 @@ interior-point solver and the LASSO's optimality conditions.
                                          # Table 4 of hostile problems as figures/stress.tex
     uv run python/make_figures.py test   # the same numbers as pytest checks, with tolerances
     uv run python/make_figures.py timings  # the cost ratios the note quotes, and the machine
+    uv run python/make_figures.py export   # only figures/zero_sum_paths.npz, for the checks that
+                                         # run c-lasso and comlasso on it
 
 Seeded and offline: the diabetes data ship with scikit-learn.
 """
@@ -34,6 +36,7 @@ Seeded and offline: the diabetes data ship with scikit-learn.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import os
 import platform
 import subprocess
@@ -849,7 +852,12 @@ def encodings() -> list[EncodingRow]:
 
 def encodings_numbers(rows: list[EncodingRow]) -> str:
     """The numbers the text quotes about the largest zero sum, as LaTeX macros."""
-    return rf"\newcommand{{\encSpacing}}{{{sci(rows[-1].spacing)}}}" + "\n"
+    largest = rows[-1]
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "encSpacing": sci(largest.spacing),
+        "encLargestKnots": str(largest.penalty),
+        "encLargestGap": sci(largest.gap),
+    }.items())
 
 
 def encodings_tex(rows: list[EncodingRow]) -> str:
@@ -930,6 +938,40 @@ def against_lars(prob: Lasso, path: LassoPath, positive: bool = False) -> float:
     assert len(lam) == len(path.lam), (len(lam), len(path.lam))
     scale = np.abs(coefs).max()
     return float(max(np.abs(path.beta - coefs.T).max() / scale, np.abs(path.lam - lam).max() / lam[0]))
+
+
+def lars_positive_end(prob: Lasso, path: LassoPath) -> tuple[float, float]:
+    """Where ``lars_path``'s positive mode really ends, and its KKT violation at lambda = 0.
+
+    scikit-learn labels its last point alpha = 0, but the point is the path at the lambda
+    where nothing was left to enter: find that lambda on the CLA path.
+    """
+    _, _, coefs = lars_path(prob.x, prob.y, method="lasso", positive=True)
+    end = coefs[:, -1]
+    for (l0, b0), (l1, b1) in itertools.pairwise(zip(path.lam, path.beta, strict=True)):
+        d = b1 - b0
+        t = float(d @ (end - b0) / (d @ d))
+        if 0 <= t <= 1 and np.abs(b0 + t * d - end).max() < 1e-9 * np.abs(end).max():
+            return float(l0 + t * (l1 - l0)), kkt_residual(prob, 0.0, end)
+    raise AssertionError("lars_path's last point is not on the CLA path")
+
+
+def evidence_numbers(rows: list[Row]) -> str:
+    """The numbers the text of Section 5 and Figure 2 quote, as LaTeX macros."""
+    by = {r.name: r for r in rows}
+    probs = problems()
+    lam_end, kkt_end = lars_positive_end(probs["nonnegative"], trace(probs["nonnegative"]))
+    plain = trace(probs["plain"])
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "evWideKnots": str(by["wide"].knots),
+        "evPlainKnots": str(by["plain"].knots),
+        "evPlainGap": sci(by["plain"].gap),
+        "evPlainNorm": f"{np.abs(plain.beta[-1]).sum():.0f}",  # ||beta(0)||_1, where cash enters
+        "evPinnedHold": f"{trace(probs['pinned']).lam[0]:.0f}",  # the first knot, where Pinned starts to move
+        "evIpmWorst": sci(max(r.gap for r in rows if r.reference == "IPM")),
+        "evLarsEnd": f"{lam_end:.2f}",
+        "evLarsKKT": sci(kkt_end),
+    }.items())
 
 
 def against_solver(prob: Lasso, path: LassoPath) -> float:
@@ -1066,14 +1108,26 @@ def fig_portfolio(out: Path) -> None:
     plt.close(fig)
 
 
-def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath) -> None:
-    """A CLA path against lambda, with interior-point solves at the segment midpoints."""
+SCD14_SHOWN = 8  # Figure 3 draws the coefficients largest at lambda = 0 in colour, the rest in grey
+SCD14_STRIDE = 3  # and marks the interior-point solve at every third segment midpoint
+
+
+def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath, shown: int, stride: int) -> None:
+    """A CLA path against lambda, with interior-point solves at some segment midpoints.
+
+    Sixty coefficients and a solve at every midpoint overplot into a solid band, so only
+    the ``shown`` coefficients largest at the end are drawn in colour and marked, at every
+    ``stride``-th midpoint. Table 2 checks every midpoint of every coefficient.
+    """
     lam, _ = midpoints(path)
-    lam = lam[lam > 1e-6 * path.lam[0]]
+    lam = lam[lam > 1e-6 * path.lam[0]][::stride]
     ref = np.array([reference(prob, v) for v in lam])
+    top = np.argsort(-np.abs(path.beta[-1]))[:shown]
+    rest = np.setdiff1d(np.arange(path.beta.shape[1]), top)
     ax.axhline(0, color=MUTED, lw=0.6)
-    ax.plot(path.lam, path.beta, "-", color=BLUE, lw=1.1, zorder=2)
-    ax.plot(lam, ref, "o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8, zorder=3)
+    ax.plot(path.lam, path.beta[:, rest], "-", color=GRID, lw=0.7, zorder=1)
+    ax.plot(path.lam, path.beta[:, top], "-", color=BLUE, lw=1.1, zorder=2)
+    ax.plot(lam, ref[:, top], "o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8, zorder=3)
     ax.set_xscale("symlog", linthresh=path.lam[0] / 50)
     ax.set_xlim(path.lam[0] * 1.05, 0)
     ax.set_xlabel(r"penalty $\lambda$ (decreasing)")
@@ -1083,18 +1137,19 @@ def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath) -> None:
 def path_legend(fig: plt.Figure) -> None:
     """The legend shared by the path panels."""
     handles = [
-        plt.Line2D([], [], color=BLUE, lw=1.1, label="CLA path"),
+        plt.Line2D([], [], color=BLUE, lw=1.1, label=f"CLA path, {SCD14_SHOWN} largest"),
+        plt.Line2D([], [], color=GRID, lw=0.7, label="the other genera"),
         plt.Line2D([], [], ls="none", marker="o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8,
                    label="interior-point solve, mid-segment"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncols=2)
+    fig.legend(handles=handles, loc="lower center", ncols=3)
 
 
 def fig_scd14(out: Path) -> None:
     """The real-data example: the zero-sum path of sCD14 on 60 genera."""
     prob, _ = scd14()
     fig, ax = plt.subplots(figsize=(4.8, 3.2))
-    path_panel(ax, prob, trace(prob))
+    path_panel(ax, prob, trace(prob), SCD14_SHOWN, SCD14_STRIDE)
     ax.set_title("sCD14 on 60 genera, zero-sum LASSO by the CLA", fontsize=8, color=INK)
     path_legend(fig)
     fig.tight_layout(rect=(0, 0.08, 1, 1))
@@ -1175,6 +1230,23 @@ def table_tex(rows: list[Row]) -> str:
     ) + "\\bottomrule\n"
 
 
+def export_zero_sum_paths() -> None:
+    """Write the exact zero-sum paths to figures/zero_sum_paths.npz.
+
+    For the checks that run other path algorithms in their own environments,
+    classo_check.py (c-lasso) and R/comlasso_check.R (comlasso): Zero-sum, sCD14 and, for
+    p > n, Wide, zero-sum for every seed of Table 4.
+    """
+    OUT.mkdir(exist_ok=True)
+    saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
+    saved |= {f"wide-{seed}": stress_problems(seed)["wide, zero-sum"][0] for seed in STRESS_SEEDS}
+    arrays = {}
+    for name, prob in saved.items():
+        path = trace(prob)
+        arrays |= {f"{name}.x": prob.x, f"{name}.y": prob.y, f"{name}.lam": path.lam, f"{name}.beta": path.beta}
+    np.savez(OUT / "zero_sum_paths.npz", **arrays)
+
+
 def main() -> None:
     """Write the figures and Table 2, and print the table."""
     OUT.mkdir(exist_ok=True)
@@ -1186,6 +1258,7 @@ def main() -> None:
     (OUT / "example.tex").write_text(example_tex(ex))
     rows = table()
     (OUT / "evidence.tex").write_text(table_tex(rows))
+    (OUT / "evidence_numbers.tex").write_text(evidence_numbers(rows))
     big = scale()
     (OUT / "scale.tex").write_text(scale_tex(big))
     hostile = stress()
@@ -1232,15 +1305,7 @@ def main() -> None:
     print(f"{'problem':<16} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} {'KKT':>9}")
     for r in rows:
         print(f"{r.name:<16} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} {r.gap:9.1e} {r.kkt:9.1e}")
-    # The exact zero-sum paths, for classo_check.py, which runs c-lasso in its own environment:
-    # Zero-sum, sCD14 and, for p > n, Wide, zero-sum for every seed of Table 4.
-    saved = {"zero-sum": problems()["zero-sum"]} | ({"scd14": scd14()[0]} if SCD14.exists() else {})
-    saved |= {f"wide-{seed}": stress_problems(seed)["wide, zero-sum"][0] for seed in STRESS_SEEDS}
-    arrays = {}
-    for name, prob in saved.items():
-        path = trace(prob)
-        arrays |= {f"{name}.x": prob.x, f"{name}.y": prob.y, f"{name}.lam": path.lam, f"{name}.beta": path.beta}
-    np.savez(OUT / "zero_sum_paths.npz", **arrays)
+    export_zero_sum_paths()
     # Every problem of Table 2 with its exact path, for julia/gaines_check.jl, which runs
     # ConstrainedLasso.jl on them.
     arrays = {}
@@ -1353,7 +1418,7 @@ def test_stress() -> None:
     """On the hostile problems the path is exact or declined, never wrong.
 
     Only the near-duplicate without a cap is declined; Wide, zero-sum, which needs a
-    singular Gram solved on the zero sum's null space, is traced (cvxcla 2.6.0).
+    singular Gram solved on the zero sum's null space, is traced (since cvxcla 2.6.0).
 
     Against LARS, two exact paths can part by as much as the conditioning allows,
     cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
@@ -1437,6 +1502,13 @@ def test_portfolios() -> None:
     assert [r.rank for r in rows] == [8, 3]
     for r in rows:
         assert r.points > 2 and r.worse < 1e-7, r
+
+
+def test_lars_positive_end() -> None:
+    """lars_path's positive mode stops short of lambda = 0, as the note says, and its end is on the CLA path."""
+    prob = problems()["nonnegative"]
+    lam, kkt = lars_positive_end(prob, trace(prob))
+    assert lam > 1.0 and kkt > 1e-3, (lam, kkt)
 
 
 def test_cholesterol_row_binds() -> None:
@@ -1533,4 +1605,6 @@ if __name__ == "__main__":
         sys.exit(pytest.main([__file__, "-q"]))
     if sys.argv[1:] == ["timings"]:
         sys.exit(timings())
+    if sys.argv[1:] == ["export"]:
+        sys.exit(export_zero_sum_paths())
     main()

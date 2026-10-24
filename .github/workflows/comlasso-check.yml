@@ -1,0 +1,85 @@
+# Run the R check of preprints/constrained_lasso (Section 5) on each pull request into
+# main: comlasso (Jeon et al., 2020), an R package that traces the exact zero-sum LASSO
+# path with no ridge, must return the CLA's knots on Zero-sum, sCD14 and Wide, zero-sum.
+#
+# The paths are exported first by `make_figures.py export`, in the locked Python
+# environment, so comlasso is compared with what the current code produces. The check
+# fetches comlasso itself, from its authors' repository at a pinned commit, and checks
+# the zip's SHA-256; it fails if a gap exceeds 1e-9 or the knots differ.
+#
+# compile.yml runs the same script inside `make figures` to write the numbers the note
+# quotes; this workflow is the check on its own, fast, and named, so a red comlasso is
+# not hidden in the build of the whole note.
+#
+# Everything is pinned as in r-check.yml: the runner image, R itself, and Rglpk through a
+# dated snapshot of CRAN's Ubuntu binaries, so a new CRAN release cannot change the result.
+name: comlasso-check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - preprints/constrained_lasso/**
+      - .github/workflows/comlasso-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comlasso-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Ubuntu 24.04 (noble) binaries as CRAN stood on that date, as in r-check.yml.
+  CRAN_SNAPSHOT: https://packagemanager.posit.co/cran/__linux__/noble/2026-09-01
+  RGLPK_VERSION: "0.6.5.1"
+
+jobs:
+  comlasso:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: preprints/constrained_lasso
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: astral-sh/setup-uv@v7.6.0
+        with:
+          cache-dependency-glob: |
+            preprints/constrained_lasso/python/*.py
+            preprints/constrained_lasso/python/*.py.lock
+
+      # sCD14 is one of the three problems; its data may be fetched freely (fetch: on build).
+      - name: Fetch the sCD14 data
+        run: uv run --locked python/fetch_scd14.py
+
+      - name: Export the zero-sum paths
+        run: |
+          uv run --locked python/make_figures.py export
+          test -f figures/zero_sum_paths.npz
+
+      - uses: r-lib/actions/setup-r@v2.14.0
+        with:
+          r-version: 4.6.1
+          use-public-rspm: false
+
+      # Rglpk links GLPK; the snapshot's binary needs the library at run time.
+      - name: Install Rglpk from the CRAN snapshot
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libglpk40
+          Rscript -e '
+            options(repos = c(CRAN = Sys.getenv("CRAN_SNAPSHOT")))
+            install.packages("Rglpk")
+            stopifnot(packageVersion("Rglpk") == Sys.getenv("RGLPK_VERSION"))
+          '
+
+      - name: Compare comlasso with the CLA
+        run: Rscript R/comlasso_check.R
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: comlasso
+          path: preprints/constrained_lasso/figures/comlasso.tex
+          if-no-files-found: error

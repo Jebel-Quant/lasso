@@ -59,6 +59,8 @@ python/
   classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
   classo_check.py.lock  its locked environment
   fetch_scd14.py.lock   its locked environment
+R/
+  comlasso_check.R      runs comlasso 0.2 (Jeon et al., fetched at a pinned commit, SHA-256 checked) on the saved zero-sum paths
 julia/
   classopath.jl         the path algorithm of Gaines et al., ported from ConstrainedLasso.jl to Julia 1
   gaines_check.jl       runs it on every problem of Table 2 against the exact paths

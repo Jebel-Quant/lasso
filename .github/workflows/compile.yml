@@ -124,6 +124,41 @@ jobs:
       - uses: julia-actions/cache@v3.4.0
         if: hashFiles(format('{0}/julia/Project.toml', matrix.dir)) != ''
 
+      # An R/*.R marked `# run: after figures` runs with Rscript after the Julia checks.
+      # It names the CRAN packages it needs on a line `# needs:` and the Ubuntu libraries
+      # they link on a line `# apt:`. R and the packages are pinned as in r-check.yml: R
+      # itself, and the packages through a dated snapshot of CRAN's Ubuntu binaries.
+      - name: Find the R checks
+        id: r
+        run: |
+          shopt -s nullglob
+          files=(R/*.R)
+          [ "${#files[@]}" -gt 0 ] || exit 0
+          checks=$(grep -l '^# run: after figures$' "${files[@]}" || true)
+          [ -n "$checks" ] || exit 0
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "packages=$(sed -n 's/^# needs: *//p' $checks | tr -s ' ,' '\n' | sort -u | xargs)" >> "$GITHUB_OUTPUT"
+          echo "apt=$(sed -n 's/^# apt: *//p' $checks | tr -s ' ,' '\n' | sort -u | xargs)" >> "$GITHUB_OUTPUT"
+      - uses: r-lib/actions/setup-r@v2.14.0
+        if: steps.r.outputs.found == 'true'
+        with:
+          r-version: 4.6.1
+          use-public-rspm: false
+      - name: Install the R checks' packages
+        if: steps.r.outputs.found == 'true'
+        env:
+          CRAN_SNAPSHOT: https://packagemanager.posit.co/cran/__linux__/noble/2026-09-01
+          PACKAGES: ${{ steps.r.outputs.packages }}
+          APT: ${{ steps.r.outputs.apt }}
+        run: |
+          if [ -n "$APT" ]; then sudo apt-get install -y -q $APT; fi
+          Rscript -e '
+            options(repos = c(CRAN = Sys.getenv("CRAN_SNAPSHOT")))
+            packages <- strsplit(Sys.getenv("PACKAGES"), " ")[[1]]
+            install.packages(packages)
+            stopifnot(all(sapply(packages, requireNamespace, quietly = TRUE)))
+          '
+
       # A python/fetch_*.py with the line `# fetch: on build` downloads data that may be
       # fetched freely and do not change; `make data` runs those. It comes before the
       # figure cache, whose key hashes data/.
@@ -139,7 +174,7 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: ${{ matrix.dir }}/figures
-          key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/**/*.py.lock', matrix.dir), format('{0}/julia/**', matrix.dir), format('{0}/data/**', matrix.dir)) }}
+          key: figures-${{ matrix.job }}-${{ hashFiles(format('{0}/**/*.py', matrix.dir), format('{0}/**/*.py.lock', matrix.dir), format('{0}/julia/**', matrix.dir), format('{0}/R/**', matrix.dir), format('{0}/data/**', matrix.dir)) }}
 
       # make figures runs make_figures.py, then any script marked `# run: after figures`.
       - name: Draw the figures
