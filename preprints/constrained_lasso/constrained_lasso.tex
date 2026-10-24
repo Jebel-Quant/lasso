@@ -60,7 +60,7 @@
 \author{Thomas Schmelzer\\[2pt]
 {\small Jebel Quant Research, Abu Dhabi}\\[1pt]
 {\small ORCID \href{https://orcid.org/0009-0009-9771-3501}{0009-0009-9771-3501}}}
-\date{18 October 2026}
+\date{24 October 2026}
 
 \begin{document}
 
@@ -79,8 +79,8 @@ stay out of reach. The checks also exposed two defects in the CLA itself, now fi
 that refused ordinary portfolio problems.
 
 \medskip\noindent
-\textbf{Keywords:} constrained LASSO; critical line algorithm; solution path; least angle
-regression; compositional data; portfolio optimisation; reproducibility
+\textbf{Keywords:} constrained LASSO; critical line algorithm; solution path;
+compositional data; portfolio optimisation; reproducibility
 \end{abstract}
 
 \section{A constrained regression}
@@ -592,9 +592,11 @@ instead. On the real data the CLA is as accurate as on the simulated problems.
 problems of up to $p=500$ parts. At that size a midpoint solve per segment would cost
 more than the path itself, so the table reports only the optimality conditions; they
 hold to rounding. For a sense of cost, a grid of 100 interior-point solves (Clarabel
-through CVXPY, compiled once with $\lambda$ as a parameter) costs 15 to 350 times as
-much as the whole CLA path on these problems, in ratios of the fastest of several runs,
-and it misses every knot between grid points.
+through CVXPY, compiled once with $\lambda$ as a parameter) costs about 100 times as
+much as the whole CLA path at $p=100$ and 350 times at $p=500$, and 14 to 100 times on
+the constrained diabetes and zero-sum problems of Table~\ref{tab:evidence}, in ratios of
+the fastest of several runs on one machine; \texttt{timings} measures them on another.
+The grid also misses every knot between grid points.
 
 \paragraph{Hostile problems} The problems so far are easy for any path algorithm.
 Table~\ref{tab:stress} adds problems chosen to make one fail, each drawn with
@@ -859,6 +861,13 @@ The simulated problems use fixed seeds. The sCD14 data are not redistributed:
 \texttt{python/fetch\_scd14.py} downloads \texttt{coda4microbiome} 0.2.4 from CRAN and
 checks its SHA-256. \texttt{make figures} runs all four, in CI as well.
 
+The lockfiles fix the software, not the hardware. Residuals near rounding come out with
+different last digits on another CPU or BLAS build, so a rerun will not match the
+printed values digit for digit. The tests therefore check the optimality conditions
+against tolerances between $10^{-12}$ and $10^{-10}$, and the gaps to the
+interior-point solver against its own accuracy. Costs are given only as ratios, which
+vary far less between machines than absolute times.
+
 \section*{Competing interests}
 
 The author works at Jebel Quant Research, which hosts the code, and maintains
@@ -964,7 +973,7 @@ M.~R. Osborne, B.~Presnell, and B.~A. Turlach.
 C.~Paulson, G.~M. James, and P.~Rusmevichientong.
 \newblock PACLasso: penalized and constrained lasso optimization.
 \newblock R package version 1.0.0, 2019; archived on CRAN on 2 June 2025.
-\newblock \url{https://cran.r-project.org/package=PACLasso}.
+\newblock \href{https://doi.org/10.32614/CRAN.package.PACLasso}{\texttt{doi:10.32614/CRAN.package.PACLasso}}.
 
 \bibitem{sklearn}
 F.~Pedregosa et al.
