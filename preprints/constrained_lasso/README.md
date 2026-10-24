@@ -12,12 +12,12 @@ The note opens with the diabetes LASSO, capped: every coefficient must satisfy
 each other and gives HDL a positive coefficient. scikit-learn's `lars_path` takes no
 constraint but `positive`, so it cannot cap. The CLA computes the exact path under
 caps, signs, equality constraints, among them the zero sum of compositional data, and
-inequality rows `Cβ ≤ h` with `h ≥ 0`. That includes the cases where an encoding starts
+inequality rows `Cβ ≤ h`, including rows that exclude β = 0 (`h_r < 0`). That includes the cases where an encoding starts
 on a degenerate vertex (a monotone fit, caps or rows under a zero sum, weights that sum
 to one, a zero sum with p > n), which cvxcla relaxes, extrapolates and certifies.
 
 Every path comes from one call, `cvxcla.Lasso` ([`cvxcla`](https://github.com/cvxgrp/cvxcla)
-2.6.0, pinned). This folder holds no CLA and no encoding of its own; it states the
+2.7.0, pinned). This folder holds no CLA and no encoding of its own; it states the
 problems, calls `cvxcla`, and checks the paths without it. `cvxcla.Lasso` runs the CLA in
 Markowitz's general form, `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `Gx ≤ h`,
 `l ≤ x ≤ u`, traced from `γ = ∞` down to 0, through one of the two encodings the note
@@ -26,7 +26,8 @@ describes:
 - **Penalty form.** Split β into positive and negative parts, `Σ = S'GS`, `μ = −1`,
   `q = S'X'y`. The parameter `γ` is λ itself. Coefficient bounds become position limits,
   equality rows `Aβ = b` become budget rows (nondegenerate start needed, so `b ≠ 0`), and
-  inequality rows `Cβ ≤ h` (with `h > 0`) become rows `CSz ≤ h`.
+  inequality rows `Cβ ≤ h` become rows `CSz ≤ h`. With `b ≠ 0` or some `h_r < 0` the path
+  starts at the feasible point of smallest ℓ1 norm.
 - **Budget form.** Rescale the ℓ1 ball to the simplex, `β = t·Sw`, and add a riskless cash
   asset for the unused budget. This is Markowitz's long-only, fully invested problem with
   `γ = 1/t`. Homogeneous constraints (`Aβ = 0`, sign constraints) carry over, and the path
