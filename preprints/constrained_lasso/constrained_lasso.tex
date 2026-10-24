@@ -4,6 +4,7 @@
 \usepackage[a4paper,margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{microtype}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
@@ -253,6 +254,36 @@ coefficient away from the exact path on a zero-sum problem with $p>n$
 bounds, signs, inequality rows and zero sums alike (Table~\ref{tab:wide}). Microbiome
 studies often have more taxa than samples, so this is the case a user of the zero-sum
 LASSO meets first.
+
+\medskip\noindent
+\fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+\textbf{The results at a glance.} One row per kind of constraint tested in
+Section~\ref{sec:evidence}. \emph{Exact}: the knots meet the optimality conditions of
+\eqref{eq:lasso} to rounding at every knot and along every segment.
+
+\smallskip
+\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright}p{0.31\linewidth}>{\raggedright}p{0.16\linewidth}%
+>{\raggedright}p{0.14\linewidth}>{\raggedright\arraybackslash}p{0.31\linewidth}@{}}
+\toprule
+constraint & encoding & result & also checked against \\
+\midrule
+none, or signs & penalty & exact & LARS \\
+caps, inequality rows & penalty & exact & IPM, Gaines et al. \\
+nonhomogeneous rows ($b\ne0$, or some $h_r<0$) & penalty & exact & IPM \\
+zero sum, with signs at most & budget & exact & IPM, comlasso, Gaines et al., \texttt{c-lasso}$^*$ \\
+zero sum with caps, monotone & penalty, relaxed & exact & IPM \\
+$p>n$: signs, caps, rows, a pinned fit, zero sums (Table~\ref{tab:wide}) & as above & exact, no ridge & LARS, IPM, comlasso, \texttt{c-lasso}$^*$ \\
+two nearly identical free columns & -- & declined & -- \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+IPM: an interior-point solve at every segment midpoint. Gaines et al.: started at the
+exact first knot. $^*$With its ridge set to $10^{-12}$; as shipped, its ridge moves the
+path (Section~\ref{sec:independent}).
+\end{minipage}}
+\medskip
 
 \paragraph{Notation} The design is $X\in\R^{n\times p}$, with $n$ observations and $p$
 predictors, and the response is $y\in\R^n$. Write $G=X\trans X$ and $c=X\trans y$. The
@@ -544,30 +575,29 @@ independent in the usual sense. The references are: LARS, an interior-point solv
 the optimality conditions evaluated without either encoding, and three path algorithms
 written by others. The scripts and their tolerances are published.
 
-Table~\ref{tab:evidence} lists the test problems. The diabetes problems use the data
-of Section~\ref{sec:example}, with the response centred. \emph{Nonnegative} requires
-every coefficient to be at least zero, the one constraint \texttt{lars\_path} accepts.
-\emph{Wide} is a Gaussian design with $n=40$ and $p=100$, with 8 nonzero coefficients
-and noise of standard deviation $0.5$. \emph{Box} is the opening example. At
-$\lambda=0$ the variables \texttt{bmi} and \texttt{s5} sit at the cap, while
-\texttt{s1}, whose least-squares coefficient is the largest, ends well inside it.
-\emph{Cholesterol} caps instead the net effect of the three cholesterol measures,
-$|\beta_{\texttt{s1}}+\beta_{\texttt{s2}}+\beta_{\texttt{s3}}|\le h$, two inequality
-rows with $h$ half the least-squares value; the rows bind at the end of the path.
-\emph{Pinned} requires the fitted value for the first patient to equal the observed
-one, one nonhomogeneous equality row. Its starting vertex puts all weight on
-\texttt{bmi}, the largest entry of that patient's covariate vector, and holds still
-until $\lambda=\evPinnedHold$. \emph{Zero-sum} is a regression on compositional data in the
-style of Lin et al.\ \cite{lin2014}. Each of $n=60$ samples is a composition of $p=30$
-parts, the predictors are the logs of the shares, and the coefficients must sum to
-zero: a composition is only known up to scale, and only a zero sum makes the fit
-independent of the units. Five parts have nonzero true coefficients. \emph{Zero-sum,
-signs} adds nonnegativity on the even-numbered parts, which the truth meets, and
-\emph{Zero-sum, caps} a cap at half the largest zero-sum least-squares coefficient.
-\emph{Monotone} is the ordered fit of Section~\ref{sec:limits}, with rows
-$\beta_j\le\beta_{j+1}$. \emph{Sum to one} predicts one unit's outcomes over 40
-periods from those of 20 donors, as a synthetic control does, with weights that must sum
-to one and may be negative.
+\subsection{Test problems and checks}
+\label{sec:checks}
+
+Table~\ref{tab:evidence} lists the test problems and their constraints. The diabetes
+problems use the data of Section~\ref{sec:example}, with the response centred, and
+\emph{Box} is the opening example. At $\lambda=0$ its variables \texttt{bmi} and
+\texttt{s5} sit at the cap, while \texttt{s1}, whose least-squares coefficient is the
+largest, ends well inside it. \emph{Nonnegative} carries the one constraint
+\texttt{lars\_path} accepts. In \emph{Cholesterol}, $h$ is half the least-squares net
+effect of the three cholesterol measures, and the two rows bind at the end of the path.
+\emph{Pinned} fits the first patient exactly, one nonhomogeneous equality row; its
+starting vertex puts all weight on \texttt{bmi}, the largest entry of that patient's
+covariate vector, and holds still until $\lambda=\evPinnedHold$. \emph{Wide} is a
+Gaussian design with 8 nonzero coefficients and noise of standard deviation $0.5$.
+\emph{Zero-sum} is a regression on compositional data in the style of Lin et al.\
+\cite{lin2014}: each sample is a composition of $p$ parts, the predictors are the logs of
+the shares, and since a composition is only known up to scale, only a zero sum makes the
+fit independent of the units. Five parts have nonzero true coefficients. The signs of
+\emph{Zero-sum, signs} fall on the even-numbered parts, which the truth meets, and the
+caps of \emph{Zero-sum, caps} are at half the largest zero-sum least-squares coefficient.
+\emph{Monotone} is the ordered fit of Section~\ref{sec:limits}. \emph{Sum to one}
+predicts one unit's outcomes over 40 periods from those of 20 donors, as a synthetic
+control does, with weights that may be negative.
 \emph{sCD14} is the same model on real data, from a study of the gut microbiome in HIV
 infection \cite{noguerajulian2016}, as distributed with the R package
 \texttt{coda4microbiome} \cite{calle2023}: the counts of \rdGenera{} bacterial genera
@@ -618,9 +648,9 @@ $\|c\|_\infty$, is the last column of the table.
 \begin{table}[t]
 \centering
 \small\setlength{\tabcolsep}{3.5pt}
-\begin{tabular}{lrrrlcc}
+\begin{tabular}{llrrrlcc}
 \toprule
-problem & $n$ & $p$ & knots & ref. & gap & KKT \\
+problem & constraint & $n$ & $p$ & knots & ref. & gap & KKT \\
 \midrule
 \input{figures/evidence.tex}
 \end{tabular}
@@ -630,6 +660,9 @@ coefficient. \emph{KKT}: largest violation of the optimality conditions of
 \eqref{eq:lasso} at every knot and along every segment, relative to $\|c\|_\infty$.}
 \label{tab:evidence}
 \end{table}
+
+\subsection{Accuracy}
+\label{sec:accuracy}
 
 The CLA returns LARS's knots to $10^{-13}$, including on the wide design, where
 \evWideKnots{} knots carry the path to the interpolating fit. The interior-point gaps are the
@@ -641,7 +674,10 @@ $\lambda=0$ is \evLarsKKT{}. The CLA carries on to the nonnegative least-squares
 table compares that last knot with \texttt{scipy.optimize.nnls} \cite{lawson1974}
 instead. On the real data the CLA is as accurate as on the simulated problems.
 
-\paragraph{Scale} Table~\ref{tab:scale} extends the test to simulated zero-sum
+\subsection{Scale and cost}
+\label{sec:scale}
+
+Table~\ref{tab:scale} extends the test to simulated zero-sum
 problems of up to $p=500$ parts. At that size a midpoint solve per segment would cost
 more than the path itself, so the table reports only the optimality conditions; they
 hold to rounding. A second check at the largest size comes from the other encoding: the
@@ -669,7 +705,10 @@ violation at every knot and along every segment, as in Table~\ref{tab:evidence}.
 \label{tab:scale}
 \end{table}
 
-\paragraph{Hostile problems} The problems so far are easy for any path algorithm.
+\subsection{Hostile problems}
+\label{sec:hostile}
+
+The problems so far are easy for any path algorithm.
 Table~\ref{tab:stress} adds problems chosen to make one fail, each drawn with
 \stSeeds{} seeds, and reports the worst case. \emph{Correlated} is a Gaussian design
 with $n=100$ and $p=40$ in which every pair of columns has correlation \stRho{}, alone,
@@ -711,7 +750,10 @@ duplicate column is \texttt{bmi} plus noise of the given size, relative to its s
 \label{tab:stress}
 \end{table}
 
-\paragraph{More predictors than observations} \emph{Wide, zero-sum} is the only
+\subsection{More predictors than observations}
+\label{sec:wide}
+
+\emph{Wide, zero-sum} is the only
 problem so far with both $p>n$ and a constraint, and a zero sum alone has an exact path
 in comlasso \cite{jeon2020} too. Table~\ref{tab:wide} puts on \emph{Wide}, again with
 $n=\wdN$, $p=\wdP$ and \stSeeds{} seeds, the constraints comlasso does not take:
@@ -739,8 +781,10 @@ interior-point solver, the worst over \stSeeds{} seeds. None is declined.}
 \label{tab:wide}
 \end{table}
 
-\paragraph{Three independent path algorithms} Three path algorithms derived for the
-LASSO, with no reference to portfolios, can be run against the CLA. All three trace its
+\subsection{Three independent path algorithms}
+\label{sec:independent}
+
+Three path algorithms derived for the LASSO, with no reference to portfolios, can be run against the CLA. All three trace its
 path once started at the exact first knot, up to the ridge two of them add.
 
 comlasso \cite{jeon2020} traces the exact path under zero sums on blocks of
