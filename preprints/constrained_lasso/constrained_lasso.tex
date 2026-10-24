@@ -43,6 +43,7 @@
 \input{figures/gaines.tex}
 \input{figures/monotone.tex}
 \input{figures/floor.tex}
+\input{figures/encodings_numbers.tex}
 \input{figures/stress_numbers.tex}
 \input{figures/wide_numbers.tex}
 
@@ -251,8 +252,8 @@ constrained LASSO is
 \quad\text{s.t.}\quad A\beta=b,\quad C\beta\le h,\quad l\le\beta\le u,
 \end{equation}
 with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$ and $l_j\le0\le u_j$, infinite
-entries allowed, and a nonempty feasible set. A bound that excludes zero, $\beta_j\ge l_j>0$,
-is the row $-\beta_j\le-l_j$. With no rows and infinite bounds it is Tibshirani's LASSO. We assume,
+entries allowed, and a nonempty feasible set. A bound that excludes zero, such as
+$\beta_j\ge\ell$ with $\ell>0$, is written as the row $-\beta_j\le-\ell$. With no rows and infinite bounds it is Tibshirani's LASSO. We assume,
 as \cite{perspective} does, that $\mathrm{L}_\lambda$ has a unique minimiser
 $\beta(\lambda)$ for every $\lambda>0$. This is the generic case: for the LASSO without
 constraints it holds whenever the columns of $X$ are in general position
@@ -750,7 +751,8 @@ interior-point solver, the worst over \stSeeds{} seeds. None is declined.}
 \label{sec:limits}
 
 Alone, the two forms cover bounds, equality rows with a nondegenerate start, inequality
-rows with $h_r\ne0$, and homogeneous rows with signs. Where they stop, the obstacle is at
+rows that are slack at $\beta=0$ ($h>0$) or exclude it ($h<0$), and homogeneous rows with
+signs. Where they stop, the obstacle is at
 the start, in the shape of the constraint, or in the arithmetic. This section says
 where, and how \texttt{cvxcla} carries on past the first two.
 
@@ -841,13 +843,15 @@ of an interior-point solve at every midpoint and meets the optimality conditions
 too, which raises the question whether the budget form is still needed.
 Table~\ref{tab:encodings} sends every zero-sum problem of Tables~\ref{tab:evidence}
 to~\ref{tab:stress} through the penalty form as well, with caps so loose they never
-bind. On every one it returns the budget form's knots to rounding. On the largest,
-$p=500$ parts and over 500 knots, two knots of the exact path lie
-$7\times10^{-7}\lambda_{\max}$ apart, closer than a relaxation of $10^{-6}$ moves them,
-so the two relaxed runs meet them in different orders and the extrapolated path fails
-its certificate. \texttt{cvxcla} then retries with smaller relaxations, and at
-$10^{-7}$ the runs agree. The budget form traces the same path in one run
-(Table~\ref{tab:scale}), while the relaxation costs at least a second. So the
+bind. On every one it returns the budget form's knots to rounding. The largest,
+$p=500$ parts and over 500 knots, needs more than one try. Its knots crowd together, the
+closest two \encSpacing{} times $\lambda_{\max}$ apart, and where two knots lie closer
+than the relaxation moves them, the two relaxed runs can meet them in different orders.
+The extrapolation then pairs knots of different events, and the certificate rejects
+the result. \texttt{cvxcla} retries with smaller relaxations until the two runs agree,
+and returns the path only once it passes the certificate. The budget form traces the
+same path in one run (Table~\ref{tab:scale}), while the relaxation costs at least a
+second. So the
 penalty form is the general encoding, and the budget form is the direct one for
 homogeneous constraints, and the one in which a regression is visibly a portfolio
 (Figure~\ref{fig:portfolio}(b)).
@@ -906,7 +910,7 @@ exact knots or stops with an error when its arithmetic cannot be trusted. Where 
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
 certifies the result, so the checks reach monotone fits, caps and rows under a zero sum
 and weights that sum to one. Rows that exclude $\beta=0$ need no relaxation: the penalty
-form starts at the feasible point of smallest $\ell_1$ norm. With $p>n$ they stay exact, with no ridge, under bounds,
+form starts at the feasible point of smallest $\ell_1$ norm. With $p>n$ the paths stay exact, with no ridge, under bounds,
 signs, inequality rows and zero sums, where the other path algorithms for general
 constraints trace a ridged problem that ends elsewhere. The checks also made the CLA better at
 portfolios, where it now takes tied forecasts and low-rank covariances. The practical

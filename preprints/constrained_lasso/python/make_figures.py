@@ -807,6 +807,7 @@ class EncodingRow:
     penalty: int | None  # penalty form, relaxed and extrapolated; None where cvxcla declines
     gap: float | None  # largest knot discrepancy between the two, relative, as in Table 2
     kkt: float | None  # of the penalty form's path
+    spacing: float  # the closest two knots of the budget form's path, relative to lambda_max
     reason: str | None = None  # cvxcla's reason, where it declines
 
 
@@ -831,18 +832,24 @@ def encodings() -> list[EncodingRow]:
     rows = []
     for name, prob in cases.items():
         budget = trace(prob)
+        spacing = float(-np.diff(budget.lam).max() / budget.lam[0])  # lam falls, so the smallest step is -max
         try:
             path = trace(through_penalty(prob))
         except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
-            rows.append(EncodingRow(name, len(budget.lam), None, None, None, str(err).split(":")[0]))
+            rows.append(EncodingRow(name, len(budget.lam), None, None, None, spacing, str(err).split(":")[0]))
             continue
         assert np.abs(path.beta).max() < 1e-3 * through_penalty(prob).upper.max()  # the caps never bind
         gap = float("nan")
         if len(path.lam) == len(budget.lam):
             gap = max(float(np.abs(path.beta - budget.beta).max() / np.abs(budget.beta).max()),
                       float(np.abs(path.lam - budget.lam).max() / budget.lam[0]))
-        rows.append(EncodingRow(name, len(budget.lam), len(path.lam), gap, certify(prob, path)))
+        rows.append(EncodingRow(name, len(budget.lam), len(path.lam), gap, certify(prob, path), spacing))
     return rows
+
+
+def encodings_numbers(rows: list[EncodingRow]) -> str:
+    """The numbers the text quotes about the largest zero sum, as LaTeX macros."""
+    return rf"\newcommand{{\encSpacing}}{{{sci(rows[-1].spacing)}}}" + "\n"
 
 
 def encodings_tex(rows: list[EncodingRow]) -> str:
@@ -1206,6 +1213,7 @@ def main() -> None:
           f"slack at the start {fl.start:.1e}")
     enc = encodings()
     (OUT / "encodings.tex").write_text(encodings_tex(enc))
+    (OUT / "encodings_numbers.tex").write_text(encodings_numbers(enc))
     print("\nzero sums, budget form against the penalty form relaxed:")
     for r in enc:
         rest = f"declined ({r.reason})" if r.penalty is None else f"{r.penalty} knots, gap {r.gap:.1e}, KKT {r.kkt:.1e}"
@@ -1408,9 +1416,11 @@ def test_monotone() -> None:
 
 def test_encodings() -> None:
     """The penalty form, relaxed, reproduces the budget form on every zero sum, the largest included."""
-    for r in encodings():
+    rows = encodings()
+    for r in rows:
         assert r.penalty == r.knots, r
         assert r.gap < 1e-12 and r.kkt < 1e-12, r
+    assert rows[-1].spacing < 1e-6, rows[-1]  # the note says: knots closer than a millionth of lambda_max
 
 
 def test_floor() -> None:
