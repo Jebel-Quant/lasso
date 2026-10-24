@@ -34,6 +34,7 @@ Seeded and offline: the diabetes data ship with scikit-learn.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import os
 import platform
 import subprocess
@@ -932,6 +933,38 @@ def against_lars(prob: Lasso, path: LassoPath, positive: bool = False) -> float:
     return float(max(np.abs(path.beta - coefs.T).max() / scale, np.abs(path.lam - lam).max() / lam[0]))
 
 
+def lars_positive_end(prob: Lasso, path: LassoPath) -> tuple[float, float]:
+    """Where ``lars_path``'s positive mode really ends, and its KKT violation at lambda = 0.
+
+    scikit-learn labels its last point alpha = 0, but the point is the path at the lambda
+    where nothing was left to enter: find that lambda on the CLA path.
+    """
+    _, _, coefs = lars_path(prob.x, prob.y, method="lasso", positive=True)
+    end = coefs[:, -1]
+    for (l0, b0), (l1, b1) in itertools.pairwise(zip(path.lam, path.beta, strict=True)):
+        d = b1 - b0
+        t = float(d @ (end - b0) / (d @ d))
+        if 0 <= t <= 1 and np.abs(b0 + t * d - end).max() < 1e-9 * np.abs(end).max():
+            return float(l0 + t * (l1 - l0)), kkt_residual(prob, 0.0, end)
+    raise AssertionError("lars_path's last point is not on the CLA path")
+
+
+def evidence_numbers(rows: list[Row]) -> str:
+    """The numbers the text of Section 5 and Figure 2 quote, as LaTeX macros."""
+    by = {r.name: r for r in rows}
+    probs = problems()
+    lam_end, kkt_end = lars_positive_end(probs["nonnegative"], trace(probs["nonnegative"]))
+    plain = trace(probs["plain"])
+    return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
+        "evWideKnots": str(by["wide"].knots),
+        "evPlainKnots": str(by["plain"].knots),
+        "evPlainGap": sci(by["plain"].gap),
+        "evPlainNorm": f"{np.abs(plain.beta[-1]).sum():.0f}",  # ||beta(0)||_1, where cash enters
+        "evLarsEnd": f"{lam_end:.2f}",
+        "evLarsKKT": sci(kkt_end),
+    }.items())
+
+
 def against_solver(prob: Lasso, path: LassoPath) -> float:
     """Largest midpoint discrepancy against the interior-point solve, relative."""
     lam, beta = midpoints(path)
@@ -1186,6 +1219,7 @@ def main() -> None:
     (OUT / "example.tex").write_text(example_tex(ex))
     rows = table()
     (OUT / "evidence.tex").write_text(table_tex(rows))
+    (OUT / "evidence_numbers.tex").write_text(evidence_numbers(rows))
     big = scale()
     (OUT / "scale.tex").write_text(scale_tex(big))
     hostile = stress()
@@ -1437,6 +1471,13 @@ def test_portfolios() -> None:
     assert [r.rank for r in rows] == [8, 3]
     for r in rows:
         assert r.points > 2 and r.worse < 1e-7, r
+
+
+def test_lars_positive_end() -> None:
+    """lars_path's positive mode stops short of lambda = 0, as the note says, and its end is on the CLA path."""
+    prob = problems()["nonnegative"]
+    lam, kkt = lars_positive_end(prob, trace(prob))
+    assert lam > 1.0 and kkt > 1e-3, (lam, kkt)
 
 
 def test_cholesterol_row_binds() -> None:
