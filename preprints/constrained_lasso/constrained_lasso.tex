@@ -253,7 +253,8 @@ constrained LASSO is
 \end{equation}
 with $A\in\R^{m\times p}$, $C\in\R^{k\times p}$ and $l_j\le0\le u_j$, infinite
 entries allowed, and a nonempty feasible set. A bound that excludes zero, such as
-$\beta_j\ge\ell$ with $\ell>0$, is written as the row $-\beta_j\le-\ell$. With no rows and infinite bounds it is Tibshirani's LASSO. We assume,
+$\beta_j\ge\ell$ with $\ell>0$, is written as the row $-\beta_j\le-\ell$. With no rows
+and infinite bounds it is Tibshirani's LASSO. We assume,
 as \cite{perspective} does, that $\mathrm{L}_\lambda$ has a unique minimiser
 $\beta(\lambda)$ for every $\lambda>0$. This is the generic case: for the LASSO without
 constraints it holds whenever the columns of $X$ are in general position
@@ -832,7 +833,8 @@ $h=0$, where the exact path has \moExact{} knots.
 $\beta=0$ infeasible. The budget form starts at $\beta=0$ and cannot take it. The penalty
 form starts where the linear program of Section~\ref{sec:cla} puts it, at the feasible
 point of smallest $\ell_1$ norm, as it does for a nonhomogeneous equality row
-(\emph{Pinned}); a tie for that point is a flat start. Gaines et al.\ and CLASSO
+(\emph{Pinned}); a tie for that point gives a flat start, the case \emph{Sum to one}
+tests. Gaines et al.\ and CLASSO
 \cite{hobson2026} also start from a feasible point. \emph{Floor} tests this: the
 diabetes LASSO with $\beta_{\texttt{bmi}}$ at least half its least-squares value. Its path
 starts on the floor, with \texttt{bmi} alone, has \flKnots{} knots, lies within \flGap{}
@@ -844,12 +846,13 @@ too, which raises the question whether the budget form is still needed.
 Table~\ref{tab:encodings} sends every zero-sum problem of Tables~\ref{tab:evidence}
 to~\ref{tab:stress} through the penalty form as well, with caps so loose they never
 bind. On every one it returns the budget form's knots to rounding. The largest,
-$p=500$ parts and over 500 knots, needs more than one try. Its knots crowd together, the
-closest two \encSpacing{} times $\lambda_{\max}$ apart, and where two knots lie closer
-than the relaxation moves them, the two relaxed runs can meet them in different orders.
-The extrapolation then pairs knots of different events, and the certificate rejects
-the result. \texttt{cvxcla} retries with smaller relaxations until the two runs agree,
-and returns the path only once it passes the certificate. The budget form traces the
+$p=500$ parts and over 500 knots, was declined by \texttt{cvxcla} 2.6.0, which tried a
+single relaxation. Its knots crowd together, the closest two \encSpacing{} times
+$\lambda_{\max}$ apart, and where two knots lie closer than the relaxation moves them,
+the two relaxed runs can meet them in different orders. The extrapolation then pairs
+knots of different events, and the certificate rejects the result. Release 2.7.0 retries
+with smaller relaxations until the two runs agree, and returns the path only once it
+passes the certificate. The budget form traces the
 same path in one run (Table~\ref{tab:scale}), while the relaxation costs at least a
 second. So the
 penalty form is the general encoding, and the budget form is the direct one for
@@ -908,11 +911,12 @@ Theorem~1 and Corollary~1). The checks here support the identity wherever the
 encodings reach. On every problem, a CLA written for portfolios either returns the
 exact knots or stops with an error when its arithmetic cannot be trusted. Where an
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
-certifies the result, so the checks reach monotone fits, caps and rows under a zero sum
-and weights that sum to one. Rows that exclude $\beta=0$ need no relaxation: the penalty
-form starts at the feasible point of smallest $\ell_1$ norm. With $p>n$ the paths stay exact, with no ridge, under bounds,
-signs, inequality rows and zero sums, where the other path algorithms for general
-constraints trace a ridged problem that ends elsewhere. The checks also made the CLA better at
+certifies the result, so the checks reach monotone fits and caps and rows under a zero
+sum. Two other starts need no relaxation: weights that sum to one start on a flat
+segment, and rows that exclude $\beta=0$ start at the feasible point of smallest
+$\ell_1$ norm. With $p>n$ the paths stay exact, with no ridge, under bounds, signs,
+inequality rows and zero sums, where the other path algorithms for general constraints
+trace a ridged problem that ends elsewhere. The checks also made the CLA better at
 portfolios, where it now takes tied forecasts and low-rank covariances. The practical
 consequence is simple: \texttt{lars\_path}
 cannot take even a cap on the coefficients, and a CLA that takes general linear rows
