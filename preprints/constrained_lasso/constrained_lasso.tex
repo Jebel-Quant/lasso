@@ -159,7 +159,8 @@ $\lambda$ is a risk tolerance. Portfolio managers have always needed constraints
 as a budget, position limits and sector exposures, and Markowitz built them into the
 CLA from the start. So a CLA written for portfolios, with a thin layer that poses the
 regression as a portfolio, should give exact constrained-LASSO paths. This note shows
-that it does, and checks every path against references that know nothing of portfolios.
+that it does, or stops with an error where its arithmetic cannot be trusted, and checks
+every path against references that know nothing of portfolios.
 The layer is two encodings, Propositions~\ref{prop:penalty} and~\ref{prop:budget},
 proved here from the definition of the CLA, and, where an encoding starts degenerate, a
 relaxation that runs the CLA twice and combines the two paths
@@ -197,7 +198,8 @@ knot of the LASSO path & turning point of the CLA \\
 \end{table}
 
 On their own the encodings need a nondegenerate start; where they do not have one, \texttt{cvxcla}
-relaxes the constraint (Section~\ref{sec:limits}). There are two, and both are needed:
+relaxes the constraint (Section~\ref{sec:limits}). There are two: the penalty form is
+the general one, and the budget form the direct one for homogeneous constraints.
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
 parameter, and takes coefficient bounds, general equality constraints $A\beta=b$ and
@@ -289,9 +291,10 @@ Precisely, the CLA solves the family of quadratic programs
 \min_x\ \tfrac12\,x\trans\Sig x-(q+\gamma\mu)\trans x
 \quad\text{s.t.}\quad Ax=b,\quad Cx\le h,\quad l\le x\le u,
 \end{equation}
-for every $\gamma$ from $+\infty$ down to $0$, with $\Sig\succeq0$. Markowitz's
-algorithm has the equality rows and the bounds; the inequality rows are a standard
-extension, handled like the bounds. Here $x$ is the
+for every $\gamma$ from $+\infty$ down to $0$, with $\Sig\succeq0$. Markowitz
+\cite{markowitz1956} states the problem with equality rows and bounds; an inequality row
+is an equality row with a nonnegative slack variable, so it fits his form, and
+\texttt{cvxcla} handles it directly, as below. Here $x$ is the
 vector of holdings, $\Sig$ the covariance, $\mu$ the expected returns and $\gamma$ the
 risk tolerance. The term $q$ is a benchmark: with $q=\Sig\bar x$ the objective is, up
 to a constant, the tracking variance against a portfolio $\bar x$ less $\gamma\mu\trans x$,
@@ -396,9 +399,11 @@ parameter is round-off as one at $\gamma=0$.
 \paragraph{The start} Without equality rows the starting vertex is $z=0$: all
 positions are closed, because each costs more than it can earn. The first event is the
 first entry, at $\gamma=\max_j|c_j|$ over the allowed signs, which is LARS's
-$\lambda_{\max}$. With equality rows the start is the linear program $\min\one\trans z$
-over $ASz=b$, $0\le z\le\bar u$, the point of smallest $\ell_1$ norm on the constraint
-set. For generic $A$ and $b\ne0$ it is a unique vertex with $m$ nonzeros. The path then
+$\lambda_{\max}$. With equality rows, or a row $C\beta\le h$ with $h_r<0$ that leaves
+$z=0$ infeasible, the start is the linear program $\min\one\trans z$ over $ASz=b$,
+$CSz\le h$, $0\le z\le\bar u$, the point of smallest $\ell_1$ norm on the constraint set
+(Section~\ref{sec:limits}). For generic $A$ and $b\ne0$ it is a unique vertex with $m$
+nonzeros. The path then
 holds still on its first segment, $\delta=0$, while the multipliers absorb the growing
 penalty, until a second coefficient enters.
 
@@ -646,9 +651,23 @@ through CVXPY, compiled once with $\lambda$ as a parameter) costs about 100 time
 much as the whole CLA path at $p=100$ and 350 times at $p=500$, and 14 to 100 times on
 the constrained diabetes and zero-sum problems of Table~\ref{tab:evidence}. These are
 ratios of the fastest of several runs, measured once by \texttt{timings} on an Apple M4
-Pro and quoted as measured; they are the one set of numbers here that the script does
+Pro and quoted as measured; they are the one set of results here that the script does
 not write into the text, because they change from machine to machine.
 The grid also misses every knot between grid points.
+
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabular}{rrrc}
+\toprule
+$n$ & $p$ & knots & KKT \\
+\midrule
+\input{figures/scale.tex}
+\end{tabular}
+\caption{The budget form on simulated zero-sum problems of growing size: the largest KKT
+violation at every knot and along every segment, as in Table~\ref{tab:evidence}.}
+\label{tab:scale}
+\end{table}
 
 \paragraph{Hostile problems} The problems so far are easy for any path algorithm.
 Table~\ref{tab:stress} adds problems chosen to make one fail, each drawn with
@@ -677,6 +696,21 @@ zero-sum}, where $X\trans X$ is singular, is traced, and with $\operatorname{con
 near $10^{16}$ it has the largest residual in the table, \stKKT{}
 (Section~\ref{sec:limits}).
 
+\begin{table}[!htbp]
+\centering
+\small\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lrrlrlcc}
+\toprule
+problem & $n$ & $p$ & $\operatorname{cond}(X)$ & knots & ref. & gap & KKT \\
+\midrule
+\input{figures/stress.tex}
+\end{tabular}
+\caption{Hostile problems, through the checks of Table~\ref{tab:evidence}, the worst
+over \stSeeds{} seeds. \emph{Declined}: \texttt{cvxcla} stops with an error. The
+duplicate column is \texttt{bmi} plus noise of the given size, relative to its spread.}
+\label{tab:stress}
+\end{table}
+
 \paragraph{More predictors than observations} \emph{Wide, zero-sum} is the only
 problem so far with both $p>n$ and a constraint, and a zero sum alone has an exact path
 in comlasso \cite{jeon2020} too. Table~\ref{tab:wide} puts on \emph{Wide}, again with
@@ -690,9 +724,24 @@ segment, and the interior-point solver agrees to \wdGap{}. Its objective is neve
 than the path's by more than \wdIpmBetter{}, relative, and that only near the end of a
 path, where the fit almost interpolates and the objective is small.
 
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabular}{lrcc}
+\toprule
+\emph{Wide} with & knots & gap & KKT \\
+\midrule
+\input{figures/wide.tex}
+\end{tabular}
+\caption{More predictors than observations, $n=\wdN$ and $p=\wdP$, under constraints
+beyond a zero sum, through the checks of Table~\ref{tab:evidence} against the
+interior-point solver, the worst over \stSeeds{} seeds. None is declined.}
+\label{tab:wide}
+\end{table}
+
 \paragraph{Three independent path algorithms} Three path algorithms derived for the
 LASSO, with no reference to portfolios, can be run against the CLA. All three trace its
-path, up to the ridge two of them add.
+path once started at the exact first knot, up to the ridge two of them add.
 
 comlasso \cite{jeon2020} traces the exact path under zero sums on blocks of
 coefficients, with no ridge and with $p>n$, so it should agree with the CLA with no
@@ -728,50 +777,6 @@ Two further packages fit on a grid of $\lambda$ rather than tracing the path, so
 cannot check the knots and are not run: \texttt{zeroSum} \cite{zerosum}, for zero-sum
 elastic nets in R, and \texttt{PACLasso} \cite{paclasso}, the penalized and constrained
 LASSO of James et al.\ \cite{james2020}, which CRAN archived on 2~June 2025.
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{rrrc}
-\toprule
-$n$ & $p$ & knots & KKT \\
-\midrule
-\input{figures/scale.tex}
-\end{tabular}
-\caption{The budget form on simulated zero-sum problems of growing size: the largest KKT
-violation at every knot and along every segment, as in Table~\ref{tab:evidence}.}
-\label{tab:scale}
-\end{table}
-
-\begin{table}[t]
-\centering
-\small\setlength{\tabcolsep}{3.5pt}
-\begin{tabular}{lrrlrlcc}
-\toprule
-problem & $n$ & $p$ & $\operatorname{cond}(X)$ & knots & ref. & gap & KKT \\
-\midrule
-\input{figures/stress.tex}
-\end{tabular}
-\caption{Hostile problems, through the checks of Table~\ref{tab:evidence}, the worst
-over \stSeeds{} seeds. \emph{Declined}: \texttt{cvxcla} stops with an error. The
-duplicate column is \texttt{bmi} plus noise of the given size, relative to its spread.}
-\label{tab:stress}
-\end{table}
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{lrcc}
-\toprule
-\emph{Wide} with & knots & gap & KKT \\
-\midrule
-\input{figures/wide.tex}
-\end{tabular}
-\caption{More predictors than observations, $n=\wdN$ and $p=\wdP$, under constraints
-beyond a zero sum, through the checks of Table~\ref{tab:evidence} against the
-interior-point solver, the worst over \stSeeds{} seeds. None is declined.}
-\label{tab:wide}
-\end{table}
 
 
 \section{Where the two forms stop}
@@ -895,8 +900,9 @@ Table~\ref{tab:stress}). This is the general-position assumption of
 Section~\ref{sec:example}, failing in floating point. And a relaxation can fail its
 certificate, when knots of the exact path lie closer together than the relaxation moves
 them; \texttt{cvxcla} then retries with smaller relaxations and declines the problem if
-none passes. Among the problems here only the largest zero sum needed a retry
-(Appendix~\ref{app:encodings}), and none was declined. Bounds that exclude zero are not
+none passes. Among the problems here only the largest zero sum needed a retry, as
+\texttt{cvxcla} 2.6.0, which tried only the first relaxation, shows
+(Appendix~\ref{app:encodings}); none was declined. Bounds that exclude zero are not
 a limit: they enter as rows.
 
 \section{Conclusion}
