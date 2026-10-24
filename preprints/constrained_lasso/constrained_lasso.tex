@@ -905,6 +905,32 @@ none passes. Among the problems here only the largest zero sum needed a retry, a
 (Appendix~\ref{app:encodings}); none was declined. Bounds that exclude zero are not
 a limit: they enter as rows.
 
+\medskip\noindent
+\fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+\textbf{When to use which encoding.} \texttt{cvxcla.Lasso} chooses by Algorithm~1, so a
+user need not; this is what it chooses, and what each choice costs.
+\begin{itemize}\setlength{\itemsep}{0pt}
+\item \emph{Homogeneous equality rows, with signs at most} ($A\beta=0$, no caps or
+inequality rows), such as the zero sum of compositional data: the budget form. One run of
+the CLA, no relaxation, and the regression is visibly a portfolio
+(Figure~\ref{fig:portfolio}(b)).
+\item \emph{No equality rows, or caps, inequality rows or a nonhomogeneous row} ($b\ne0$,
+or some $h_r<0$): the penalty form, the general one. One run when the start is
+nondegenerate: signs alone, caps, rows slack at $\beta=0$, a pinned fit, weights that sum
+to one, a floor.
+\item \emph{Homogeneous rows together with caps or inequality rows} (a zero sum with
+caps, a monotone fit): only the penalty form takes them, and it starts degenerate. Two
+runs, relaxed and extrapolated, and a certificate; on long paths with closely spaced
+knots, more than two (Appendix~\ref{app:encodings}).
+\item \emph{More predictors than observations}: either form, as the constraints
+dictate; on every such problem here both trace the exact path with no ridge.
+\item \emph{Two nearly identical columns}: neither, once both become free; the CLA stops
+with an error rather than return a wrong path (Table~\ref{tab:stress}). Drop or merge one
+of them before tracing.
+\end{itemize}
+\end{minipage}}
+\medskip
+
 \section{Conclusion}
 
 Schmelzer and Hastie \cite{perspective} prove that a constrained LASSO is a portfolio
