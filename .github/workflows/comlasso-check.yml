@@ -33,6 +33,7 @@ concurrency:
 env:
   # Ubuntu 24.04 (noble) binaries as CRAN stood on that date, as in r-check.yml.
   CRAN_SNAPSHOT: https://packagemanager.posit.co/cran/__linux__/noble/2026-09-01
+  RGLPK_VERSION: "0.6.5.1"
 
 jobs:
   comlasso:
@@ -71,8 +72,7 @@ jobs:
           Rscript -e '
             options(repos = c(CRAN = Sys.getenv("CRAN_SNAPSHOT")))
             install.packages("Rglpk")
-            library(Rglpk)
-            cat("Rglpk", as.character(packageVersion("Rglpk")), "\n")
+            stopifnot(packageVersion("Rglpk") == Sys.getenv("RGLPK_VERSION"))
           '
 
       - name: Compare comlasso with the CLA
