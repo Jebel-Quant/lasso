@@ -45,6 +45,7 @@
 \input{figures/floor.tex}
 \input{figures/encodings_numbers.tex}
 \input{figures/evidence_numbers.tex}
+\input{figures/comlasso.tex}
 \input{figures/stress_numbers.tex}
 \input{figures/wide_numbers.tex}
 
@@ -208,7 +209,8 @@ alone, the Python package \texttt{c-lasso} \cite{classo} has a path algorithm wi
 small ridge term added. Neither was derived with portfolios in mind, so
 Section~\ref{sec:evidence} uses both as independent checks. For zero sums on blocks of
 coefficients, the comlasso algorithm of Jeon et al.\ \cite{jeon2020} traces the exact
-path, also with $p>n$; it takes no bounds or inequality rows. Hobson, Butcher and Lentati
+path, also with $p>n$; it takes no bounds or inequality rows, and
+Section~\ref{sec:evidence} runs it too. Hobson, Butcher and Lentati
 \cite{hobson2026} revisit Gaines et al.\ with an algorithm of their own, CLASSO. The
 linear system of Gaines et al.\ is singular whenever a binding row vanishes on the
 active coefficients, as a sign constraint on a zero coefficient does, so CLASSO takes
@@ -527,7 +529,7 @@ Corollary~1 there say that the capped program, which the budget form solves, has
 same knots wherever $\|\beta(\lambda)\|_1$ is strictly decreasing, so the budget form
 should return them too. The author of \texttt{cvxcla} wrote the checks, so they are not
 independent in the usual sense. The references are: LARS, an interior-point solver,
-the optimality conditions evaluated without either encoding, and two path algorithms
+the optimality conditions evaluated without either encoding, and three path algorithms
 written by others. The scripts and their tolerances are published.
 
 Table~\ref{tab:evidence} lists the test problems. The diabetes problems use the data
@@ -675,8 +677,19 @@ segment, and the interior-point solver agrees to \wdGap{}. Its objective is neve
 than the path's by more than \wdIpmBetter{}, relative, and that only near the end of a
 path, where the fit almost interpolates and the objective is small.
 
-\paragraph{Two independent path algorithms} Two path algorithms derived for the LASSO,
-with no reference to portfolios, can be run against the CLA. Both trace the same path.
+\paragraph{Three independent path algorithms} Three path algorithms derived for the
+LASSO, with no reference to portfolios, can be run against the CLA. All three trace its
+path, up to the ridge two of them add.
+
+comlasso \cite{jeon2020} traces the exact path under zero sums on blocks of
+coefficients, with no ridge and with $p>n$, so it should agree with the CLA with no
+workaround. Its authors publish it as an R package built for R~3.2, which we load
+unchanged (Code availability) and run on \emph{Zero-sum}, \emph{sCD14} and \emph{Wide,
+zero-sum}. It returns the CLA's knots, to \coGap{} relative to the largest coefficient
+on the first two and to \coWideGap{} on \emph{Wide, zero-sum} over the \stSeeds{} seeds.
+On \coRoundoff{} of those seeds it takes one more step, to a $\lambda$ at rounding
+level, before it records $\lambda=0$; \texttt{cvxcla} counts such an event as
+$\lambda=0$ (Section~\ref{sec:penalty}).
 
 The algorithm of Gaines et al.\ \cite{gaines2018} ships in MATLAB and in Julia. We
 ported the Julia package to Julia~1 without changing the algorithm (Code availability)
@@ -858,7 +871,8 @@ nearby problem whose path ends elsewhere. On \emph{Wide, zero-sum} the ridge of
 objectives up to $4\times10^{-2}$, relative, above the unregularised ones at their
 default ridge \cite[Table~3]{hobson2026}. For a zero sum alone, comlasso \cite{jeon2020}
 traces the exact path with $p>n$ and no ridge, and its authors make the same case
-against one.
+against one; on \emph{Wide, zero-sum} it agrees with the CLA to \coWideGap{}
+(Section~\ref{sec:evidence}).
 
 \paragraph{What stays out of reach} Two things stop the run with an error rather than a
 wrong path. The bordered system \eqref{eq:border} needs the columns on the free set to be
@@ -900,6 +914,10 @@ package by version and hash. \texttt{python/make\_figures.py} computes every pat
 \texttt{cvxcla.Lasso} 2.7.0 \cite{cvxcla}, holds every check, and writes every figure, table and number
 the text quotes; its \texttt{test} mode runs the checks and \texttt{timings} the cost
 ratios. \texttt{python/classo\_check.py} runs \texttt{c-lasso} 1.0.11 under NumPy~1.26.
+\texttt{R/comlasso\_check.R} runs comlasso 0.2, fetched from its authors' repository
+\url{https://github.com/jenjong/ComLasso} at a pinned commit and checked by SHA-256, with
+\texttt{Rglpk} from CRAN; R~4 will not install a package built before R~4.0, so the
+script loads comlasso's code from the package unchanged.
 \texttt{julia/classopath.jl} is the port of the path algorithm of
 \texttt{ConstrainedLasso.jl} (MIT licence) to Julia~1.12, with each departure from the
 original marked in it: the sign convention of the solver's multipliers, Julia~0.6's
@@ -907,7 +925,7 @@ handling of NaN in \texttt{findmin}, and a stray character; none changes the alg
 runs it, in the environment its \texttt{Manifest.toml} pins.
 The simulated problems use fixed seeds. The sCD14 data are not redistributed:
 \texttt{python/fetch\_scd14.py} downloads \texttt{coda4microbiome} 0.2.4 from CRAN and
-checks its SHA-256. \texttt{make figures} runs all four, in CI as well.
+checks its SHA-256. \texttt{make figures} runs all five, in CI as well.
 
 The lockfiles fix the software, not the hardware. Residuals near rounding come out with
 different last digits on another CPU or BLAS build, so a rerun will not match the

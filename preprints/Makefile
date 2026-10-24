@@ -17,7 +17,9 @@
 # make_figures.py in every `make figures`, in its own locked environment: for a check
 # whose dependencies cannot share make_figures.py's, reading what it wrote to figures/.
 # A julia/*.jl script with the same line runs after those, in the environment that
-# julia/Project.toml and julia/Manifest.toml pin, for a check written in Julia.
+# julia/Project.toml and julia/Manifest.toml pin, for a check written in Julia. An R/*.R
+# script with the same line runs last, with Rscript, for a check written in R; the R
+# packages it needs are installed beforehand (CI installs them from a CRAN snapshot).
 
 LATEX     := pdflatex
 LATEXOPTS := -interaction=nonstopmode -halt-on-error
@@ -52,6 +54,7 @@ FIGURES := $(wildcard python/make_figures.py)
 FETCH   := $(shell grep -l '^\# fetch: on build$$' python/fetch_*.py 2>/dev/null)
 AFTER   := $(shell grep -l '^\# run: after figures$$' python/*.py 2>/dev/null)
 JULIA   := $(shell grep -l '^\# run: after figures$$' julia/*.jl 2>/dev/null)
+RCHECKS := $(shell grep -l '^\# run: after figures$$' R/*.R 2>/dev/null)
 
 pdf: $(MAIN).pdf
 
@@ -69,6 +72,7 @@ figures: data
 	$(foreach script,$(AFTER),uv run $(script) &&) true
 	$(if $(JULIA),julia --project=julia -e 'using Pkg; Pkg.instantiate()')
 	$(foreach script,$(JULIA),julia --project=julia $(script) &&) true
+	$(foreach script,$(RCHECKS),Rscript $(script) &&) true
 
 test:
 	$(if $(FIGURES),uv run $(FIGURES) test)
