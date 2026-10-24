@@ -49,6 +49,7 @@
 \input{figures/wide_numbers.tex}
 
 \newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
@@ -277,9 +278,11 @@ Precisely, the CLA solves the family of quadratic programs
 \label{eq:cla}
 \mathrm{P}_\gamma:\quad
 \min_x\ \tfrac12\,x\trans\Sig x-(q+\gamma\mu)\trans x
-\quad\text{s.t.}\quad Ax=b,\quad l\le x\le u,
+\quad\text{s.t.}\quad Ax=b,\quad Cx\le h,\quad l\le x\le u,
 \end{equation}
-for every $\gamma$ from $+\infty$ down to $0$, with $\Sig\succeq0$. Here $x$ is the
+for every $\gamma$ from $+\infty$ down to $0$, with $\Sig\succeq0$. Markowitz's
+algorithm has the equality rows and the bounds; the inequality rows are a standard
+extension, handled like the bounds. Here $x$ is the
 vector of holdings, $\Sig$ the covariance, $\mu$ the expected returns and $\gamma$ the
 risk tolerance. The term $q$ is a benchmark: with $q=\Sig\bar x$ the objective is, up
 to a constant, the tracking variance against a portfolio $\bar x$ less $\gamma\mu\trans x$,
@@ -287,11 +290,16 @@ which is the same CLA after the shift $x-\bar x$ of the bounds and the right-han
 With $q=0$ it is Markowitz's problem.
 
 \paragraph{Segments} Write
-$g=\Sig x-q-\gamma\mu+A\trans\nu$ for the gradient of the Lagrangian. A point $x$ with
-multipliers $\nu$ is optimal when $g_j=0$ on the \emph{free} coordinates
-$\F=\{j:l_j<x_j<u_j\}$, $g_j\ge0$ where $x_j=l_j$, and $g_j\le0$ where $x_j=u_j$. Call
-the coordinates at a bound \emph{blocked}, $\B$. With $\F$ and $\B$ fixed, $x_\F$ and
-$\nu$ solve the bordered system
+$g=\Sig x-q-\gamma\mu+A\trans\nu+C\trans\eta$ for the gradient of the Lagrangian. A point
+$x$ with multipliers $\nu$ and $\eta$ is optimal when $g_j=0$ on the \emph{free}
+coordinates $\F=\{j:l_j<x_j<u_j\}$, $g_j\ge0$ where $x_j=l_j$, and $g_j\le0$ where
+$x_j=u_j$; and when $\eta\ge0$, with $\eta_i=0$ on every row that is slack,
+$C_ix<h_i$. Call the coordinates at a bound \emph{blocked}, $\B$, and the rows held
+tight \emph{active}, $\mathcal{R}$. An active row is held as an equality: in the system
+below it is stacked under $A$, its right-hand side $h_i$ under $b$ and its multiplier
+$\eta_i$ under $\nu$, and the slack rows take no part. To keep the display short, $A$,
+$b$ and $\nu$ stand for these stacks. With $\F$, $\B$ and $\mathcal{R}$ fixed, $x_\F$
+and $\nu$ solve the bordered system
 \begin{equation}
 \label{eq:border}
 \begin{bmatrix}\Sig_{\F\F}&A_\F\trans\\A_\F&0\end{bmatrix}
@@ -308,13 +316,15 @@ current one at which either a free coordinate reaches a bound,
 $\gamma=(l_i-\alpha_i)/\delta_i$ for $\delta_i>0$ or $(u_i-\alpha_i)/\delta_i$ for
 $\delta_i<0$, or a blocked coordinate's gradient changes sign,
 $\gamma=-g_{0j}/g_{1j}$ for $g_{1j}>0$ at a lower bound or $g_{1j}<0$ at an upper one.
-The coordinate concerned changes sides, \eqref{eq:border} is solved again, and the walk
-continues. If there is no event the last segment runs to $\gamma=0$.
+The rows have the same two events: a slack row's slack $h_i-C_ix$, affine in $\gamma$,
+reaches zero, and the row joins $\mathcal{R}$; or an active row's multiplier $\eta_i$,
+affine like $\nu$, falls to zero, and the row leaves it. The coordinate or row concerned
+changes sides, \eqref{eq:border} is solved again, and the walk continues. If there is no event the last segment runs to $\gamma=0$.
 
 \paragraph{The start} As $\gamma\to\infty$ the linear term dominates, and the path
 starts at a vertex maximising $\mu\trans x$ over the feasible set. A linear program
-finds it. If the maximiser is unique and has exactly $m$ coordinates strictly inside
-their bounds, the bordered matrix in \eqref{eq:border} is nonsingular and the walk can
+finds it. If the maximiser is unique and has as many coordinates strictly inside their
+bounds as there are equality rows and rows tight at it, the bordered matrix in \eqref{eq:border} is nonsingular and the walk can
 begin. This is the nondegenerate case. \texttt{cvxcla} declines a degenerate start.
 
 \section{The penalty form}
@@ -759,15 +769,51 @@ there. And homogeneous rows ($h=0$), such as the ordering constraints of a monot
 are all tight at $\beta=0$, so the start is degenerate in either form.
 
 \texttt{cvxcla} resolves both by relaxation. It traces the problem twice, with the
-homogeneous rows relaxed to $h=\varepsilon$ and $h=2\varepsilon$ (and a zero sum
-relaxed to $A\beta=\varepsilon Ad$ for a generic point $d$ the constraints admit), and
-both runs start nondegenerate. On a fixed sequence of active sets the solution on each
-segment is affine in the relaxation, and its slope in $\lambda$ does not depend on it,
-so the knots are affine in it too, and $2\,\beta_\varepsilon-\beta_{2\varepsilon}$ is the
-exact path. Segments that shrink to a point are dropped. The result is certified, not
-trusted: it is returned only if a linear program finds multipliers that satisfy the
-optimality conditions to rounding at every knot and midpoint, and declined otherwise.
-\emph{Monotone} and \emph{Zero-sum, caps} test it (Table~\ref{tab:evidence}).
+homogeneous rows relaxed to $h_r=\varepsilon$ and $h_r=2\varepsilon$, and a zero sum to
+$A\beta=\varepsilon Ad$ and $A\beta=2\varepsilon Ad$ for a point $d$ the constraints
+admit. Both runs start nondegenerate, and Lemma~\ref{lem:extrapolation} combines them.
+
+\begin{lemma}
+\label{lem:extrapolation}
+Suppose the penalty form, relaxed by $\varepsilon$ and by $2\varepsilon$, passes through
+the same sequence of free sets, blocked sets and active rows. Then each knot
+$(\lambda_k,\beta_k)$ is affine in the relaxation, and
+$2(\lambda_k,\beta_k)(\varepsilon)-(\lambda_k,\beta_k)(2\varepsilon)$ is its value at
+relaxation zero.
+\end{lemma}
+
+\begin{proof}
+The relaxation enters \eqref{eq:border} only through the part of the right-hand side
+that does not multiply $\gamma$, by way of $b$ and of $h$ on the active rows; it never
+enters the matrix or the term in $\gamma$. On a segment, therefore, $\alpha$, $\nu_0$,
+$g_0$ and the rows' slacks at $\gamma=0$ are affine in the relaxation, while $\delta$,
+$\nu_1$, $g_1$ and the slacks' slopes do not depend on it. Every event is
+$\gamma=-(\text{intercept})/(\text{slope})$ with an affine intercept and a fixed slope,
+so the knot $\lambda_k=\gamma_k$ is affine in the relaxation, and so is
+$x_k=\alpha+\gamma_k\delta$. A coordinate blocked at the knot sits at a bound, which
+does not depend on the relaxation, so the next segment's right-hand side is again
+affine in it, and induction over the segments covers the path. An affine $f$ has
+$f(0)=2f(\varepsilon)-f(2\varepsilon)$.
+\end{proof}
+
+At relaxation zero some segments have length zero: the relaxed paths meet rows one by
+one that the exact path meets together. Those are dropped. The lemma's hypothesis
+cannot be checked in advance, and its conclusion is a candidate path, not a proof that
+it is the LASSO's. So the result is certified, not trusted: a linear program finds the
+multipliers that best satisfy the optimality conditions of \eqref{eq:lasso} at every
+knot and segment midpoint, and the path is returned only if the largest violation,
+relative to $\|c\|_\infty$, is at most $10^{-9}$.
+
+The relaxation is relative to the size of a coefficient,
+$\varepsilon=\rho\,\|c\|_\infty/\max_jG_{jj}$, with $\rho=10^{-6}$ first. The point $d$
+gives each coefficient a magnitude drawn uniformly from $[\tfrac12,\tfrac32]$, from a
+fixed seed, and a sign its bounds allow, so that $Ad$ is generic and the relaxed start a
+unique vertex; $d$ is then scaled so that $C_rd\le\tfrac12$ on the homogeneous rows,
+which keeps $\varepsilon d$ strictly inside their relaxation. If the two runs trace
+different numbers of knots, or the certificate fails, \texttt{cvxcla} tries
+$\rho=10^{-7}$ and then $10^{-8}$; below about $10^{-9}$ the relaxed start is lost in
+rounding. It declines the problem when none passes. \emph{Monotone} and \emph{Zero-sum,
+caps} test the relaxation (Table~\ref{tab:evidence}).
 Appendix~\ref{app:monotone} shows on the monotone fit that the knots move linearly in
 $\varepsilon$, as the extrapolation needs, and Appendix~\ref{app:encodings} that the
 relaxed penalty form reproduces the budget form on every zero sum.
@@ -1063,11 +1109,12 @@ H.~Zhou and K.~Lange.
 
 \appendix
 
-\section{Why the extrapolation is exact}
+\section{The extrapolation on the monotone fit}
 \label{app:monotone}
 
-The extrapolation of Section~\ref{sec:limits} is exact when the knots move linearly in
-the relaxation. The monotone fit shows that they do. On a Gaussian design with $n=100$,
+Lemma~\ref{lem:extrapolation} needs the relaxed paths to keep their sequence of active
+sets as the relaxation shrinks. The monotone fit illustrates that they do; it is an
+example, not a proof. On a Gaussian design with $n=100$,
 $p=\moP$ and an ordered truth, the rows are $\beta_j-\beta_{j+1}\le h$. For
 every $\varepsilon$ from \moHMax{} down to \moHMin{} the path at $h=\varepsilon$ has the
 same \moKnots{} knots, meets its own optimality conditions to \moKKT{}, and lies
