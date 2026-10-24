@@ -88,6 +88,13 @@ jobs:
         with:
           ref: ${{ env.SHA }}
 
+      # The image's package index ages with the image. Once Ubuntu replaces a dependency
+      # (ghostscript 7.9 by 7.10 in October 2026), the index names a file no mirror has,
+      # the install below fails without failing the step, and it caches nothing. A PR
+      # cannot read another PR's cache, so each new PR installs afresh and needs this.
+      - name: Refresh the package index
+        run: sudo apt-get update -q
+
       - name: Install TeX Live
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
