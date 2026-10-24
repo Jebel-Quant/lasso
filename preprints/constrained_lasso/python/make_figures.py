@@ -1418,7 +1418,7 @@ def test_stress() -> None:
     """On the hostile problems the path is exact or declined, never wrong.
 
     Only the near-duplicate without a cap is declined; Wide, zero-sum, which needs a
-    singular Gram solved on the zero sum's null space, is traced (cvxcla 2.6.0).
+    singular Gram solved on the zero sum's null space, is traced (since cvxcla 2.6.0).
 
     Against LARS, two exact paths can part by as much as the conditioning allows,
     cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
