@@ -209,8 +209,7 @@ example;
 \item the \emph{budget form} (Section~\ref{sec:budget}) keeps the $\ell_1$ budget, as
 Markowitz's long-only, fully invested problem with a cash asset. It takes homogeneous
 constraints such as the zero sum $\one\trans\beta=0$ of a regression on compositional
-data directly, in one run. The penalty form reaches a zero sum only by relaxing it,
-at the cost of a second run (Appendix~\ref{app:encodings}).
+data directly, in one run.
 \end{enumerate}
 Each is a few lines on top of a released CLA. Readers who know the CLA can skip
 Section~\ref{sec:cla}.
@@ -223,10 +222,7 @@ constraints grows. The generalised lasso of Tibshirani and Taylor \cite{tibshira
 with penalty $\lambda\|D\beta\|_1$, has an exact path through its dual. Gaines, Kim and
 Zhou \cite{gaines2018} derive a path algorithm for the constrained LASSO itself from
 its optimality conditions. It tracks the active set and the multipliers of the linear
-constraints as $\lambda$ decreases, and it takes general linear rows. The two encodings
-alone start degenerate on some of them, homogeneous inequality rows and caps or rows
-under a zero sum; \texttt{cvxcla} reaches those by relaxing the constraint
-(Section~\ref{sec:limits}). For $C\beta=0$
+constraints as $\lambda$ decreases, and it takes general linear rows. For $C\beta=0$
 alone, the Python package \texttt{c-lasso} \cite{classo} has a path algorithm with a
 small ridge term added. Neither was derived with portfolios in mind, so
 Section~\ref{sec:evidence} uses both as independent checks. For zero sums on blocks of
@@ -244,16 +240,11 @@ $n<p$, and its code had not been released when we wrote, so we do not run it. Th
 method of the same kind, following one family of quadratic programs; the difference is
 that it was written for portfolios and is used here as released.
 
-\paragraph{More predictors than observations} With $p>n$ the encodings part from the
-other path algorithms for general constraints. Gaines et al., CLASSO and
-\texttt{c-lasso} add a ridge to $X\trans X$ there, and so trace a nearby problem. With
-$p>n$ that problem is not close at its end: the ridge decides which interpolating fit the
-path runs to. As shipped, \texttt{c-lasso} ends up to \clWideGapHi{} times the largest
-coefficient away from the exact path on a zero-sum problem with $p>n$
-(Section~\ref{sec:evidence}). The CLA needs no ridge, and traces the exact path under
-bounds, signs, inequality rows and zero sums alike (Table~\ref{tab:wide}). Microbiome
-studies often have more taxa than samples, so this is the case a user of the zero-sum
-LASSO meets first.
+\paragraph{More predictors than observations} With $p>n$ the other path algorithms for
+general constraints add a ridge to $X\trans X$, and the ridge decides where their path
+ends; the CLA needs none (Section~\ref{sec:limits}, measured in
+Section~\ref{sec:independent}). Microbiome studies often have more taxa than samples, so
+this is the case a user of the zero-sum LASSO meets first.
 
 \medskip\noindent
 \fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
@@ -726,11 +717,10 @@ solver the gap reaches \stIpmGap{} on \emph{Duplicate}, but the solver's objecti
 never lower than the path's by more than \stIpmBetter{}, relative, which is within its
 tolerance. That gap is the solver's.
 
-\texttt{cvxcla} declines one of the problems, for every seed. Without a cap,
-\emph{Duplicate} at \stEpsLo{} brings both twins into the free set, where the bordered
-system is singular to working precision, and \texttt{cvxcla} stops with an error.
-Under the cap the duplicate enters first and reaches the cap before \texttt{bmi}
-enters, so the twins are never free together, and the path is exact. \emph{Wide,
+\texttt{cvxcla} declines one of the problems, for every seed: \emph{Duplicate} at
+\stEpsLo{} without a cap, where both twins become free (Section~\ref{sec:limits}).
+Under the cap the duplicate reaches the cap before \texttt{bmi} enters, so the twins are
+never free together, and the path is exact. \emph{Wide,
 zero-sum}, where $X\trans X$ is singular, is traced, and with $\operatorname{cond}(X)$
 near $10^{16}$ it has the largest residual in the table, \stKKT{}
 (Section~\ref{sec:limits}).
@@ -929,7 +919,7 @@ $10^{-4}$ when $n<p$, \texttt{c-lasso} always adds one of $10^{-3}$, and CLASSO
 \cite{hobson2026}, not run here, adds one of $10^{-4}\max_j G_{jj}$. Each then traces a
 nearby problem whose path ends elsewhere. On \emph{Wide, zero-sum} the ridge of
 \texttt{c-lasso} moves its path by up to \clWideGapHi{} times the largest coefficient
-(Section~\ref{sec:evidence}). On their own problems with $p>n$, Hobson et al.\ report
+(Section~\ref{sec:independent}). On their own problems with $p>n$, Hobson et al.\ report
 objectives up to $4\times10^{-2}$, relative, above the unregularised ones at their
 default ridge \cite[Table~3]{hobson2026}. For a zero sum alone, comlasso \cite{jeon2020}
 traces the exact path with $p>n$ and no ridge, and its authors make the same case
