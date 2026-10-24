@@ -195,7 +195,15 @@ under a zero sum; \texttt{cvxcla} reaches those by relaxing the constraint
 (Section~\ref{sec:limits}). For $C\beta=0$
 alone, the Python package \texttt{c-lasso} \cite{classo} has a path algorithm with a
 small ridge term added. Neither was derived with portfolios in mind, so
-Section~\ref{sec:evidence} uses both as independent checks. The CLA is an active-set
+Section~\ref{sec:evidence} uses both as independent checks. Hobson, Butcher and Lentati
+\cite{hobson2026} revisit Gaines et al.\ with an algorithm of their own, CLASSO. The
+linear system of Gaines et al.\ is singular whenever a binding row vanishes on the
+active coefficients, as a sign constraint on a zero coefficient does, so CLASSO takes
+the direction from a small quadratic program instead. They also show that a path with
+finitely many knots need not be traversed in finitely many steps: recomputing the
+multipliers at every knot can step forever along one segment. Following one canonical
+certificate terminates, and they check the proofs in Lean. CLASSO adds a ridge when
+$n<p$, and its code had not been released when we wrote, so we do not run it. The CLA is an active-set
 method of the same kind, following one family of quadratic programs; the difference is
 that it was written for portfolios and is used here as released. On their own the
 encodings need a nondegenerate start; where they do not have one, \texttt{cvxcla}
@@ -696,7 +704,8 @@ interpolating fit of smallest $\ell_1$ norm under the constraints. Past it the C
 run on through interpolating fits of larger norm, which are not on the LASSO path, so
 \texttt{cvxcla} stops there. \emph{Wide, zero-sum} (Table~\ref{tab:stress}) tests this.
 The other path algorithms tested here do not give this path: Gaines et al.\ add a ridge
-of $10^{-4}$ when $n<p$, and \texttt{c-lasso} always adds one of $10^{-3}$. It is the
+of $10^{-4}$ when $n<p$, and \texttt{c-lasso} always adds one of $10^{-3}$. Nor does
+CLASSO \cite{hobson2026}, not run here, which adds one of $10^{-4}\max_j G_{jj}$. It is the
 case a user of the zero-sum LASSO meets first, since microbiome data often have more
 taxa than samples.
 
@@ -748,7 +757,8 @@ $h=0$, where the exact path has \moExact{} knots.
 
 One kind of row stays out of reach. A row that excludes $\beta=0$, $C\beta\le h$ with
 some $h_r<0$, cannot be relaxed into a feasible start, because every encoding here
-starts the path at $\beta=0$; Gaines et al.\ start from a feasible point and take it.
+starts the path at $\beta=0$; Gaines et al.\ and CLASSO \cite{hobson2026} start from a
+feasible point and take it.
 
 \paragraph{One encoding or two} With the relaxation, the penalty form takes a zero sum
 too, which raises the question whether the budget form is still needed.
@@ -889,6 +899,14 @@ B.~R. Gaines, J.~Kim, and H.~Zhou.
 \newblock Algorithms for fitting the constrained lasso.
 \newblock \emph{Journal of Computational and Graphical Statistics}, 27(4):861--871, 2018.
 \newblock \href{https://doi.org/10.1080/10618600.2018.1473777}{\texttt{doi:10.1080/10618600.2018.1473777}}.
+
+
+\bibitem{hobson2026}
+M.~Hobson, L.~Butcher, and L.~Lentati.
+\newblock {CLASSO}: a practical primal path-following algorithm for the constrained
+{LASSO}.
+\newblock arXiv preprint arXiv:2610.17024, 2026.
+\newblock \href{https://doi.org/10.48550/arXiv.2610.17024}{\texttt{doi:10.48550/arXiv.2610.17024}}.
 
 
 \bibitem{james2020}
