@@ -1,9 +1,14 @@
 # The efficient frontier from a LASSO solver: source, code and data
 
+[![Journal of Reproducible Statistics 1, 7 (2026)](https://img.shields.io/badge/Journal%20of%20Reproducible%20Statistics-1%2C%207%20%282026%29-1a4f8b)](https://doi.org/10.68365/jrepstat.2026.7)
+[![arXiv:2609.37108](https://img.shields.io/badge/arXiv-2609.37108-b31b1b)](https://arxiv.org/abs/2609.37108)
+
 The LaTeX source of the note *The Efficient Frontier from a LASSO Solver* (Schmelzer,
-2026; [arXiv:2609.37108](https://arxiv.org/abs/2609.37108)), and everything needed to
-reproduce its figures and numbers. The note computes Markowitz efficient
-frontiers with a stock LASSO solver, `lars_path` from scikit-learn, using the identity
+2026), and everything needed to reproduce its figures and numbers. The note is published
+in the *Journal of Reproducible Statistics*, volume 1, article 7
+([doi:10.68365/jrepstat.2026.7](https://doi.org/10.68365/jrepstat.2026.7)), and the
+preprint is [arXiv:2609.37108](https://arxiv.org/abs/2609.37108). The note computes
+Markowitz efficient frontiers with a stock LASSO solver, `lars_path` from scikit-learn, using the identity
 between the Critical Line Algorithm and the LASSO path proved by Schmelzer and Hastie
 ([arXiv:2609.25704](https://arxiv.org/abs/2609.25704)).
 
