@@ -1,0 +1,179 @@
+\section{The covariance operator abstraction}
+\label{sec:operators}
+
+The design separates the path-following algorithm from the storage and solution of the
+quadratic form (Figure~\ref{fig:design}). The turning-point loop needs only three
+operations on the covariance: a matrix--vector product $\Sig x$, a multi-column solve
+against the free block $\Sig_{\F\F}\inv R$, and the free-to-blocked cross product
+$\Sig_{\F\B}\,x_\B$, which is formed from the first. A backend supplies them through the
+protocol \code{QuadraticForm} (alias \code{CovarianceOperator}, the
+\code{SymmetricOperator} contract of \pkg{cvx-linalg}), whose five members are listed in
+Table~\ref{tab:protocol}; two of them serve the gross-exposure lift and the singularity
+guard. The algorithm never assumes an explicit matrix, and it assumes of a backend only
+that $\Sig$ is symmetric and that every free block it solves is positive definite on
+the null space of the active rows, which \code{rcond\_free} lets it check before
+trusting the solve (Appendix~\ref{sec:degeneracy}). Four backends ship with the package, and a user can add
+others without touching the loop (\S\ref{sec:custom}).
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, align=center, font=\small, inner sep=4pt},
+  arrow/.style={-{Latex[length=2mm]}, thick}]
+\node[box, minimum width=0.8\textwidth] (loop) {\textbf{Turning-point loop} (\code{CLA})\\
+  first vertex $\cdot$ reduced KKT solve $\cdot$ event scan $\cdot$ least-index tie-break};
+\node[box, below=0.55cm of loop, minimum width=0.8\textwidth] (proto) {\textbf{\code{QuadraticForm}}\\
+  \code{n} $\cdot$ \code{matvec} $\cdot$ \code{block\_matvec} $\cdot$ \code{solve\_free} $\cdot$ \code{rcond\_free}};
+\node[box, below=0.55cm of proto] (fac) {Factor\\Woodbury};
+\node[box, left=0.15cm of fac] (inc) {Incremental\\maintained $\Sig_{\F\F}\inv$};
+\node[box, left=0.15cm of inc] (dense) {Dense\\Cholesky};
+\node[box, right=0.15cm of fac] (gram) {Gram\\$X_c\trans X_c$};
+\node[box, right=0.15cm of gram, dashed] (user) {User-defined\\(\S\ref{sec:custom})};
+\draw[arrow] (loop) -- (proto);
+\foreach \b in {dense, inc, fac, gram, user} \draw[arrow] (proto.south) -- (\b.north);
+\end{tikzpicture}
+\caption{The covariance enters the turning-point loop only through the
+\code{QuadraticForm} protocol; the backends below it are interchangeable.}
+\label{fig:design}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{p{0.32\textwidth}p{0.29\textwidth}p{0.28\textwidth}}
+\hline
+Member & Returns & Used for \\
+\hline
+\code{n} & the number of assets & sizes \\
+\code{matvec(x)} & $\Sig x$, for a vector or a matrix $x$ & gradients, the cross product \\
+\code{block\_matvec(rows, cols, v)} & $\Sig_{\text{rows},\text{cols}}\, v$ & the gross-exposure lift (\S\ref{sec:leverage}) \\
+\code{solve\_free(free, R)} & $\Sig_{\F\F}\inv R$ & the reduced KKT solve (\S\ref{sec:blockelim}) \\
+\code{rcond\_free(free)} & the reciprocal condition number of $\Sig_{\F\F}$ & the singularity guard \\
+\hline
+\end{tabular}
+\caption{The \code{QuadraticForm} protocol. Index sets are integer arrays into $\{0,\dots,n-1\}$.}
+\label{tab:protocol}
+\end{table}
+
+\paragraph{Dense.} \code{DenseCovariance} wraps an explicit matrix and solves the free
+block by Cholesky (\code{scipy.linalg.cho\_factor}), falling back to LU on the rare
+block that is not numerically positive definite. It reproduces the classical CLA and is
+the reference backend.
+
+\paragraph{Incremental dense.}
+\label{sec:incremental}
+\code{IncrementalDenseCovariance} traces the same turning points but \emph{maintains}
+$\Sig_{\F\F}\inv$: because the free set changes by one asset per turning point, a
+bordered rank-one update or a symmetric deletion costs $O(n_\F^2)$ against a fresh
+$O(n_\F^3)$ factorisation, which makes a trace about twice as fast at $n=320$, three times at $n=640$, and seven times at $n=2560$ (\S\ref{sec:baseline}). A non-positive Schur pivot or a multi-asset change triggers a full refactorisation. The
+backend passes the same KKT certificate as the dense one (Table~\ref{tab:kkt}), but a
+maintained inverse carries round-off from step to step over the roughly $n$ updates of
+a trace, so it is opt-in.
+
+\paragraph{Factor (diagonal-plus-low-rank).}
+\code{FactorCovariance} represents
+\begin{equation}
+\label{eq:factor}
+\Sig = \operatorname{diag}(d) + U\,\Delta\,U\trans,
+\qquad d\in\R^{n}_{>0},\; U\in\R^{n\times K},\; \Delta\in\R^{K\times K},
+\end{equation}
+the form of factor models \citep{sharpe1963} and of eigenvalue-clipped covariances. The
+free-block solve never forms $\Sig_{\F\F}$; it uses the Woodbury identity
+\begin{equation}
+\label{eq:woodbury}
+\Sig_{\F\F}\inv = D_\F\inv - D_\F\inv U_\F\, W\inv\, U_\F\trans D_\F\inv,
+\qquad
+W = \Delta\inv + U_\F\trans D_\F\inv U_\F \in\R^{K\times K},
+\end{equation}
+so a solve costs $O(n_\F K^2 + K^3)$ rather than $O(n_\F^3)$, storage is $O(nK)$, and
+the cross product is $U_\F\,\Delta\,(U_\B\trans x_\B)$. The same free-block algebra serves a
+single constrained solve as well: \citet{schmelzer2026nncg} reach the free block of a
+non-negative QP through the same Woodbury inverse and factored products.
+
+The admissible model is $d > 0$ and $\Delta$ symmetric positive semidefinite.
+\code{FactorCovariance} folds $\Delta$ into the loadings when it is built: with
+$\Delta = V\Lambda V\trans$ it stores $U' = U V_+ \Lambda_+^{1/2}$, the directions of
+positive variance, and an identity inner matrix, which is the same $\Sig$. The
+Woodbury solve \eqref{eq:woodbury} then runs with $U'$ and $W = I + U_\F'^{\mathsf{T}}
+D_\F\inv U_\F'$ and never inverts $\Delta$. A singular factor covariance, from a factor
+with zero variance or perfectly correlated factors, is therefore admissible, and its rank
+$K$ is the number of directions kept. An indefinite $\Delta$ is refused: a signed
+low-rank term can still give a positive-definite $\Sig$, but $W$ would then be
+indefinite, so such a covariance is passed as a dense matrix. Since $d > 0$, $W$ is
+positive definite, and the factor solve needs no guard of its own beyond the one on
+$\Sig_{\F\F}$. Against the dense trace of the same $\Sig$, the factor trace has the same
+turning points and weights equal to $2.8\times10^{-12}$, with KKT residuals below
+$2.3\times10^{-13}$, for $\Delta$ with condition numbers up to $10^{14}$, loadings
+collinear to within $10^{-10}$, and the full rank $K = n = 120$
+(\target{validate-factor}). Every active constraint row adds a column to the solve and a
+row to the Schur complement, so with many active rows that term dominates the cost. A low-rank \emph{approximation} of a sample covariance traces the frontier of
+the approximation, which is a different frontier (\S\ref{sec:estimators}).
+
+\paragraph{Data matrix (Gram).}
+\label{sec:gram}
+A sample covariance is a Gram matrix: for the column-centred returns
+$X_c\in\R^{T\times n}$, $\Sig = X_c\trans X_c/(T-1)$. \code{GramCovariance} implements
+the protocol straight from $X_c$ in $O(Tn)$ storage. When $T<n$ the matrix is singular,
+and once the free set outgrows the data rank the free block is singular too; the active
+rows still hold it on their null space, where it is solved (Appendix~\ref{sec:degeneracy}).
+An optional ridge $\theta I$ (the argument \code{ridge}) makes $\Sig$ positive definite,
+a different, regularised frontier, and the solve is then Woodbury in the
+$T$-dimensional observation space. The saving is in storage: when the dense matrix fits,
+\code{DenseCovariance} is faster per step, and the structured route pays only while $T$
+(or $K$) stays well below $n$ (\S\ref{sec:rankscaling}).
+
+\subsection{Regularization through the operator}
+\label{sec:regularization}
+
+A quadratic penalty $\tfrac{\theta}{2}\, w\trans M w$, with $\theta \ge 0$ and $M$
+symmetric positive semidefinite and independent of $\lambda$, changes only the Hessian,
+so the path stays piecewise linear and the penalty is the substitution
+$\Sig \mapsto \Sig + \theta M$: a ridge ($M = I$) or a factor-exposure penalty
+($M = B B\trans$ for exposures $B$). \code{CLA} has no penalty argument; the regularized
+form is supplied as the covariance, a bundled or a user-written \code{QuadraticForm}
+(\S\ref{sec:custom}). \code{GramCovariance} with $\theta>0$ and \code{FactorCovariance}
+already are such forms. A rank-deficient sample covariance needs neither: its frontier
+is traced as it is, as long as the active rows keep the free block positive definite on
+their null space (Appendix~\ref{sec:degeneracy}). A small ridge or a factor model is the
+fix when they do not, and a choice of estimator otherwise (\S\ref{sec:estimators}). A penalty centred on a nonzero portfolio $w_0$ (tracking
+error, quadratic turnover) adds the linear term $-\theta\, w\trans M w_0$, which the
+interface does not expose; nonquadratic penalties such as linear transaction costs lie
+outside the method.
+
+\subsection{Writing a backend}
+\label{sec:custom}
+
+A backend is a subclass of \code{QuadraticForm} that implements the five members of
+Table~\ref{tab:protocol}. For a block-diagonal covariance, assets in groups with no
+cross-group covariance (a structure the package does not ship), the free-block solve
+splits into one Cholesky solve per block. The two members that carry the structure are
+below; \code{n}, \code{matvec} and \code{block\_matvec} are a few lines each, and the
+complete, runnable class is in the package documentation
+(\srcfile{docs/custom-backend.md}{docs/custom-backend.md}).
+
+\begin{CodeInput}
+class BlockDiagonal(QuadraticForm):   # Sigma = blockdiag(S_1, ..., S_m)
+    def solve_free(self, free, rhs):
+        out = np.empty_like(rhs, dtype=float)
+        # one (positions, free sub-block) pair per group
+        for pos, sub in self._parts(free):
+            out[pos] = cho_solve(cho_factor(sub), rhs[pos])
+        return out
+
+    def rcond_free(self, free):
+        eig = np.concatenate(
+            [np.linalg.eigvalsh(sub) for _, sub in self._parts(free)]
+        )
+        return eig.min() / eig.max()
+\end{CodeInput}
+
+\code{CLA} runs on it unchanged: on four groups of five assets it traces the same $19$
+turning points as the dense matrix. The package's test suite,
+\srcfile{tests/test_custom_backend.py}{tests/test\_custom\_backend.py}, checks the same
+with general constraints and with a gross-exposure cap, which goes through
+\code{block\_matvec}.
+The frontier is exact to the accuracy of \code{solve\_free}; an approximate solver
+traces the frontier of the matrix it effectively applies, and the KKT certificate of
+\S\ref{sec:exactness} checks the result. A sparse matrix
+with a sparse Cholesky factor, a Kronecker product, or a matrix-free operator with an
+iterative \code{solve\_free} fit the same five members.

@@ -1,0 +1,43 @@
+# Run the CLA listing of the cvxcla paper's Appendix C (Figure 5) exactly as printed, on
+# each pull request into main that touches it: preprints/cla/check_listing.py cuts the
+# code out of the .tex, runs it, and fails if it no longer reproduces cvxcla's turning
+# points or stops refusing the inputs it does not cover.
+#
+# The script pins cvxcla and NumPy inline (PEP 723), and check_listing.py.lock next to it
+# fixes every package, so uv runs the environment the check was written against.
+name: listing
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - preprints/cla/sections/appendix-bailey.tex
+      - preprints/cla/check_listing.py
+      - preprints/cla/check_listing.py.lock
+      - .github/workflows/listing.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: listing-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: preprints/cla
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: astral-sh/setup-uv@v7.6.0
+        with:
+          cache-dependency-glob: |
+            preprints/cla/check_listing.py
+            preprints/cla/check_listing.py.lock
+
+      - name: Run the listing and check it against cvxcla
+        run: uv run check_listing.py

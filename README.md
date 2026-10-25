@@ -10,10 +10,15 @@ path, each with its LaTeX source and the code and data behind it.
   every figure and number, a script that fetches the Fama-French returns it checks
   against, and an R check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
 - [`preprints/constrained_lasso/`](preprints/constrained_lasso) — *The Constrained LASSO
-  by the Critical Line Algorithm*: the identity run the other way, computing
-  constrained-LASSO paths with an unmodified CLA, and one script that reproduces every
-  figure and number. See
+  is a Portfolio*: the identity run the other way, computing constrained-LASSO paths with
+  an unmodified CLA, and one script that reproduces every figure and number. See
   [`preprints/constrained_lasso/README.md`](preprints/constrained_lasso/README.md).
+- [`preprints/cla/`](preprints/cla) — *`cvxcla`: The Critical Line Algorithm with an
+  Operator Interface in Python*, the software paper for the Journal of Statistical
+  Software, moved here from
+  [`Jebel-Quant/homotopy`](https://github.com/Jebel-Quant/homotopy). It is built from the
+  journal's class and a BibTeX bibliography, and its figures are committed rather than
+  drawn in CI. See [`preprints/cla/README.md`](preprints/cla/README.md).
 
 ## Reproducing the results
 
@@ -39,7 +44,9 @@ stories of what goes wrong without it, here and elsewhere.
 
 Each folder in `preprints/` holds one preprint: a single `.tex` file with a
 `\documentclass`, the Python behind its experiments, and a `Makefile` that is just
-`include ../Makefile`. The rules (`pdf`, `figures`, `test`, `clean`) live in
+`include ../Makefile`. A preprint written for a journal, like `preprints/cla/`, may also
+have its body in `sections/`, a BibTeX bibliography in `refs/` and the journal's class
+bundled with it; the shared rules run BibTeX and find the class for it. The rules (`pdf`, `figures`, `test`, `clean`) live in
 [`preprints/Makefile`](preprints/Makefile), with `arxiv` and `arxiv-check` to package the
 arXiv source. The Python code sits in `python/`, each script
 next to its lockfile; `python/make_figures.py`, if present, writes the

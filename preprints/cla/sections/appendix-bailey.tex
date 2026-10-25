@@ -1,0 +1,89 @@
+\section[Relation to other CLA implementations]{Relation to other CLA implementations}
+\label{sec:baileydetail}
+
+The most widely used open CLA is that of \citet{bailey2013}, behind
+\pkg{PyPortfolioOpt}'s \code{CLA}. It shares the greedy first turning point and the
+explicit minimum-variance endpoint of \pkg{cvxcla} and aims at the same turning points,
+but it is built without the Karush--Kuhn--Tucker conditions. \citet[p.~173]{bailey2013}
+name them as one option for the inequality-constrained problem and instead ``divide and
+conquer'' it into unconstrained problems on the free assets. Without multipliers on the
+bounds, deciding which blocked asset to free takes a fresh inverse of the free block for
+every candidate, each inserted into closed-form Lagrange expressions for one budget row;
+in \pkg{cvxcla} the same decision is the sign of $\gamma_i + \lambda\delta_i$ from a single
+solve (\S\ref{sec:events}). Their code then removes turning points that violate the
+bounds or the convex hull after the fact (\code{purgeNumErr}, \code{purgeExcess});
+\pkg{cvxcla} checks the same conditions with a KKT certificate (\S\ref{sec:exactness}).
+In \pkg{PyPortfolioOpt}~1.6.0 those violations are not round-off: after a weight leaves
+the free set, the next turning point is solved with that weight's previous value rather
+than its bound, so it misses the budget and is purged; \code{purgeExcess} compares
+expected returns without a tolerance. Both delete genuine turning points.
+Ties are broken by a strict comparison, with no anti-cycling rule. On the scaling problems of \S\ref{sec:scaling}
+\pkg{PyPortfolioOpt}'s corners are a subset of \pkg{cvxcla}'s
+($19, 42, 81, 158, 323, 641$ against $21, 42, 81, 159, 323, 641$). The missing corners are
+genuine, so across them its frontier is wrong, by up to $7\times10^{-3}$ in a weight at
+$n=20$ and $8\times10^{-5}$ at $n=160$; at the other sizes the two frontiers agree to
+$10^{-12}$, and the minimum-variance endpoints to $\sim\!10^{-16}$ throughout. Reading the
+blocked weights from the current iterate and comparing with a tolerance removes the
+discrepancy.
+
+Written with the KKT conditions, the method is also the shorter one:
+Figure~\ref{fig:kktcla} is a complete CLA for the problem class of \citet{bailey2013} in
+39 lines of \pkg{NumPy}, against about $180$ for the trace in \pkg{PyPortfolioOpt}. Each
+segment costs one bordered solve of \eqref{eq:saddle}, every event is read off it
+(\S\ref{sec:events}), and events are compared with a relative tolerance. On the scaling
+problems of \S\ref{sec:scaling} it returns \pkg{cvxcla}'s turning points to $10^{-13}$, in
+time of the same order as the dense backend. It refuses rather than mis-solves infeasible
+bounds, a tied largest return (\S\ref{sec:first}) and a singular free block
+(Appendix~\ref{sec:degeneracy}); \pkg{cvxcla} handles the last two.
+
+\begin{figure}[!ht]
+\begin{lstlisting}[style=pyin,basicstyle=\ttfamily\footnotesize]
+import numpy as np
+
+def cla(mu, S, lo, up, tol=1e-9):
+    """Turning points (lam, w) of max lam mu'w - w'Sw/2, 1'w=1, lo<=w<=up."""
+    n, w, rest = len(mu), lo.astype(float), 1.0 - lo.sum()
+    for i in np.argsort(-mu, kind="stable"):   # first turning point
+        take = min(up[i] - lo[i], rest)
+        w[i], rest = w[i] + take, rest - take
+        if rest <= 0:
+            break
+    if rest > 0 or (n > 1 and np.partition(mu, -2)[-2] == mu.max()):
+        raise ValueError("infeasible bounds, or a tied largest return")
+    F, lam, last, path = np.arange(n) == i, np.inf, -1, [(np.inf, w.copy())]
+    while True:                                # one KKT solve per segment
+        B, m, one = ~F, F.sum(), np.ones(F.sum())
+        K = np.block([[S[np.ix_(F, F)], one[:, None]], [one, 0.0]])
+        rhs = np.c_[np.r_[-S[np.ix_(F, B)] @ w[B], 1 - w[B].sum()],
+                    np.r_[mu[F], 0.0]]
+        x = np.linalg.solve(K, rhs)            # w_F = a + lam b, nu likewise
+        a, b = w.copy(), np.zeros(n)
+        a[F], b[F] = x[:m, 0], x[:m, 1]
+        gam, dlt = S @ a + x[m, 0], S @ b - mu + x[m, 1]  # reduced cost
+        with np.errstate(divide="ignore", invalid="ignore"):
+            hit = np.where(F, np.where(b < 0, up - a, lo - a) / b, -gam / dlt)
+        live = np.where(F, abs(b) > tol,
+                        np.where(w <= lo, dlt > tol, dlt < -tol) & (lo < up))
+        if last >= 0:
+            live[last] = False                 # the asset that just flipped
+        hit = np.where(live & (hit <= lam * (1 + tol)), hit, -np.inf)
+        k = int(np.argmax(hit))                # ties: lowest index
+        if hit[k] <= 0:
+            return [*path, (0.0, a)]
+        lam, w = hit[k], a + hit[k] * b
+        if np.any((w < lo - 1e-8) | (w > up + 1e-8)):
+            raise np.linalg.LinAlgError("free block numerically singular")
+        if F[k]:
+            w[k] = up[k] if b[k] < 0 else lo[k]  # leaving weight on its bound
+        F[k], last = not F[k], k
+        path.append((lam, w.copy()))
+\end{lstlisting}
+\caption{A complete CLA for box bounds and one budget row, written with the KKT conditions.}
+\label{fig:kktcla}
+\end{figure}
+
+The large-scale active-set methods of \citet{perold1984}, \citet{stein2008} and
+\citet{hirschberger2010} cut the per-step cost through incremental factorisations,
+sparsity or pivoting tied to an explicit matrix; we could not run their codes or that of
+\citet{niedermayer2010} on current toolchains, and compare instead with \pkg{qpOASES}
+(\S\ref{sec:qpoases}).

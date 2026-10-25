@@ -1,0 +1,176 @@
+% The Critical Line Algorithm as implemented in cvxcla
+%
+% This paper documents the algorithm implemented in src/cvxcla/cla.py
+% (with supporting modules first.py, operators.py and types.py).
+%
+% JSS submission. Build with:
+%   pdflatex cla.tex; bibtex cla; pdflatex cla.tex; pdflatex cla.tex
+% The class/style files jss.cls, jss.bst and jsslogo.jpg are vendored under
+% cls/jss/ (they are not on CTAN / in TeX Live; the journal distributes them);
+% the shared Makefile puts that folder on TEXINPUTS/BSTINPUTS, so a plain `make
+% pdf` is the reliable way to build this file.
+% Drafting uses the [nojss] option to suppress the journal masthead; drop it for
+% the final camera-ready submission.
+
+\documentclass[article,nojss]{jss}
+
+%% --- packages not already loaded by jss.cls --------------------------------
+%% jss.cls provides: graphicx, xcolor, fancyvrb, fontenc(T1), upquote, lmodern,
+%% hyperref and natbib(authoryear,round). Do NOT reload those.
+\usepackage{amsmath, amssymb}
+\usepackage{amsthm}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\newtheorem{proposition}{Proposition}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{listings}
+
+\graphicspath{{figures/}}
+\raggedbottom % unbreakable code boxes leave short pages, not stretched gaps
+
+% Code input (Python) and console output styles for the usage section. xcolor is
+% supplied by jss.cls, so the colour-mixing syntax below is available.
+\definecolor{codebg}{RGB}{255,252,228}   % very mild yellow
+\lstdefinestyle{pyin}{%
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!50!black},
+  commentstyle=\color{green!45!black}\itshape,
+  stringstyle=\color{purple!60!black},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!25},
+  backgroundcolor=\color{codebg},
+  framesep=4pt,
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  columns=fixed,
+  basewidth=0.525em,
+  keepspaces=true,
+  aboveskip=6pt,
+  belowskip=6pt,
+}
+\lstdefinestyle{pyout}{%
+  basicstyle=\ttfamily\small\color{black!75},
+  frame=single,
+  rulecolor=\color{black!15},
+  backgroundcolor=\color{black!3},
+  framesep=4pt,
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  breaklines=true,
+  columns=fixed,
+  basewidth=0.525em,
+  keepspaces=true,
+  aboveskip=6pt,
+  belowskip=6pt,
+}
+% Typeset the JSS code environments with listings: Python input in a mild yellow
+% box, console output in a light grey one.
+\let\CodeInput\relax\let\endCodeInput\relax
+\let\CodeOutput\relax\let\endCodeOutput\relax
+\lstnewenvironment{CodeInput}{\lstset{style=pyin}}{}
+\lstnewenvironment{CodeOutput}{\lstset{style=pyout}}{}
+
+% The algorithm listing is typeset with only base LaTeX (a boxed minipage plus
+% nested enumerate), so the paper builds without the algorithm/algorithmicx
+% packages, which are not present in every TeX distribution.
+
+% jss.cls defines \pkg; provide the remaining JSS markup macros only if absent.
+\providecommand{\proglang}[1]{\textsf{#1}}
+\providecommand{\code}[1]{\texttt{#1}}
+\providecommand{\fct}[1]{\texttt{#1}}
+
+% --- notation shortcuts -------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Sig}{\Sigma}
+\newcommand{\F}{\mathcal{F}}        % free set
+\newcommand{\B}{\mathcal{B}}        % blocked set
+\newcommand{\Sset}{\mathcal{S}}     % active inequality-row set
+\newcommand{\lb}{\ell}              % lower bound
+\newcommand{\ub}{u}                 % upper bound
+\newcommand{\trans}{^{\mathsf{T}}}
+\newcommand{\inv}{^{-1}}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+% --- repository links ---------------------------------------------------
+% \srcfile{url-path}{display}: a clickable link to a file in the repository.
+% The url-path uses literal underscores; the display escapes them for \texttt.
+\newcommand{\repourl}{https://github.com/cvxgrp/cvxcla}
+% Pin source links to an immutable commit, not the moving \texttt{main} branch,
+% so they do not rot as the code is refactored. Bump \srcref to the
+% tagged/archived release (the Zenodo-archived commit) at submission time.
+\newcommand{\srcref}{v2.7.0}
+\newcommand{\srcfile}[2]{\href{\repourl/blob/\srcref/#1}{\texttt{#2}}}
+% \target{name}: one step of the reproduction script, run as
+% `uv run experiments/make_figures.py name`.
+\newcommand{\target}[1]{\srcfile{experiments/make_figures.py}{make\_figures.py~#1}}
+
+%% --- JSS front matter ------------------------------------------------------
+\author{Thomas Schmelzer\\Jebel Quant Research}
+\Plainauthor{Thomas Schmelzer}
+
+\title{\pkg{cvxcla}: The Critical Line Algorithm with an Operator Interface in
+  \proglang{Python}}
+\Plaintitle{cvxcla: The Critical Line Algorithm with an Operator Interface in Python}
+\Shorttitle{\pkg{cvxcla}: The Critical Line Algorithm in \proglang{Python}}
+
+\Abstract{
+\pkg{cvxcla} is an open-source \proglang{Python} implementation of Markowitz's
+Critical Line Algorithm (CLA), which returns the \emph{entire} mean--variance efficient
+frontier as a finite list of turning points, with no discretisation error. The turning
+points are Markowitz's; the package adds an interface to the covariance and a wider
+range of constraints. The algorithm reaches the covariance only through a small
+operator protocol, so a dense matrix, a diagonal-plus-low-rank risk model, a data
+matrix, or a user-written backend can be exchanged without touching the loop. With
+$2560$ assets and ten factors the factor backend traces the same frontier about $35$
+times faster than the dense one. Box bounds, linear equalities and inequalities, and a cap on
+gross exposure are supported. The walk provably terminates under standard
+nondegeneracy assumptions, every trace is checked by an independent
+Karush--Kuhn--Tucker certificate, and inputs outside the supported domain stop with an
+error that names the cause.
+}
+
+
+\Keywords{Critical Line Algorithm, mean--variance optimization, efficient
+  frontier, parametric quadratic programming, active-set method, factor
+  covariance models, \proglang{Python}}
+\Plainkeywords{Critical Line Algorithm, mean-variance optimization, efficient
+  frontier, parametric quadratic programming, active-set method, factor
+  covariance models, Python}
+
+\Address{
+  Thomas Schmelzer\\
+  Jebel Quant Research\\
+  Abu Dhabi, United Arab Emirates\\
+  E-mail: \email{thomas@jqr.ae}\\
+  URL: \url{https://github.com/cvxgrp/cvxcla}
+}
+
+\begin{document}
+
+% --- body sections (one file per section, see sections/) ---------------
+\input{sections/introduction}
+\input{sections/problem-formulation}
+\input{sections/first-turning-point}
+\input{sections/turning-point-iteration}
+\input{sections/covariance-operator}
+\input{sections/usage}
+\input{sections/numerical-experiment}
+\input{sections/conclusion}
+\input{sections/computational-details}
+\input{sections/acknowledgements}
+
+\appendix
+\input{sections/appendix-details}
+\input{sections/appendix-degeneracy}
+\input{sections/appendix-bailey}
+\input{sections/appendix-proof}
+
+\bibliography{refs/references}
+
+\end{document}

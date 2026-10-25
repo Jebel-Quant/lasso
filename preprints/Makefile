@@ -20,6 +20,12 @@
 # julia/Project.toml and julia/Manifest.toml pin, for a check written in Julia. An R/*.R
 # script with the same line runs last, with Rscript, for a check written in R; the R
 # packages it needs are installed beforehand (CI installs them from a CRAN snapshot).
+#
+# A preprint may also be written for a journal, as preprints/cla/ is for the Journal of
+# Statistical Software: its body in sections/*.tex, its bibliography in refs/*.bib, which
+# BibTeX turns into a .bbl, and the journal's class and BibTeX style bundled with it, in
+# any folder of the preprint (cla/cls/jss/). TeX and BibTeX search every folder that holds
+# a .cls or .bst, and the arXiv source carries those files at its root, where arXiv looks.
 
 LATEX     := pdflatex
 LATEXOPTS := -interaction=nonstopmode -halt-on-error
@@ -56,11 +62,27 @@ AFTER   := $(shell grep -l '^\# run: after figures$$' python/*.py 2>/dev/null)
 JULIA   := $(shell grep -l '^\# run: after figures$$' julia/*.jl 2>/dev/null)
 RCHECKS := $(shell grep -l '^\# run: after figures$$' R/*.R 2>/dev/null)
 
+SECTIONS  := $(wildcard sections/*.tex)
+BIB       := $(wildcard refs/*.bib)
+# With an inline bibliography there is no BibTeX pass; `true' stands in for it.
+BIBTEX    := $(if $(BIB),bibtex,true)
+# A bundled class or style: every file in a folder that holds a .cls or .bst. The
+# trailing colon keeps the system search path.
+VENDORDIR := $(sort $(dir $(shell find . \( -path ./arxiv-src -o -path ./arxiv-build \) -prune \
+               -o \( -name '*.cls' -o -name '*.bst' \) -print 2>/dev/null)))
+VENDOR    := $(foreach d,$(VENDORDIR),$(filter-out %/,$(wildcard $(d)*)))
+ifneq ($(VENDORDIR),)
+empty     :=
+space     := $(empty) $(empty)
+export TEXINPUTS := .:$(subst $(space),:,$(VENDORDIR)):
+export BSTINPUTS := .:$(subst $(space),:,$(VENDORDIR)):
+endif
+
 pdf: $(MAIN).pdf
 
-# Plain article class and an inline bibliography, so no BibTeX pass.
-$(MAIN).pdf: $(MAIN).tex $(wildcard figures/*.pdf figures/*.tex)
+$(MAIN).pdf: $(MAIN).tex $(SECTIONS) $(BIB) $(wildcard figures/*.pdf figures/*.tex)
 	$(LATEX) $(LATEXOPTS) $<
+	$(BIBTEX) $(MAIN)
 	$(LATEX) $(LATEXOPTS) $<
 	$(LATEX) $(LATEXOPTS) $<
 
@@ -86,17 +108,20 @@ ARXIV_SRC     := arxiv-src
 ARXIV_CHECK   := arxiv-build
 ARXIV_TARBALL := $(MAIN).tar.gz
 ARXIV_ZIP     := $(MAIN).zip
-INCLUDED      := $(addprefix figures/,$(shell grep -oE '\\includegraphics(\[[^]]*\])?\{[^}]*\}' \
-                   $(MAIN).tex | sed -E 's/.*\{//; s/\}//' | sort -u)) \
-                 $(shell grep -oE '\\input\{figures/[^}]*\}' $(MAIN).tex | sed -E 's/.*\{//; s/\}//' | sort -u)
+INCLUDED      := $(addprefix figures/,$(shell grep -hoE '\\includegraphics(\[[^]]*\])?\{[^}]*\}' \
+                   $(MAIN).tex $(SECTIONS) | sed -E 's/.*\{//; s/\}//' | sort -u)) \
+                 $(shell grep -hoE '\\input\{figures/[^}]*\}' $(MAIN).tex $(SECTIONS) | sed -E 's/.*\{//; s/\}//' | sort -u)
 
 arxiv: $(ARXIV_TARBALL) $(ARXIV_ZIP)
 
-$(ARXIV_TARBALL): $(MAIN).tex $(INCLUDED)
+$(ARXIV_TARBALL): $(MAIN).tex $(SECTIONS) $(BIB) $(VENDOR) $(INCLUDED)
 	rm -rf $(ARXIV_SRC)
 	mkdir -p $(ARXIV_SRC)/figures
 	cp $(MAIN).tex $(ARXIV_SRC)/
 	$(if $(INCLUDED),cp $(INCLUDED) $(ARXIV_SRC)/figures/)
+	$(if $(SECTIONS),mkdir -p $(ARXIV_SRC)/sections && cp $(SECTIONS) $(ARXIV_SRC)/sections/)
+	$(if $(BIB),mkdir -p $(ARXIV_SRC)/refs && cp $(BIB) $(ARXIV_SRC)/refs/)
+	$(if $(VENDOR),cp $(VENDOR) $(ARXIV_SRC)/)
 	tar czf $@ -C $(ARXIV_SRC) .
 	tar tzf $@
 
@@ -106,21 +131,25 @@ $(ARXIV_ZIP): $(ARXIV_TARBALL)
 	unzip -l $@
 
 # Compile the tarball the way arXiv will: unpacked into an empty directory and built
-# there, so a file the packaging forgot fails here rather than after posting. The tail
-# of the log is printed if a run fails, since the error is among its last lines.
+# there, so a file the packaging forgot fails here rather than after posting. The search
+# paths are reset to the unpacked tree alone, as on arXiv, so a bundled class the tarball
+# forgot is not found here either. The tail of the log is printed if a run fails, since
+# the error is among its last lines.
 arxiv-check: $(ARXIV_TARBALL) $(ARXIV_ZIP)
 	rm -rf $(ARXIV_CHECK)
 	mkdir -p $(ARXIV_CHECK)
 	tar xzf $< -C $(ARXIV_CHECK)
-	cd $(ARXIV_CHECK) && for _ in 1 2 3; do \
-	  $(LATEX) $(LATEXOPTS) $(MAIN).tex >/dev/null || { tail -n 40 $(MAIN).log; exit 1; }; \
-	done
+	cd $(ARXIV_CHECK) && export TEXINPUTS=.: BSTINPUTS=.: && \
+	  for step in latex bibtex latex latex; do \
+	    if [ $$step = bibtex ]; then $(BIBTEX) $(MAIN) >/dev/null || { cat $(MAIN).blg; exit 1; }; \
+	    else $(LATEX) $(LATEXOPTS) $(MAIN).tex >/dev/null || { tail -n 40 $(MAIN).log; exit 1; }; fi; \
+	  done
 	@! grep -E 'Citation .* undefined|Reference .* undefined|There were undefined' \
 	  $(ARXIV_CHECK)/$(MAIN).log || { echo "undefined references in the arXiv source"; exit 1; }
 	@echo "arXiv source of $(MAIN) compiles on its own: $$(grep -o 'Output written on.*' $(ARXIV_CHECK)/$(MAIN).log)"
 
 clean:
-	rm -f $(addprefix $(MAIN).,aux log out toc)
+	rm -f $(addprefix $(MAIN).,aux log out toc bbl blg)
 	rm -rf $(ARXIV_SRC) $(ARXIV_CHECK) $(ARXIV_TARBALL) $(ARXIV_ZIP)
 
 endif

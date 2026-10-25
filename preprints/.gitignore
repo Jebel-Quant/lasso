@@ -10,6 +10,8 @@ figures/
 *.log
 *.out
 *.toc
+*.bbl
+*.blg
 
 # arXiv source tarball and zip, and the trees make arxiv and make arxiv-check build it in
 /*/*.tar.gz

@@ -1,0 +1,231 @@
+\section{The turning-point iteration}
+\label{sec:iteration}
+
+From the first turning point the algorithm repeatedly (i) solves the reduced KKT system
+for the affine segment \eqref{eq:segment}; (ii) finds the largest $\lambda$ below the
+current one at which an \emph{event} occurs; (iii) flips the status of the single
+coordinate responsible; and (iv) records the new turning point, stopping at
+$\lambda = 0$.
+
+\subsection{Solving the reduced KKT system by block elimination}
+\label{sec:blockelim}
+
+Write $C_\F$ for the active constraint rows restricted to the free set ($A_\F$ when
+$\Sset = \varnothing$; \S\ref{sec:ineq}) and $c$ for their right-hand side. The
+reduced system is the saddle-point problem
+\begin{equation}
+\label{eq:saddle}
+\begin{bmatrix} \Sig_{\F\F} & C_\F\trans \\[2pt] C_\F & 0 \end{bmatrix}
+\begin{bmatrix} w_\F \\ \nu \end{bmatrix}
+=
+\begin{bmatrix} r_1 \\ r_2 \end{bmatrix},
+\end{equation}
+solved for two right-hand sides at once, the ``$\alpha$ system''
+$r_1^{\alpha} = -\Sig_{\F\B} w_\B$, $r_2^{\alpha} = c - C_\B w_\B$, and the
+``$\beta$ system'' $r_1^{\beta} = \mu_\F$, $r_2^{\beta} = 0$. Rather than factor the
+full saddle matrix, the code eliminates the free block. A single multi-column solve
+against $\Sig_{\F\F}$ gives $Y = \Sig_{\F\F}\inv C_\F\trans$ and
+$z^{\alpha,\beta} = \Sig_{\F\F}\inv r_1^{\alpha,\beta}$. The multipliers come from the
+small Schur complement $S = C_\F Y$. With $n_\F$ free assets and $m_c = m + |\Sset|$ active rows,
+$C_\F \in \R^{m_c\times n_\F}$, $Y \in \R^{n_\F\times m_c}$ and $S \in \R^{m_c\times m_c}$,
+\begin{equation}
+\label{eq:schur}
+\nu^{\alpha} = S\inv\!\left(C_\F z^{\alpha} - r_2^{\alpha}\right),
+\qquad
+\nu^{\beta} = S\inv C_\F z^{\beta},
+\end{equation}
+and back-substitution gives
+\begin{equation}
+\label{eq:freesoln}
+\alpha_\F = z^{\alpha} - Y\nu^{\alpha},
+\qquad
+\beta_\F = z^{\beta} - Y\nu^{\beta}.
+\end{equation}
+The dominant cost is the solve against $\Sig_{\F\F}$; for the plain budget $S$ is a
+scalar. With $1 < m_c \le n_\F$ the rows are first replaced by an orthonormal basis of
+their span, $C_\F\trans = QR$, and the system is solved with $Q$ in place of
+$C_\F\trans$, the target $R^{-\mathsf{T}} r_2$, and the multipliers recovered by a
+triangular solve with $R$. The condition number of $C_\F \Sig_{\F\F}\inv C_\F\trans$ can
+reach $\operatorname{cond}(\Sig_{\F\F})\operatorname{cond}(C_\F)^2$, while
+$Q\trans\Sig_{\F\F}\inv Q$ is no worse conditioned than $\Sig_{\F\F}$, so nearly
+dependent active rows lose accuracy in proportion to $\operatorname{cond}(C_\F)$, the
+sensitivity of the constraint data, and not to its square. Solving only for the free block keeps every step a dense solve of size
+$|\F|$, where \citet{markowitz2021} assemble one large KKT system over all variables.
+
+To decide when a blocked asset should re-enter, the code forms the reduced gradients
+\begin{equation}
+\label{eq:gamma}
+\gamma = \Sig\,\alpha + C\trans \nu^{\alpha}, \qquad
+\delta = \Sig\,\beta + C\trans \nu^{\beta} - \mu,
+\end{equation}
+where $\nu$ stacks the equality and active-row multipliers, so that $\gamma_i + \lambda\delta_i$ is (proportional to) the bound multiplier of a
+blocked asset $i$ along the segment; the products $\Sig\alpha$, $\Sig\beta$ go through
+the covariance operator of \S\ref{sec:operators}.
+
+\subsection{Event detection}
+\label{sec:events}
+
+The segment stays optimal until one of four events changes the active set. Two act on
+variables through the box bounds:
+\begin{itemize}
+\item \textbf{Free $\to$ blocked.} A free weight $w_i = \alpha_i + \lambda\beta_i$ meets
+its upper bound at $\lambda_i = (\ub_i - \alpha_i)/\beta_i$ when $\beta_i < 0$, or its
+lower bound at $\lambda_i = (\lb_i - \alpha_i)/\beta_i$ when $\beta_i > 0$.
+\item \textbf{Blocked $\to$ free.} A blocked asset's multiplier changes sign at
+$\lambda_i = -\gamma_i/\delta_i$, admissible at the upper bound with $\delta_i < 0$ or
+the lower bound with $\delta_i > 0$.
+\end{itemize}
+The other two are the same moves on the rows of $G w \le h$, described in
+\S\ref{sec:ineq}. The candidates form a matrix $L\in\R^{(n+p)\times 4}$, one row per
+variable or inequality row, with $-\infty$ where an event cannot occur, under two
+numerical guards:
+\begin{itemize}
+\item \textbf{Slope floor.} A slope at round-off level is treated as zero. The floor is
+$\sqrt{\varepsilon_{\text{mach}}}$ in the problem's own units, so the trace is
+invariant to rescaling $\mu$ or $\Sig$ (Appendix~\ref{sec:guards}).
+\item \textbf{$\lambda$ window.} Candidates above the current $\lambda$, beyond a
+relative $10^{-10}$, lie outside the segment and are discarded; the same window decides
+which events are tied.
+\end{itemize}
+The next turning point is $\lambda^{\star} = \max_{i,t} L_{it}$; if
+$\lambda^{\star} \le 0$ the frontier is complete.
+
+\subsection{General linear inequalities}
+\label{sec:ineq}
+
+A row of $G w \le h$ is the analogue of a box bound: either \emph{active}
+($g_j\trans w = h_j$) or slack. While active it is carried through the reduced solve as
+an extra equality row, stacked under $A$ into $C_\F = [\,A_\F;\,G_{\Sset\F}\,]$, so each
+step is still one solve against $\Sig_{\F\F}$ (through the operator interface) feeding
+an $(m+|\Sset|)$-dimensional Schur complement. The box bounds stay a separate per-variable
+active set, so the box-only problem pays nothing for the generalisation.
+
+The stacked solve \eqref{eq:schur} returns an affine multiplier
+$\eta_j(\lambda) = \eta_j^{\alpha} + \lambda\,\eta_j^{\beta}$ for each active row, and
+the two row events mirror the box events:
+\begin{itemize}
+\item \textbf{Activate.} An inactive row with slack
+$s_j(\lambda) = (g_j\trans\alpha - h_j) + \lambda\,g_j\trans\beta$ binds at
+$\lambda_j = (h_j - g_j\trans\alpha)/(g_j\trans\beta)$, admissible when
+$g_j\trans\beta < 0$ (the slack rises as $\lambda$ falls).
+\item \textbf{Release.} An active row releases at
+$\lambda_j = -\eta_j^{\alpha}/\eta_j^{\beta}$, where its multiplier reaches zero,
+admissible when $\eta_j^{\beta} > 0$.
+\end{itemize}
+These fill the trailing $p$ rows of $L$, so a group cap or factor-exposure band is
+traced along the whole frontier (\S\ref{sec:exactness}). Each active row adds a column
+to the solve against $\Sig_{\F\F}$ and a row to the Schur complement; with many active
+rows that term, not the covariance solve, dominates a step. A row that is tight but a combination of the active rows on the
+free set is supported: at the first vertex only an independent subset of the tight rows
+is made active (\S\ref{sec:first}), and during the trace such a row has zero slope,
+$g_j\trans\beta = 0$ (since $C_\F\beta_\F = 0$), so its activation event does not fire.
+The active rows themselves must stay linearly independent on the free set, or the Schur
+complement is singular, as when several caps bind at once in the same direction. Before
+each solve the rows are tested, and a dependent set is refused with a
+\code{DegenerateProblemError} at that $\lambda$.
+
+\subsection{Gross-exposure caps}
+\label{sec:leverage}
+
+A cap $\lVert w\rVert_1 \le c$ on gross exposure (under a full budget, $c = 1.3$ is a
+130/30 book) is polyhedral but not a single row of $G$. The code lifts it. Each asset
+whose box straddles zero is split into a long and a short leg, $w_i = x_i^+ - x_i^-$
+with $x_i^+\in[0,\ub_i]$ and $x_i^-\in[0,-\lb_i]$; a long-only or short-only asset keeps one
+leg, so a long-only problem is not enlarged. With $w = Px$ for the signed
+leg-to-asset map, the cap becomes the one row $\mathbf{1}\trans x \le c$ appended to
+$GP$, the other constraints carry over as $AP$ and $GP$, and the mean becomes
+$P\trans\mu$. The lifted program is an instance of \eqref{eq:qp} with the same
+$\lambda$, traced by the loop above and mapped back through $P$ (validated in
+\S\ref{sec:exactness}).
+
+The lifted covariance $P\trans\Sig P$ is singular, since raising both legs of one
+asset leaves $w$ unchanged. The loop never meets that singularity: both legs of an asset
+are never free together, so every free block is a signed principal submatrix of $\Sig$,
+served through the operator interface without forming $P\trans\Sig P$, and a factor
+backend keeps its Woodbury solve. Appendix~\ref{sec:liftdetail} gives the argument and
+two edge cases of the first vertex.
+
+\subsection{Anti-cycling and termination}
+\label{sec:bland}
+
+On degenerate problems (tied returns, exchangeable assets, several constraints active at
+once) several events can share $\lambda^{\star}$, and a naive rule can cycle. Among all
+events within tolerance of $\lambda^{\star}$ the implementation picks the lowest
+coordinate index, and within it the lowest event column, and flips that coordinate
+alone. Call a partition (free set, blocked bounds, active rows $\Sset$) \emph{valid} at
+$\lambda$ when its segment respects the bounds and the inactive rows there and its
+multipliers have the right signs.
+
+\begin{proposition}\label{prop:termination}
+Let $\Sig \succ 0$, and suppose that at every turning point the constraints holding
+with equality (the rows of $A$, the rows of $G$ with $g_j\trans w = h_j$, and the
+bounds on which a weight sits) have linearly independent gradients. Then, in exact
+arithmetic, the walk never returns to a partition it has left, and it reaches
+$\lambda = 0$ after finitely many turning points.
+\end{proposition}
+
+\begin{proof}[Outline]
+A partition stays valid while finitely many conditions, each affine in $\lambda$,
+hold; once one fails below a turning point it fails for every smaller $\lambda$, so a
+partition never recurs at a later $\lambda$, and without ties every step uses a new one.
+At a tie, the slope of the next segment solves a strictly convex QP whose KKT system is a
+linear complementarity problem with a positive-definite matrix, and the implementation's
+lowest-index single flip is Murty's least-index principal pivot on it, which is finite.
+Appendix~\ref{sec:proof} gives the full argument, including the correspondence between
+the event types of the code and the complementary pairs of the problem.
+\end{proof}
+
+The proposition holds in exact arithmetic and under its hypotheses; what it adds is that
+the walk never revisits a partition. Two weaker statements hold without them. Because
+$\Sig \succ 0$ the optimiser $w(\lambda)$ is unique, and for a fixed set of active
+constraints it is affine in $\lambda$ on the interval where that set is optimal; there
+are finitely many such sets, so the frontier itself has finitely many turning points
+whether or not the constraints are independent. And an iteration cap of $100(n+p+1)$
+stops every trace: a trace that reaches it raises an error and never returns a partial
+frontier, and no trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
+In exact arithmetic, then, the one thing left unproved outside the hypotheses is that
+the walk leaves every tie without revisiting a partition. This concerns a degenerate maximum-return vertex,
+resolved from a vertex of its optimal dual set, or, under tied maximum returns, from the
+minimiser of the quadratic term on the tied face (\S\ref{sec:first}); a singular $\Sig$
+that the active rows keep positive definite on their null space, outside
+$\Sig\succ0$ (Appendix~\ref{sec:degeneracy}); the lifted problem
+of \S\ref{sec:leverage}, whose singular covariance masks the competing leg events; and
+ties with dependent constraints, where the matrix $M$ of Appendix~\ref{sec:proof} is
+only positive semidefinite and the least-index result no longer applies (a partition
+with dependent active rows is refused, \S\ref{sec:ineq}). Appendix~\ref{sec:degeneracy}
+lists which test families satisfy the hypotheses. In floating point the tie window and
+the slope floor make the computed signs agree with the exact ones, which is not proved
+either. At run time every turning point is validated against the bounds, $A w = b$ and
+$G w \le h$ before it is accepted, and the KKT certificate of \S\ref{sec:exactness}
+checks the traces of \S\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for
+optimality.
+
+When no admissible event has a positive ratio the walk has reached the minimum-variance
+portfolio and appends a final turning point $w = \alpha$ at $\lambda = 0$.
+
+\begin{center}
+\fbox{\begin{minipage}{0.93\textwidth}
+\textbf{Algorithm 1.}~Critical Line Algorithm (as implemented in \pkg{cvxcla}).
+
+\smallskip
+\textit{Input:} $\mu$, $\Sig$, $\lb,\ub$, $A,b$, $G,h$, tolerance $\tau$.
+\begin{enumerate}\setlength{\itemsep}{1pt}
+\item Compute the maximum-return vertex (\S\ref{sec:first}); record its free set and
+      active rows $\Sset$ with $\lambda \gets \infty$.
+\item \textbf{While} $\lambda > 0$:
+  \begin{enumerate}\setlength{\itemsep}{1pt}
+  \item Fix $w_\B$ at the active bounds and stack $C_\F = [\,A_\F;\,G_{\Sset\F}\,]$.
+  \item Solve against $\Sig_{\F\F}$ for $Y$, $z^{\alpha}$, $z^{\beta}$; solve the Schur
+        system \eqref{eq:schur}; back-substitute \eqref{eq:freesoln} for
+        $\alpha,\beta$; form $\gamma,\delta$ \eqref{eq:gamma}.
+  \item Assemble $L$ (\S\ref{sec:events}, \S\ref{sec:ineq}) under the slope floor and
+        $\lambda$ window; $\lambda^{\star} \gets \max L$; \textbf{if}
+        $\lambda^{\star} \le 0$ \textbf{break}.
+  \item Pick the event by the least-index rule (\S\ref{sec:bland}), flip that
+        coordinate's status, set
+        $\lambda \gets \lambda^{\star}$, append $w = \alpha + \lambda^{\star}\beta$.
+  \end{enumerate}
+\item Append $w = \alpha$ at $\lambda = 0$ and \textbf{return} the turning points.
+\end{enumerate}
+\end{minipage}}
+\end{center}
