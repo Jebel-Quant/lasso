@@ -198,9 +198,8 @@ knot of the LASSO path & turning point of the CLA \\
 \label{tab:dictionary}
 \end{table}
 
-On their own the encodings need a nondegenerate start; where they do not have one, \texttt{cvxcla}
-relaxes the constraint (Section~\ref{sec:limits}). There are two: the penalty form is
-the general one, and the budget form the direct one for homogeneous constraints.
+There are two encodings. On their own both need a nondegenerate start, and where
+they do not have one \texttt{cvxcla} relaxes the constraint (Section~\ref{sec:limits}).
 \begin{enumerate}\setlength{\itemsep}{0pt}
 \item the \emph{penalty form} (Section~\ref{sec:penalty}) keeps $\lambda$ as the
 parameter, and takes coefficient bounds, general equality constraints $A\beta=b$ and
@@ -675,10 +674,9 @@ penalty form, relaxed, returns the same \encLargestKnots{} knots to \encLargestG
 (Appendix~\ref{app:encodings}). For a sense of cost, a grid of 100 interior-point solves (Clarabel
 through CVXPY, compiled once with $\lambda$ as a parameter) costs about 100 times as
 much as the whole CLA path at $p=100$ and 350 times at $p=500$, and 14 to 100 times on
-the constrained diabetes and zero-sum problems of Table~\ref{tab:evidence}. These are
-ratios of the fastest of several runs, measured once by \texttt{timings} on an Apple M4
-Pro and quoted as measured; they are the one set of results here that the script does
-not write into the text, because they change from machine to machine.
+the constrained diabetes and zero-sum problems of Table~\ref{tab:evidence}. These are ratios of the fastest of several runs, measured once by \texttt{timings} on an
+Apple M4 Pro. They change from machine to machine, so they are the only results the script
+does not write into the text.
 The grid also misses every knot between grid points.
 
 \begin{table}[!htbp]
@@ -818,8 +816,7 @@ LASSO of James et al.\ \cite{james2020}, which CRAN archived on 2~June 2025.
 Alone, the two forms cover bounds, equality rows with a nondegenerate start, inequality
 rows that are slack at $\beta=0$ ($h>0$) or exclude it ($h<0$), and homogeneous rows with
 signs. They stop in two places: at a degenerate start, and at a free block that is
-singular to working precision. This section says where each arises, what
-\texttt{cvxcla} does about it, and what stays out of reach.
+singular to working precision.
 
 \paragraph{Degenerate starts} With $b=0$ the penalty form's starting vertex is $z=0$,
 with no free coordinates for $m>0$ rows. This is a degenerate vertex: the multipliers at
@@ -861,12 +858,10 @@ $f(0)=2f(\varepsilon)-f(2\varepsilon)$.
 \end{proof}
 
 At relaxation zero some segments have length zero: the relaxed paths meet rows one by
-one that the exact path meets together. Those are dropped. The lemma's hypothesis
-cannot be checked in advance, and its conclusion is a candidate path, not a proof that
-it is the LASSO's. So the result is certified, not trusted: a linear program finds the
-multipliers that best satisfy the optimality conditions of \eqref{eq:lasso} at every
-knot and segment midpoint, and the path is returned only if the largest violation,
-relative to $\|c\|_\infty$, is at most $10^{-9}$.
+one that the exact path meets together. Those are dropped. The lemma's hypothesis cannot be checked in advance, so what it gives is only a
+candidate path. \texttt{cvxcla} returns it only if a linear program finds multipliers that
+satisfy the optimality conditions of \eqref{eq:lasso} at every knot and segment midpoint,
+with the largest violation, relative to $\|c\|_\infty$, at most $10^{-9}$.
 
 The relaxation is relative to the size of a coefficient,
 $\varepsilon=\rho\,\|c\|_\infty/\max_jG_{jj}$, with $\rho=10^{-6}$ first. The point $d$
@@ -885,8 +880,7 @@ relaxed penalty form reproduces the budget form on every zero sum.
 \paragraph{Starts that need no relaxation} Rows $C\beta\le h$ with $h>0$ enter the
 penalty form as rows $CSz\le h$ of the CLA. They are slack at the start $z=0$, so the
 start is unchanged, and a row joins the active set when the path reaches it, like a
-bound. \emph{Cholesterol} tests this (Table~\ref{tab:evidence}). Two other starts are
-nondegenerate but lie away from $\beta=0$. A nonhomogeneous row can make the starting
+bound. \emph{Cholesterol} tests this (Table~\ref{tab:evidence}). Some starts are nondegenerate but lie away from $\beta=0$. A nonhomogeneous row can make the starting
 linear program non-unique. The fully invested constraint $\one\trans\beta=1$ of sparse
 portfolio regression \cite{brodie2009} is the standard case: every long-only $\beta$ in
 the simplex has $\|\beta\|_1=1$ and minimises the $\ell_1$ norm. The path's first segment
@@ -925,23 +919,20 @@ traces the exact path with $p>n$ and no ridge, and its authors make the same cas
 against one; on \emph{Wide, zero-sum} it agrees with the CLA to \coWideGap{}
 (Section~\ref{sec:independent}).
 
-\paragraph{What stays out of reach} Two things stop the run with an error rather than a
-wrong path. The bordered system \eqref{eq:border} needs the columns on the free set to be
+\paragraph{What stays out of reach} The bordered system \eqref{eq:border} needs the columns on the free set to be
 independent; when two columns nearly coincide and both become free, it is singular to
 working precision and \texttt{cvxcla} stops (\emph{Duplicate} at \stEpsLo{},
 Table~\ref{tab:stress}). This is the general-position assumption of
-Section~\ref{sec:example}, failing in floating point. And a relaxation can fail its
-certificate, when knots of the exact path lie closer together than the relaxation moves
+Section~\ref{sec:example}, failing in floating point. A relaxation can also fail its certificate, when knots of the exact path lie closer together than the relaxation moves
 them; \texttt{cvxcla} then retries with smaller relaxations and declines the problem if
 none passes. Among the problems here only the largest zero sum needed a retry, as
 \texttt{cvxcla} 2.6.0, which tried only the first relaxation, shows
-(Appendix~\ref{app:encodings}); none was declined. Bounds that exclude zero are not
-a limit: they enter as rows.
+(Appendix~\ref{app:encodings}); none was declined. Bounds that exclude zero enter as rows, so they are not a limit.
 
 \medskip\noindent
 \fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
-\textbf{When to use which encoding.} \texttt{cvxcla.Lasso} chooses by Algorithm~1, so a
-user need not; this is what it chooses, and what each choice costs.
+\textbf{When to use which encoding.} \texttt{cvxcla.Lasso} makes the choice by Algorithm~1. The list says what it chooses and
+what each choice costs.
 \begin{itemize}\setlength{\itemsep}{0pt}
 \item \emph{Homogeneous equality rows, with signs at most} ($A\beta=0$, no caps or
 inequality rows), such as the zero sum of compositional data: the budget form. One run of
@@ -973,15 +964,14 @@ encodings reach. On every problem, a CLA written for portfolios either returns t
 exact knots or stops with an error when its arithmetic cannot be trusted. Where an
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
 certifies the result, so the checks reach monotone fits and caps and rows under a zero
-sum. Two other starts need no relaxation: weights that sum to one start on a flat
-segment, and rows that exclude $\beta=0$ start at the feasible point of smallest
+sum. Weights that sum to one need no relaxation, since the walk starts on a flat segment,
+and neither do rows that exclude $\beta=0$, which start at the feasible point of smallest
 $\ell_1$ norm. With $p>n$ the paths stay exact, with no ridge, under bounds, signs,
 inequality rows and zero sums, where the other path algorithms for general constraints
 trace a ridged problem that ends elsewhere. The checks also made the CLA better at
-portfolios, where it now takes tied forecasts and low-rank covariances. The practical
-consequence is simple: \texttt{lars\_path}
-cannot take even a cap on the coefficients, and a CLA that takes general linear rows
-can.
+portfolios, where it now takes tied forecasts and low-rank covariances. In practice,
+\texttt{lars\_path} cannot take even a cap on the coefficients, and a CLA that takes
+general linear rows can.
 
 \section*{Code and data availability}
 
@@ -1209,8 +1199,7 @@ H.~Zhou and K.~Lange.
 \label{app:monotone}
 
 Lemma~\ref{lem:extrapolation} needs the relaxed paths to keep their sequence of active
-sets as the relaxation shrinks. The monotone fit illustrates that they do; it is an
-example, not a proof. On a Gaussian design with $n=100$,
+sets as the relaxation shrinks. The monotone fit is an example where they do. On a Gaussian design with $n=100$,
 $p=\moP$ and an ordered truth, the rows are $\beta_j-\beta_{j+1}\le h$. For
 every $\varepsilon$ from \moHMax{} down to \moHMin{} the path at $h=\varepsilon$ has the
 same \moKnots{} knots, meets its own optimality conditions to \moKKT{}, and lies
@@ -1287,8 +1276,7 @@ needed. A covariance of low rank, such as a factor model without specific risk, 
 the free block singular; 2.5.0 refused it, and 2.6.0 solves it on the null space of the
 active constraints, the fix the case $p>n$ needed. Table~\ref{tab:portfolios} traces
 both with 2.7.0 and checks every turning point against an interior-point solve of the
-same Markowitz problem. Checking the identity on regressions thus made the portfolio
-solver better at portfolios.
+same Markowitz problem.
 
 \begin{table}[!htbp]
 \centering
