@@ -180,7 +180,7 @@ $X\trans X$ & covariance of the asset returns \\
 $X\trans y$ & expected returns (penalty form: a benchmark) \\
 $\|\beta\|_1$ & gross exposure \\
 penalty $\lambda$ & risk tolerance $\gamma$ (penalty form) \\
-bound $\|\beta\|_1\le t$ & fully invested budget, $\gamma=1/t$ (budget form) \\
+bound $\|\beta\|_1\le t$ & leverage cap $t$, $\gamma=1/t$ (budget form) \\
 $A\beta=b$, $l\le\beta\le u$ & budget rows and position limits \\
 knot of the LASSO path & turning point of the CLA \\
 \bottomrule
@@ -365,7 +365,7 @@ where there are no constraints and LARS can check every knot.
 penalty form (lines) and the knots \texttt{lars\_path} returns \cite{sklearn} (circles);
 all \evPlainKnots{} agree to \evPlainGap{}, relative. \emph{(b)} The same path seen by the budget
 form as a portfolio: the long and short positions $Sw$ and the cash weight $w_0$ share
-a budget of one, against $t=1/\gamma$. Cash enters at $t=\|\beta(0)\|_1=\evPlainNorm$, the end
+a budget of one, against the leverage $t=1/\gamma$. Cash enters at $t=\|\beta(0)\|_1=\evPlainNorm$, the end
 of the LASSO path; to its right the least-squares fit is diluted by cash.}
 \label{fig:path}
 \label{fig:portfolio}
@@ -375,7 +375,8 @@ of the LASSO path; to its right the least-squares fit is diluted by cash.}
 \label{sec:budget}
 
 With $A\beta=0$ the penalty form starts degenerate (Section~\ref{sec:limits}). The
-second encoding starts instead from the budget $\|\beta\|_1\le t$, whose path is that
+second encoding starts instead from the bound $\|\beta\|_1\le t$, a cap $t$ on the
+leverage, whose path is that
 of $\mathrm{L}_\lambda$ indexed by $t=\|\beta(\lambda)\|_1$ \cite[Theorem~1]{perspective},
 and divides by $t$. The split coefficients then add up to at most one, which is
 Markowitz's own setting. A cash asset with no risk and no return holds the rest.
