@@ -51,7 +51,6 @@
 \input{figures/wide_numbers.tex}
 
 \newtheorem{proposition}{Proposition}
-\newtheorem{lemma}{Lemma}
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
@@ -157,9 +156,7 @@ them into the CLA from the start. So a CLA written for portfolios, with a thin l
 that poses the regression as a portfolio, should give exact constrained-LASSO paths.
 This note shows that it does, or stops with an error where its arithmetic cannot be
 trusted, and checks every path against references that know nothing of portfolios.
-The layer is two encodings, Propositions~\ref{prop:penalty} and~\ref{prop:budget}, and,
-where an encoding starts degenerate, a relaxation that runs the CLA twice and combines
-the two paths (Section~\ref{sec:limits}). The propositions need nothing from
+The layer is two encodings, Propositions~\ref{prop:penalty} and~\ref{prop:budget}. The propositions need nothing from
 \cite{perspective} beyond the classical equivalence of the bound and penalty forms of
 the LASSO; that paper supplies the general identity of which they are instances. The
 checks also exposed two defects in the CLA that refused ordinary portfolio problems too,
@@ -195,7 +192,7 @@ takes bounds, equality rows $A\beta=b$ and inequality rows $C\beta\le h$; it is 
 general form. The \emph{budget form} (Section~\ref{sec:budget}) keeps the $\ell_1$
 budget, as Markowitz's long-only, fully invested problem with a cash asset, and takes
 homogeneous constraints such as the zero sum $\one\trans\beta=0$ of compositional data
-in one run. Readers who know the CLA can skip Section~\ref{sec:cla}.
+in one run.
 
 \paragraph{Related work} Exact paths of the constrained LASSO are not new. Gaines, Kim
 and Zhou \cite{gaines2018} derive a path algorithm from its optimality conditions that
@@ -559,7 +556,7 @@ the level of rounding throughout, including on the problems LARS cannot take. In
 $\lambda=\evLarsEnd$, where it found nothing left to enter; its KKT violation at
 $\lambda=0$ is \evLarsKKT{}. The CLA carries on to the nonnegative least-squares fit, so the
 table compares that last knot with \texttt{scipy.optimize.nnls} \cite{lawson1974}
-instead. On the real data the CLA is as accurate as on the simulated problems.
+instead.
 
 \subsection{Scale and cost}
 \label{sec:scale}
@@ -594,8 +591,7 @@ violation at every knot and along every segment, as in Table~\ref{tab:evidence}.
 \subsection{Hostile problems}
 \label{sec:hostile}
 
-The problems so far are easy for any path algorithm.
-Table~\ref{tab:stress} adds problems chosen to make one fail, each drawn with
+Table~\ref{tab:stress} adds problems chosen to make a path algorithm fail, each drawn with
 \stSeeds{} seeds, and reports the worst case. \emph{Correlated} is a Gaussian design
 with $n=100$ and $p=40$ in which every pair of columns has correlation \stRho{}, alone,
 under a box and under a zero sum. \emph{Duplicate} adds to the diabetes data an
@@ -715,49 +711,20 @@ under a zero sum leave only the penalty form, which starts degenerate there. So 
 homogeneous rows ($h=0$), such as the ordering constraints of a monotone fit: all are
 tight at $\beta=0$.
 
-\texttt{cvxcla} resolves both by relaxation. It traces the problem twice, with the
-homogeneous rows relaxed to $h_r=\varepsilon$ and $h_r=2\varepsilon$, and a zero sum to
-$A\beta=\varepsilon Ad$ and $A\beta=2\varepsilon Ad$ for a point $d$ the constraints
-admit. Both runs start nondegenerate, and Lemma~\ref{lem:extrapolation} combines them.
-
-\begin{lemma}
-\label{lem:extrapolation}
-Suppose the penalty form, relaxed by $\varepsilon$ and by $2\varepsilon$, passes through
-the same sequence of free sets, blocked sets and active rows. Then each knot
-$(\lambda_k,\beta_k)$ is affine in the relaxation, and
-$2(\lambda_k,\beta_k)(\varepsilon)-(\lambda_k,\beta_k)(2\varepsilon)$ is its value at
-relaxation zero.
-\end{lemma}
-
-\begin{proof}
-The relaxation enters \eqref{eq:border} only through the part of the right-hand side
-that does not multiply $\gamma$, by way of $b$ and of $h$ on the active rows; it never
-enters the matrix or the term in $\gamma$. On a segment, therefore, $\alpha$, $\nu_0$,
-$g_0$ and the rows' slacks at $\gamma=0$ are affine in the relaxation, while $\delta$,
-$\nu_1$, $g_1$ and the slacks' slopes do not depend on it. Every event is
-$\gamma=-(\text{intercept})/(\text{slope})$ with an affine intercept and a fixed slope,
-so the knot $\lambda_k=\gamma_k$ is affine in the relaxation, and so is
-$x_k=\alpha+\gamma_k\delta$. A coordinate blocked at the knot sits at a bound, which
-does not depend on the relaxation, so the next segment's right-hand side is again
-affine in it, and induction over the segments covers the path. An affine $f$ has
-$f(0)=2f(\varepsilon)-f(2\varepsilon)$.
-\end{proof}
-
-At relaxation zero some segments have length zero: the relaxed paths meet rows one by
-one that the exact path meets together. Those are dropped. The lemma's hypothesis cannot be checked in advance, so what it gives is only a
-candidate path. \texttt{cvxcla} returns it only if a linear program finds multipliers that
-satisfy the optimality conditions of \eqref{eq:lasso} at every knot and segment midpoint,
-with the largest violation, relative to $\|c\|_\infty$, at most $10^{-9}$.
-
-The relaxation is relative to the size of a coefficient,
-$\varepsilon=\rho\,\|c\|_\infty/\max_jG_{jj}$, with $\rho=10^{-6}$ first, and $d$ is a
-generic point the constraints admit, drawn from a fixed seed. If the two runs trace
-different numbers of knots, or the certificate fails, \texttt{cvxcla} tries
-$\rho=10^{-7}$ and then $10^{-8}$, and declines the problem when none passes.
-\emph{Monotone} and \emph{Zero-sum, caps} test the relaxation (Table~\ref{tab:evidence}).
-On \emph{Monotone} the relaxed path keeps its \moKnots{} knots for every $\varepsilon$
-from \moHMax{} down to \moHMin{} and moves linearly in $\varepsilon$, as the
-extrapolation needs.
+\texttt{cvxcla} resolves both by relaxation, an implementation device rather than part
+of the method. It traces the problem twice, with the homogeneous rows relaxed to
+$h_r=\varepsilon$ and $2\varepsilon$ and a zero sum to $A\beta=\varepsilon Ad$ and
+$2\varepsilon Ad$ for a generic feasible point $d$. Both runs start nondegenerate, and
+where they pass through the same active sets their knots are affine in $\varepsilon$,
+because the relaxation enters only the right-hand side of \eqref{eq:border}; so
+$2(\lambda_k,\beta_k)(\varepsilon)-(\lambda_k,\beta_k)(2\varepsilon)$ is the knot at
+$\varepsilon=0$. That condition cannot be checked in advance, so \texttt{cvxcla} returns
+the extrapolated path only if a linear program finds multipliers that satisfy the
+optimality conditions of \eqref{eq:lasso} at every knot and segment midpoint, to
+$10^{-9}$ relative to $\|c\|_\infty$; otherwise it retries with smaller $\varepsilon$
+and finally declines. The paths it returns are then checked like every other path in
+Section~\ref{sec:evidence} (\emph{Monotone} and \emph{Zero-sum, caps},
+Table~\ref{tab:evidence}).
 
 \paragraph{Starts that need no relaxation} Rows $C\beta\le h$ with $h>0$ enter the
 penalty form as rows $CSz\le h$ of the CLA. They are slack at the start $z=0$, so the
@@ -797,9 +764,7 @@ forbids that move, \eqref{eq:border} is then singular to working precision and
 the general-position assumption of Section~\ref{sec:example}, failing in floating point;
 dropping or merging one of the two columns before tracing avoids it.
 A relaxation can also fail its certificate, when knots of the exact path lie closer
-together than the relaxation moves them; \texttt{cvxcla} then retries with smaller
-relaxations and declines the problem if none passes. Here only the largest zero sum
-needed a retry, and none was declined. We do not prove
+together than the relaxation moves them; here none was declined. We do not prove
 that the walk terminates; the non-terminating examples of Hobson et al.\
 \cite{hobson2026} need multipliers that are not unique, which a nonsingular
 \eqref{eq:border} rules out, and every walk here ended.
@@ -808,13 +773,10 @@ that the walk terminates; the non-terminating examples of Hobson et al.\
 
 The checks here support the identity of Schmelzer and Hastie \cite{perspective}
 wherever the encodings reach: on every problem, a CLA written for portfolios returns the exact knots
-or stops with an error where its arithmetic cannot be trusted. A relaxation, an
-extrapolation and a certificate carry the encodings past degenerate starts, to monotone
-fits and to caps and rows under a zero sum. With $p>n$ the paths stay exact, with no
+or stops with an error where its arithmetic cannot be trusted. With $p>n$ the paths stay exact, with no
 ridge, where the other path algorithms for general constraints trace a ridged problem
 that ends elsewhere. The checks also made the CLA better at portfolios: it now takes
-tied forecasts and low-rank covariances. And where \texttt{lars\_path} cannot take even
-a cap on the coefficients, a CLA takes general linear rows.
+tied forecasts and low-rank covariances.
 
 \section*{Code and data availability}
 
@@ -832,21 +794,17 @@ to Julia~1.12, with each departure marked; none changes the algorithm, and
 redistributed: \texttt{python/fetch\_scd14.py} downloads \texttt{coda4microbiome} 0.2.4
 from CRAN and checks its SHA-256. \texttt{make figures} runs all five, in CI as well.
 
-The lockfiles fix the software, not the hardware: residuals near rounding come out with
-different last digits on another CPU or BLAS build. The tests therefore check the
-optimality conditions against tolerances between $10^{-12}$ and $10^{-10}$ and the gaps
-to the interior-point solver against its own accuracy, and costs are given only as
-ratios.
+The lockfiles fix the software, not the hardware: residuals near rounding differ in the
+last digits on another CPU, so the tests use tolerances between $10^{-12}$ and
+$10^{-10}$, and costs are given only as ratios.
 
-\section*{Competing interests}
+\paragraph{Competing interests}
 
 The author works at Jebel Quant Research, which hosts the code, and maintains
-\texttt{cvxcla}, with which every path is computed. Every path is checked
-without it: against LARS, an interior-point solver, the LASSO's optimality
-conditions and, on the zero sums, comlasso.
-There are no other competing interests.
+\texttt{cvxcla}; Section~\ref{sec:evidence} checks every path without it. There are no
+other competing interests.
 
-\section*{Acknowledgements}
+\paragraph{Acknowledgements}
 
 I thank Trevor Hastie for many helpful discussions.
 
