@@ -23,9 +23,13 @@ check_listing.py         runs the Appendix C listing as printed, against cvxcla
 ## Building
 
 ```sh
-make pdf            # cla.pdf: pdflatex, BibTeX, pdflatex, pdflatex
+make reproduce      # every figure and check, then the PDF and the arXiv source
+make pdf            # cla.pdf only: pdflatex, BibTeX, pdflatex, pdflatex
 make arxiv-check    # package the arXiv source and compile it on its own
 ```
+
+`make figures` runs `make_figures.py all` and `make test` runs `check_listing.py`;
+`make reproduce` runs both, then builds the PDF and checks the arXiv source.
 
 The shared rules in [`../Makefile`](../Makefile) put `cls/jss/` on TeX's and BibTeX's
 search paths, so no system install of the JSS files is needed, and the arXiv source

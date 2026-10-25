@@ -22,6 +22,18 @@ path, each with its LaTeX source and the code and data behind it.
 
 ## Reproducing the results
 
+One command regenerates every result in every preprint, from the repository root:
+
+```sh
+make reproduce                        # every preprint, one after another
+make -C preprints/lasso reproduce     # one preprint
+```
+
+In each preprint it runs `make figures` (the data, the figures and every number the text
+quotes), `make test` (the checks against those numbers), `make pdf`, and `make arxiv-check`
+(the arXiv source compiled on its own). The preprints run one at a time, because the
+timings in `preprints/cla/` would otherwise measure the others' load.
+
 Each preprint's numbers and figures come from one Python script, `python/make_figures.py`, run
 with [uv](https://docs.astral.sh/uv/). Its dependencies are pinned in the script itself
 ([PEP 723](https://peps.python.org/pep-0723/)), and `python/make_figures.py.lock` next to it

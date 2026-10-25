@@ -29,7 +29,7 @@
 
 LATEX     := pdflatex
 LATEXOPTS := -interaction=nonstopmode -halt-on-error
-TARGETS   := pdf data figures test arxiv arxiv-check clean
+TARGETS   := reproduce pdf data figures test arxiv arxiv-check clean
 
 .PHONY: $(TARGETS)
 
@@ -44,8 +44,10 @@ JOBS      := $(foreach target,$(TARGETS),$(addsuffix /$(target),$(PREPRINTS)))
 
 .PHONY: $(JOBS)
 
+# `make reproduce` is the exception and takes one preprint at a time: cla/'s scaling
+# figures time cvxcla, and would otherwise measure the other preprints' load.
 $(TARGETS):
-	@$(MAKE) -j$(words $(PREPRINTS)) $(addsuffix /$@,$(PREPRINTS))
+	@$(MAKE) -j$(if $(filter reproduce,$@),1,$(words $(PREPRINTS))) $(addsuffix /$@,$(PREPRINTS))
 
 $(JOBS):
 	@$(MAKE) -C $(@D) $(@F)
@@ -56,7 +58,11 @@ ifneq ($(words $(MAIN)),1)
 $(error expected one .tex file with a \documentclass, found: $(MAIN))
 endif
 
-FIGURES := $(wildcard python/make_figures.py)
+# A preprint's Makefile may name its figure script, the arguments it takes and its test
+# command before including this one, as cla/ does; these are the defaults.
+FIGURES      ?= $(wildcard python/make_figures.py)
+FIGURES_ARGS ?=
+TEST         ?= $(if $(FIGURES),uv run $(FIGURES) test)
 FETCH   := $(shell grep -l '^\# fetch: on build$$' python/fetch_*.py 2>/dev/null)
 AFTER   := $(shell grep -l '^\# run: after figures$$' python/*.py 2>/dev/null)
 JULIA   := $(shell grep -l '^\# run: after figures$$' julia/*.jl 2>/dev/null)
@@ -78,6 +84,14 @@ export TEXINPUTS := .:$(subst $(space),:,$(VENDORDIR)):
 export BSTINPUTS := .:$(subst $(space),:,$(VENDORDIR)):
 endif
 
+# The one command that regenerates every result: the data, the figures and every number,
+# the checks against them, the PDF, and the arXiv source compiled on its own.
+reproduce:
+	$(MAKE) figures
+	$(MAKE) test
+	$(MAKE) pdf
+	$(MAKE) arxiv-check
+
 pdf: $(MAIN).pdf
 
 $(MAIN).pdf: $(MAIN).tex $(SECTIONS) $(BIB) $(wildcard figures/*.pdf figures/*.tex)
@@ -90,14 +104,14 @@ data:
 	$(foreach script,$(FETCH),uv run $(script) &&) true
 
 figures: data
-	$(if $(FIGURES),uv run $(FIGURES))
+	$(if $(FIGURES),uv run $(FIGURES) $(FIGURES_ARGS))
 	$(foreach script,$(AFTER),uv run $(script) &&) true
 	$(if $(JULIA),julia --project=julia -e 'using Pkg; Pkg.instantiate()')
 	$(foreach script,$(JULIA),julia --project=julia $(script) &&) true
 	$(foreach script,$(RCHECKS),Rscript $(script) &&) true
 
 test:
-	$(if $(FIGURES),uv run $(FIGURES) test)
+	$(TEST)
 
 # arXiv compiles the source itself, so a submission is the .tex and the figures it
 # includes, not the PDF. Only the figures the note includes go in: figures/ can hold

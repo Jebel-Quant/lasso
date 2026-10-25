@@ -4,7 +4,11 @@
 # from refs/references.bib.
 #
 # Unlike the other preprints, this one's figures are committed: its scaling figures report
-# wall-clock times, so CI does not redraw them. Redraw them by hand with
-# `uv run make_figures.py all`, and run the Appendix C listing with
-# `uv run check_listing.py`, which CI also runs (.github/workflows/listing.yml).
+# wall-clock times, so CI does not redraw them. `make figures` redraws them all and runs
+# every numerical check (make_figures.py all), and `make test` runs the Appendix C listing
+# (check_listing.py), which CI also runs (.github/workflows/listing.yml). `make reproduce`
+# does both and builds the PDF.
+FIGURES      := make_figures.py
+FIGURES_ARGS := all
+TEST         := uv run check_listing.py
 include ../Makefile
