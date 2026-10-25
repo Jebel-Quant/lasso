@@ -424,9 +424,10 @@ $\lambda_{\max}$. With equality rows, or a row $C\beta\le h$ with $h_r<0$ that l
 $z=0$ infeasible, the start is the linear program $\min\one\trans z$ over $ASz=b$,
 $CSz\le h$, $0\le z\le\bar u$, the point of smallest $\ell_1$ norm on the constraint set
 (Section~\ref{sec:limits}). For generic $A$ and $b\ne0$ it is a unique vertex with $m$
-nonzeros. The path then
-holds still on its first segment, $\delta=0$, while the multipliers absorb the growing
-penalty, until a second coefficient enters.
+nonzeros. The path holds still there, $\delta=0$, until a second coefficient enters:
+from some $\lambda_0$ on, every constrained LASSO path is constant at a least-squares
+fit over the feasible points of smallest $\ell_1$ norm, and $\lambda_0$ takes the place
+of $\lambda_{\max}$ \cite[Proposition~3]{perspective}.
 
 Figure~\ref{fig:path}(a) shows the penalty form on the diabetes data \cite{efron2004},
 where there are no constraints and LARS can check every knot.
@@ -884,12 +885,10 @@ start is unchanged, and a row joins the active set when the path reaches it, lik
 bound. \emph{Cholesterol} tests this (Table~\ref{tab:evidence}). Some starts are nondegenerate but lie away from $\beta=0$. A nonhomogeneous row can make the starting
 linear program non-unique. The fully invested constraint $\one\trans\beta=1$ of sparse
 portfolio regression \cite{brodie2009} is the standard case: every long-only $\beta$ in
-the simplex has $\|\beta\|_1=1$ and minimises the $\ell_1$ norm. The path's first segment
-is then the least-squares fit over that face, constant in $\lambda$. This is the flat
-segment of \cite[Proposition~2]{perspective}, and finding the point requires a
-quadratic program rather than a linear one. \texttt{cvxcla} starts on the tied face
-where its quadratic term is smallest, which is that fit, so the walk begins on the flat
-segment. \emph{Sum to one} tests it (Table~\ref{tab:evidence}). A row with $h_r<0$
+the simplex has $\|\beta\|_1=1$. The path then starts at the least-squares fit over the
+simplex and stays there \cite[Proposition~3]{perspective}, which takes a quadratic
+program to find rather than a linear one. \texttt{cvxcla} starts on the tied face where
+its quadratic term is smallest, which is that fit. \emph{Sum to one} tests it (Table~\ref{tab:evidence}). A row with $h_r<0$
 leaves $\beta=0$ infeasible. The budget form starts at $\beta=0$ and cannot take it. The
 penalty form starts where the linear program of Section~\ref{sec:cla} puts it, at the
 feasible point of smallest $\ell_1$ norm, as it does for a nonhomogeneous equality row
@@ -900,11 +899,11 @@ half its least-squares value. Its path starts on the floor, with \texttt{bmi} al
 meets the optimality conditions to \flKKT{}.
 
 \paragraph{More predictors than observations} With equality rows and $p>n$, $X\trans X$
-is singular and the end of the path, the constrained least-squares fit, need not be
-unique. Before it, the free set can outgrow the rank of $X$, and the bordered system is
-then solved on the null space of the active constraints, which keep it nonsingular.
-The path ends where the fit first interpolates, the limit $\lambda\to0^+$: the
-interpolating fit of smallest $\ell_1$ norm under the constraints. Past it the CLA would
+is singular, but the bordered system needs a positive definite Hessian only on the null
+space of the active rows, the standing assumption of \cite{perspective}, so the free set
+can outgrow the rank of $X$. As $\lambda\to0^+$ the path ends at the least-squares fit
+of smallest $\ell_1$ norm under the constraints \cite[Proposition~3]{perspective},
+here an interpolating fit. Past it the CLA would
 run on through interpolating fits of larger norm, which are not on the LASSO path, so
 \texttt{cvxcla} stops there. \emph{Wide, zero-sum} (Table~\ref{tab:stress}) tests this,
 and Table~\ref{tab:wide} tests it under bounds, signs and inequality rows. The other path
@@ -920,8 +919,10 @@ traces the exact path with $p>n$ and no ridge, and its authors make the same cas
 against one; on \emph{Wide, zero-sum} it agrees with the CLA to \coWideGap{}
 (Section~\ref{sec:independent}).
 
-\paragraph{What stays out of reach} The bordered system \eqref{eq:border} needs the columns on the free set to be
-independent; when two columns nearly coincide and both become free, it is singular to
+\paragraph{What stays out of reach} The bordered system \eqref{eq:border} needs $X\trans X$
+positive definite on the null space of the active rows; when two columns nearly coincide
+and both become free, moving weight from one to the other barely changes the fit, and
+unless an active row forbids that move the system is singular to
 working precision and \texttt{cvxcla} stops (\emph{Duplicate} at \stEpsLo{},
 Table~\ref{tab:stress}). This is the general-position assumption of
 Section~\ref{sec:example}, failing in floating point. A relaxation can also fail its certificate, when knots of the exact path lie closer together than the relaxation moves
@@ -965,7 +966,7 @@ encodings reach. On every problem, a CLA written for portfolios either returns t
 exact knots or stops with an error when its arithmetic cannot be trusted. Where an
 encoding starts degenerate, \texttt{cvxcla} relaxes the constraint, extrapolates and
 certifies the result, so the checks reach monotone fits and caps and rows under a zero
-sum. Weights that sum to one need no relaxation, since the walk starts on a flat segment,
+sum. Weights that sum to one need no relaxation, since the walk starts on a constant segment,
 and neither do rows that exclude $\beta=0$, which start at the feasible point of smallest
 $\ell_1$ norm. With $p>n$ the paths stay exact, with no ridge, under bounds, signs,
 inequality rows and zero sums, where the other path algorithms for general constraints
