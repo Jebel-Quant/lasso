@@ -232,7 +232,11 @@ Section~\ref{sec:evidence} runs it too. Hobson, Butcher and Lentati
 \cite{hobson2026} revisit Gaines et al.\ with an algorithm of their own, CLASSO. The
 linear system of Gaines et al.\ is singular whenever a binding row vanishes on the
 active coefficients, as a sign constraint on a zero coefficient does, so CLASSO takes
-the direction from a small quadratic program instead. They also show that a path with
+the direction from a small quadratic program instead. In the CLA a sign or a cap is a
+bound, not a row: a coefficient held at it is blocked and leaves the bordered system of
+Section~\ref{sec:cla}, so for signs and caps that singularity does not arise. Its
+counterpart here is a degenerate start, where homogeneous rows are all tight at
+$\beta=0$, and Section~\ref{sec:limits} relaxes it. They also show that a path with
 finitely many knots need not be traversed in finitely many steps: recomputing the
 multipliers at every knot can step forever along one segment. Following one canonical
 certificate terminates, and they check the proofs in Lean. CLASSO adds a ridge when
@@ -292,8 +296,9 @@ and infinite bounds it is Tibshirani's LASSO. We assume,
 as \cite{perspective} does, that $\mathrm{L}_\lambda$ has a unique minimiser
 $\beta(\lambda)$ for every $\lambda>0$. For the LASSO without constraints this holds
 whenever the columns of $X$ are in general position \cite{tibshirani2013}, for any $n$
-and $p$. With constraints, and in particular with $p>n$, we know of no such result and
-make it an assumption. The checks of Section~\ref{sec:evidence} test optimality, not
+and $p$. With constraints it holds whenever $X$ has full column rank, which needs
+$n\ge p$, with no constraint qualification \cite[Theorem~6]{hobson2026}. With
+constraints and $p>n$ we know of no such result and make it an assumption. The checks of Section~\ref{sec:evidence} test optimality, not
 uniqueness: where the minimiser is not unique they confirm that the path is a path of
 minimisers.
 
@@ -412,8 +417,9 @@ knots = [(t.lamb, S @ t.weights) for t in run.turning_points]   # lam = gamma
 
 The covariance $S\trans GS$ is singular when both signs of a coefficient are allowed,
 but \eqref{eq:border} is not: for $\lambda>0$ the proof keeps the two halves of a
-coefficient out of $\F$ together, and the columns of $X$ on the support are independent
-in general position \cite{perspective}. The halves come apart only at $\lambda=0$, which
+coefficient out of $\F$ together, and on the free coordinates $\Sig$ is positive
+definite on the null space of the active rows, the standing assumption of
+\cite[Section~2]{perspective}. The halves come apart only at $\lambda=0$, which
 rounding can move to $\gamma\approx10^{-16}$; \texttt{cvxcla} treats an event whose
 parameter is round-off as one at $\gamma=0$.
 
@@ -459,7 +465,7 @@ portfolio that invests a budget of one. A cash asset, with no risk and no return
 whatever part of the budget the regression does not use.
 
 The bound form has the same path as $\mathrm{L}_\lambda$, indexed by
-$t=\|\beta(\lambda)\|_1$ instead of $\lambda$ \cite{perspective}.
+$t=\|\beta(\lambda)\|_1$ instead of $\lambda$ \cite[Theorem~1]{perspective}.
 
 \begin{proposition}[Budget as simplex]
 \label{prop:budget}
@@ -521,12 +527,12 @@ it. The run therefore ends when cash enters, which \texttt{cvxcla}'s \texttt{sto
 does, and that event wins a tie. A tie would arise when $p>n$, where every correlation
 vanishes at $\lambda=0$ together with $\eta$ and rounding alone would decide which event
 the walk takes. There the path ends where the fit first interpolates, the limit
-$\lambda\to0^+$, and \texttt{cvxcla} stops at it (Section~\ref{sec:limits}).
+$\lambda\to0^+$ \cite[Proposition~3]{perspective}, and \texttt{cvxcla} stops at it (Section~\ref{sec:limits}).
 Figure~\ref{fig:portfolio}(b) shows the diabetes path in these terms.
 
 The two forms give the same knots where $t=\|\beta(\lambda)\|_1$ is strictly decreasing
 in $\lambda$ \cite[Theorem~1 and Corollary~1]{perspective}, which fails only if the support's sign
-vector lies in the span of the active constraint normals. Under $\one\trans\beta=0$ that
+vector lies in the span of the active constraint normals \cite[Proposition~1]{perspective}. Under $\one\trans\beta=0$ that
 would need every nonzero coefficient to have the same sign, impossible for a nonzero
 $\beta$ that sums to zero.
 
@@ -930,6 +936,15 @@ them; \texttt{cvxcla} then retries with smaller relaxations and declines the pro
 none passes. Among the problems here only the largest zero sum needed a retry, as
 \texttt{cvxcla} 2.6.0, which tried only the first relaxation, shows
 (Appendix~\ref{app:encodings}); none was declined. Bounds that exclude zero enter as rows, so they are not a limit.
+Nor do we prove that the walk terminates. Hobson et al.\ \cite{hobson2026} construct
+problems on which a path-follower that recovers fresh multipliers at every knot steps
+forever along one segment, and show that a lowest-index tie-break, the rule of
+\cite{perspective}, does not prevent it. Where \eqref{eq:border} is nonsingular the
+multipliers of the current active set are unique, which removes the choice their
+examples exploit, but which active set the walk takes at a knot where several qualify
+is still a choice. On every problem here the walk ended, and the optimality checks of
+Section~\ref{sec:checks} hold on the path it returned; a proof of termination for the
+CLA is open.
 
 \medskip\noindent
 \fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
