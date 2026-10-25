@@ -116,10 +116,12 @@ test:
 # arXiv compiles the source itself, so a submission is the .tex and the figures it
 # includes, not the PDF. Only the figures the note includes go in: figures/ can hold
 # drawings the note no longer uses. A table the script writes into figures/ and the note
-# \inputs goes in too. The figures sit flat at the root of the submission, beside the
-# .tex, so the packaged copy of the .tex (and of its sections) looks for them there: its
-# \graphicspath{{figures/}} becomes {{./}} and \input{figures/...} loses the prefix. The
-# sources in the repository are left as they are. The same tree is packed twice, as a
+# \inputs goes in too. The submission is flat: the figures, the sections, the .bib and a
+# bundled class all sit at its root beside the .tex, and the packaged copy of the .tex
+# (and of its sections) is rewritten to look for them there. \graphicspath{{figures/}}
+# becomes {{./}}, and \input{figures/...}, \input{sections/...} and
+# \bibliography{refs/...} lose their prefix. The sources in the repository are left as
+# they are, and the packaging fails if two files would share a name at the root. The same tree is packed twice, as a
 # tarball and as a zip, for whichever the upload form takes.
 ARXIV_SRC     := arxiv-src
 ARXIV_CHECK   := arxiv-build
@@ -136,14 +138,17 @@ $(ARXIV_TARBALL): $(MAIN).tex $(SECTIONS) $(BIB) $(VENDOR) $(INCLUDED)
 	mkdir -p $(ARXIV_SRC)
 	cp $(MAIN).tex $(ARXIV_SRC)/
 	$(if $(INCLUDED),cp $(INCLUDED) $(ARXIV_SRC)/)
-	$(if $(SECTIONS),mkdir -p $(ARXIV_SRC)/sections && cp $(SECTIONS) $(ARXIV_SRC)/sections/)
-	$(if $(BIB),mkdir -p $(ARXIV_SRC)/refs && cp $(BIB) $(ARXIV_SRC)/refs/)
+	$(if $(SECTIONS),cp $(SECTIONS) $(ARXIV_SRC)/)
+	$(if $(BIB),cp $(BIB) $(ARXIV_SRC)/)
 	$(if $(VENDOR),cp $(VENDOR) $(ARXIV_SRC)/)
+	@dupes=$$(printf '%s\n' $(notdir $(MAIN).tex $(INCLUDED) $(SECTIONS) $(BIB) $(VENDOR)) | sort | uniq -d); \
+	  test -z "$$dupes" || { echo "two files would share a name at the root: $$dupes"; exit 1; }
 	sed -i.orig -e 's#\\graphicspath{{figures/}}#\\graphicspath{{./}}#' -e 's#\\input{figures/#\\input{#g' \
-	  $(ARXIV_SRC)/$(MAIN).tex $(addprefix $(ARXIV_SRC)/,$(SECTIONS))
-	find $(ARXIV_SRC) -name '*.orig' -delete
-	@! grep -rnE '\\(input|includegraphics|graphicspath)[^}]*figures/' $(ARXIV_SRC) --include='*.tex' || \
-	  { echo "the packaged .tex still points into figures/"; exit 1; }
+	  -e 's#\\input{sections/#\\input{#g' -e 's#\\bibliography{refs/#\\bibliography{#g' \
+	  $(ARXIV_SRC)/$(MAIN).tex $(addprefix $(ARXIV_SRC)/,$(notdir $(SECTIONS)))
+	rm -f $(ARXIV_SRC)/*.orig
+	@! grep -nE '\\(input|includegraphics|graphicspath|bibliography)[^}]*(figures|sections|refs)/' \
+	  $(ARXIV_SRC)/*.tex || { echo "the packaged .tex still points into a folder"; exit 1; }
 	tar czf $@ -C $(ARXIV_SRC) .
 	tar tzf $@
 
