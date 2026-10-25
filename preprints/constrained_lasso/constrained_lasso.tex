@@ -166,8 +166,9 @@ The layer is two encodings, Propositions~\ref{prop:penalty} and~\ref{prop:budget
 proved here from the definition of the CLA, and, where an encoding starts degenerate, a
 relaxation that runs the CLA twice and combines the two paths
 (Section~\ref{sec:limits}). The checks also exposed two defects in the CLA that refused
-ordinary portfolio problems too; they were fixed in \texttt{cvxcla} 2.6.0
-(Appendix~\ref{app:portfolios}), and the release used here is 2.7.0. In one case that
+ordinary portfolio problems too, a tie for the largest expected return and a covariance
+of low rank; both were fixed in \texttt{cvxcla} 2.6.0 and are documented with the package
+\cite{cvxcla}, and the release used here is 2.7.0. In one case that
 matters in practice the result goes beyond the other open path algorithms for general
 constraints: with more predictors than observations it traces the exact path, with no
 ridge (below). The two propositions need nothing from \cite{perspective} beyond the classical
@@ -1263,35 +1264,5 @@ an interior-point solve puts it above $10^{-4}$, an absolute threshold that on t
 diabetes data, whose loss is of order $10^6$, admits \gaSpurious{} of the \gaCoeffs{}.
 The MATLAB original (\texttt{lsq\_classopath.m}, lines 165--189, 242 and 253), which
 we did not run, reads its first $\lambda$ off that start's multipliers instead.
-
-\section{What the checks did for the CLA}
-\label{app:portfolios}
-
-Two of the cases in Section~\ref{sec:limits} were
-defects of the CLA, not of the encodings, and both refuse ordinary portfolio problems.
-A tie for the largest expected return, two assets with the same forecast, makes the
-starting vertex non-unique; the CLA of \texttt{cvxcla} 2.5.0 refused it, and 2.6.0
-starts on the tied face where the quadratic term is smallest, the fix the flat start
-needed. A covariance of low rank, such as a factor model without specific risk, makes
-the free block singular; 2.5.0 refused it, and 2.6.0 solves it on the null space of the
-active constraints, the fix the case $p>n$ needed. Table~\ref{tab:portfolios} traces
-both with 2.7.0 and checks every turning point against an interior-point solve of the
-same Markowitz problem.
-
-\begin{table}[!htbp]
-\centering
-\small
-\begin{tabular}{lrrrc}
-\toprule
-portfolio problem & $n$ & rank & turning points & worse \\
-\midrule
-\input{figures/portfolios.tex}
-\end{tabular}
-\caption{Two long-only, fully invested Markowitz problems that the CLA of
-\texttt{cvxcla} 2.5.0 refused, traced since 2.6.0. \emph{Worse}: the most by which a
-turning point's objective exceeds an interior-point solve of the same problem, relative
-to the objective's size at the start; it is within the solver's tolerance.}
-\label{tab:portfolios}
-\end{table}
 
 \end{document}
