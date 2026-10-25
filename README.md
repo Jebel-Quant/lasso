@@ -10,12 +10,29 @@ path, each with its LaTeX source and the code and data behind it.
   every figure and number, a script that fetches the Fama-French returns it checks
   against, and an R check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
 - [`preprints/constrained_lasso/`](preprints/constrained_lasso) — *The Constrained LASSO
-  by the Critical Line Algorithm*: the identity run the other way, computing
-  constrained-LASSO paths with an unmodified CLA, and one script that reproduces every
-  figure and number. See
+  is a Portfolio*: the identity run the other way, computing constrained-LASSO paths with
+  an unmodified CLA, and one script that reproduces every figure and number. See
   [`preprints/constrained_lasso/README.md`](preprints/constrained_lasso/README.md).
+- [`preprints/cla/`](preprints/cla) — *`cvxcla`: The Critical Line Algorithm with an
+  Operator Interface in Python*, the software paper for the Journal of Statistical
+  Software, moved here from
+  [`Jebel-Quant/homotopy`](https://github.com/Jebel-Quant/homotopy). It is built from the
+  journal's class and a BibTeX bibliography, and its figures are committed rather than
+  drawn in CI. See [`preprints/cla/README.md`](preprints/cla/README.md).
 
 ## Reproducing the results
+
+One command regenerates every result in every preprint, from the repository root:
+
+```sh
+make reproduce                        # every preprint, one after another
+make -C preprints/lasso reproduce     # one preprint
+```
+
+In each preprint it runs `make figures` (the data, the figures and every number the text
+quotes), `make test` (the checks against those numbers), `make pdf`, and `make arxiv-check`
+(the arXiv source compiled on its own). The preprints run one at a time, because the
+timings in `preprints/cla/` would otherwise measure the others' load.
 
 Each preprint's numbers and figures come from one Python script, `python/make_figures.py`, run
 with [uv](https://docs.astral.sh/uv/). Its dependencies are pinned in the script itself
@@ -39,7 +56,9 @@ stories of what goes wrong without it, here and elsewhere.
 
 Each folder in `preprints/` holds one preprint: a single `.tex` file with a
 `\documentclass`, the Python behind its experiments, and a `Makefile` that is just
-`include ../Makefile`. The rules (`pdf`, `figures`, `test`, `clean`) live in
+`include ../Makefile`. A preprint written for a journal, like `preprints/cla/`, may also
+have its body in `sections/`, a BibTeX bibliography in `refs/` and the journal's class
+bundled with it; the shared rules run BibTeX and find the class for it. The rules (`pdf`, `figures`, `test`, `clean`) live in
 [`preprints/Makefile`](preprints/Makefile), with `arxiv` and `arxiv-check` to package the
 arXiv source. The Python code sits in `python/`, each script
 next to its lockfile; `python/make_figures.py`, if present, writes the

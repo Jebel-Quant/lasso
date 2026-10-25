@@ -1,0 +1,42 @@
+\section{The first turning point}
+\label{sec:first}
+
+At $\lambda = +\infty$ variance is irrelevant and \eqref{eq:qp} reduces to earning the
+most expected return the constraints allow. For a single all-ones budget row
+$\mathbf{1}\trans w = b$, \code{init\_algo}
+(\srcfile{src/cvxcla/first.py}{first.py}) computes this greedily: start every weight at
+$\lb$, sort the assets by descending $\mu$, and raise each towards $\ub_i$ until the
+budget is met (within a tolerance of $10^{-12}$; without it, round-off can skip the
+asset that should end strictly inside its box). The last asset touched absorbs the residual and is the
+single \emph{free} asset; all others are blocked. The same fill serves leverage
+($b > 1$) and dollar-neutral books ($b = 0$, negative $\lb$). The last asset is marked
+free even when it lands exactly on a bound, so the reduced KKT system is non-singular
+from the outset, a case the review of \citet{markowitz2021} does not address.
+
+For a general equality system (weighted rows, or $m > 1$ rows such as sector or factor
+neutrality) or any $G$, the maximum-return vertex is the linear program
+$\max_w \mu\trans w$ subject to the constraints, which \pkg{cvxcla} solves with the
+HiGHS simplex through \code{scipy.optimize.linprog}; the free set is read off as the
+assets strictly inside their bounds. Only this first step differs; the loop that
+follows is written for a general $A$ throughout.
+
+\paragraph{Tied maximum returns.}
+The maximum-return set need not be a single vertex. When two or more assets share the
+largest expected return, say because they were given the same forecast, the linear
+program has a whole face of optima, and the greedy fill or the simplex returns one of
+its vertices. The frontier does not start at an arbitrary one. For $\lambda$ just below
+$+\infty$ the optimiser of \eqref{eq:qp} is the point of that face where the quadratic
+term $\tfrac12 w\trans\Sig w$ is smallest, and the path leaves from there. Since
+release~2.6.0, \pkg{cvxcla} starts at that point, a small quadratic program over the
+face, and its free set is the assets strictly inside their bounds there. Earlier
+releases started at the vertex the solver returned. Release~2.3.3, used for the first
+version of this paper, then traced a frontier that ended but was not efficient; that
+version reported such problems as completed (Appendix~\ref{sec:degeneracy}).
+Releases~2.4.2 to 2.5.0 declined them instead.
+
+The vertex itself can be degenerate, with every weight on a bound or a duplicated tight
+row. Its partition is then read from a vertex of the linear program's optimal dual set,
+which keeps it dual feasible and starts the first segment at the vertex itself
+(Appendix~\ref{sec:vertexdetail}). Redundant equality rows, a repeated budget say, are
+dropped before the trace starts; a vertex is refused with a \code{DegenerateProblemError}
+(\S\ref{sec:errors}) only when its optimal dual set has no vertex.

@@ -1,0 +1,54 @@
+\section{Problem formulation}
+\label{sec:problem}
+
+Let $w\in\R^n$ be the portfolio weights, $\mu\in\R^n$ the expected returns,
+$\Sig\in\R^{n\times n}$ the (symmetric, positive semidefinite) covariance,
+$A\in\R^{m\times n}$, $b\in\R^m$ the equality constraints, $G\in\R^{p\times n}$,
+$h\in\R^p$ the inequality constraints, and $\lb,\ub$ the bounds. The data $\mu$,
+$\Sig$, $A$, $b$, $G$, $h$ must be finite. A bound may be infinite, an unbounded box;
+the first turning point is then found by the linear program of \S\ref{sec:first}, which
+refuses a problem whose expected return is unbounded. The
+implementation traces the frontier through the \emph{return-parametrised} quadratic
+program
+\begin{equation}
+\label{eq:qp}
+\min_{w\in\R^n}\; \tfrac12\, w\trans \Sig\, w - \lambda\,\mu\trans w
+\quad\text{subject to}\quad A w = b,\;\; G w \le h,\;\; \lb \le w \le \ub,
+\end{equation}
+where $\lambda \ge 0$ weights expected return against variance. The canonical instance
+has the single budget row $\mathbf{1}\trans w = 1$; general $A$ and $G$ (group or sector
+caps, a $\ge$ row negated) are handled in \S\ref{sec:first} and \S\ref{sec:ineq}. As $\lambda$ decreases from $+\infty$ to $0$, the optimiser moves from the
+maximum-return portfolio to the global minimum-variance portfolio, and its locus is the
+efficient frontier (Figure~\ref{fig:frontier}).
+
+
+\paragraph{Optimality conditions.}
+At fixed $\lambda$ the program is convex, so the KKT conditions are necessary and
+sufficient. Partition the assets into a \emph{free} set $\F$ (weights strictly inside
+their bounds) and a \emph{blocked} set $\B = \F^{c}$ (weights at $\lb_i$ or $\ub_i$),
+and let $\Sset \subseteq \{1,\dots,p\}$ index the \emph{active} inequality rows. For
+the free assets
+\begin{equation}
+\label{eq:kkt}
+\begin{aligned}
+\Sig_{\F\F}\, w_\F + \Sig_{\F\B}\, w_\B + A_\F\trans \nu + G_{\Sset\F}\trans \eta
+  &= \lambda\, \mu_\F,\\
+A_\F\, w_\F + A_\B\, w_\B &= b, \qquad
+G_{\Sset\F}\, w_\F + G_{\Sset\B}\, w_\B = h_{\Sset},
+\end{aligned}
+\end{equation}
+with multipliers $\nu\in\R^m$ and $\eta\in\R^{|\Sset|}_{\ge 0}$. The blocked weights
+are known, so \eqref{eq:kkt} is linear in $(w_\F,\nu,\eta)$, and an active inequality
+row enters exactly as an equality row: stacking $C = [\,A;\,G_{\Sset}\,]$ recovers the
+equality-only form.
+
+\paragraph{The affine segment.}
+While the partition is fixed, the system matrix is constant and the right-hand side
+affine in $\lambda$, so
+\begin{equation}
+\label{eq:segment}
+w(\lambda) = \alpha + \lambda\,\beta,
+\end{equation}
+with $\alpha,\beta$ constant on the segment ($\beta_\B = 0$, $\alpha_\B = w_\B$); the
+code calls them \code{r\_alpha} and \code{r\_beta}. This is the \emph{critical line}.
+A \emph{turning point} is a value of $\lambda$ at which the partition must change.

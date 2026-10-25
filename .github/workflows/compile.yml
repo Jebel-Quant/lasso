@@ -106,6 +106,13 @@ jobs:
       - name: Rebuild TeX's generated files
         run: sudo mktexlsr && sudo updmap-sys && sudo fmtutil-sys --byfmt pdflatex
 
+      # A restore from the cache brings pdflatex back but can leave bibtex out: a PR's first
+      # run, which installs afresh, has it, and its later runs, which restore, do not. A
+      # preprint with a BibTeX bibliography (refs/*.bib) needs it, so reinstall it then.
+      - name: Make sure BibTeX is there
+        if: hashFiles(format('{0}/refs/*.bib', matrix.dir)) != ''
+        run: command -v bibtex || sudo apt-get install -y -q --reinstall texlive-binaries
+
       # The dependencies are pinned inline in each python/*.py script (PEP 723) and locked
       # in the .py.lock next to it, so key uv's cache on both.
       - uses: astral-sh/setup-uv@v7.6.0
@@ -194,9 +201,17 @@ jobs:
               \fontsize{16}{16}\selectfont\sffamily\color{black!45}%
               ${date}\qquad\detokenize{${STAMP}}\qquad\texttt{${sha}}}}}}
           EOF
-          for _ in 1 2 3; do
-            pdflatex -interaction=nonstopmode -halt-on-error -jobname="$JOB" "\\input{stamp}\\input{$JOB}"
-          done
+          # A preprint written for a journal bundles its class and BibTeX style (cla/cls/jss/)
+          # and takes its bibliography from refs/*.bib, so TeX and BibTeX search the folders
+          # that hold a .cls or .bst, and BibTeX runs after the first pass.
+          vendor=$(find . \( -path ./arxiv-src -o -path ./arxiv-build \) -prune -o \
+            \( -name '*.cls' -o -name '*.bst' \) -print | xargs -r -n1 dirname | sort -u | tr '\n' ':')
+          export TEXINPUTS=".:${vendor}" BSTINPUTS=".:${vendor}"
+          latex() { pdflatex -interaction=nonstopmode -halt-on-error -jobname="$JOB" "\\input{stamp}\\input{$JOB}"; }
+          latex
+          if compgen -G 'refs/*.bib' > /dev/null; then bibtex "$JOB"; fi
+          latex
+          latex
 
       - uses: actions/upload-artifact@v7.0.2
         with:
@@ -265,7 +280,7 @@ jobs:
           sparse-checkout: preprints
 
       # One link per PDF, labelled with the main title: the \title text up to its first
-      # \\ or closing brace, so a subtitle set on a second line is left out.
+      # \\, so a subtitle set on a second line is left out.
       - name: Write the index page
         if: steps.tip.outputs.current == 'true'
         working-directory: pdfs
@@ -285,7 +300,9 @@ jobs:
           HTML
             for pdf in *.pdf; do
               job=${pdf%.pdf}
-              title=$(sed -n 's/^\\title{\([^\\}]*\).*/\1/p' ../src/preprints/*/"$job".tex | head -n 1)
+              # The whole \title argument, across lines; a subtitle after \\ is dropped and
+              # a macro such as \pkg{cvxcla} keeps only its argument.
+              title=$(perl -0ne 'if (/\\title\{((?:[^{}]|\{[^{}]*\})*)\}/) { $t=$1; $t =~ s/\\\\.*//s; $t =~ s/\\[a-zA-Z]+\{([^{}]*)\}/$1/g; $t =~ s/\s+/ /g; $t =~ s/^\s+|\s+$//g; print $t }' ../src/preprints/*/"$job".tex | head -n 1)
               title=${title//--/–}
               title=${title//&/&amp;}; title=${title//</&lt;}; title=${title//>/&gt;}
               echo "  <li><a class=\"text-[#1a4f8b] underline hover:no-underline dark:text-sky-300\" href=\"$pdf\">${title:-$job}</a></li>"

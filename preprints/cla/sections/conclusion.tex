@@ -1,0 +1,10 @@
+\section{Conclusion}
+
+The Critical Line Algorithm computes the whole mean--variance frontier by walking its
+piecewise-linear path from the maximum-return to the minimum-variance portfolio.
+\pkg{cvxcla} takes each step with one block-eliminated KKT solve, resolves ties by a
+least-index rule under which the walk provably terminates (Proposition~\ref{prop:termination}),
+and reaches the covariance only through a five-member operator protocol. A factor risk
+model therefore yields the same turning points as the dense matrix it represents; with $2560$ assets and ten factors it does so about $35$ times faster, in under $1$~MiB of working memory beyond the stored frontier. The gain is one of scale and structure. Below about $200$
+assets the per-step overhead of \proglang{Python} dominates, and \pkg{qpOASES}, which
+follows the same path, is faster.

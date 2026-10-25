@@ -41,6 +41,7 @@ The shared rules in [`preprints/Makefile`](preprints/Makefile) are:
 
 ```sh
 make data         # run each python/fetch_*.py marked `# fetch: on build` (see below)
+make reproduce    # make figures, make test, make pdf, make arxiv-check: every result, in order
 make figures      # make data, uv run python/make_figures.py, then any `# run: after figures` script
 make test         # uv run python/make_figures.py test
 make pdf          # pdflatex, three passes; run `make figures` first

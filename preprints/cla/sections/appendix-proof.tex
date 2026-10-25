@@ -1,0 +1,104 @@
+\section[Proof of the termination proposition]{Proof of Proposition~\ref{prop:termination}}
+\label{sec:proof}
+
+\paragraph{Leaving is permanent.}
+A partition (free set, blocked bounds, active rows $\Sset$) is valid at $\lambda$ when
+its segment respects the bounds and the inactive rows and its multipliers have the right
+signs. Each of these conditions is affine in $\lambda$. An event fires at
+$\lambda^{\star}$ because one of them is zero there with a slope that violates it below
+$\lambda^{\star}$ (the slope floor makes every event a strict crossing), and an affine
+function that crosses zero stays on the wrong side, so a partition left at
+$\lambda^{\star}$ is invalid at every $\lambda < \lambda^{\star}$. Since $\lambda$ never
+increases, a partition can recur only at the same $\lambda^{\star}$, within a tie.
+
+\paragraph{The direction problem at a tie.}
+Fix $\lambda^{\star}$. Because $\Sig \succ 0$ the optimiser
+$w^{\star} = w(\lambda^{\star})$ is unique, and by linear independence so are its
+multipliers. Constraints with slack, or holding with a nonzero multiplier, cannot fire
+at $\lambda^{\star}$, and every partition the walk visits there keeps their status; let
+$E$ stack the gradients of the latter together with $A$. The partitions differ only on
+the set $T$ of tied constraints, those holding with a zero multiplier, written
+$c_t\trans w \le \text{const}$ (with $c_t = \pm e_i$ for a bound). Below $\lambda^{\star}$
+the walk follows a segment $w(\lambda^{\star} - \tau) = w^{\star} + \tau d$, $d = -\beta$,
+on which the multipliers are affine in $\tau$ too, $\nu(\tau) = \nu^{\star} + \tau\nu'$.
+Substitute both into the KKT conditions of \eqref{eq:qp} and keep the terms of order
+$\tau$. Stationarity gives $\Sig d + \mu + E\trans \nu'_E + C_T\trans \nu'_T = 0$. A
+constraint in $E$ keeps a nonzero multiplier for small $\tau$, so it stays active and
+$E d = 0$. A tied constraint has slack $-\tau\, c_t\trans d$ and multiplier
+$\tau\,\nu'_t$, so feasibility, the sign of the multiplier, and complementary slackness
+require $c_t\trans d \le 0$, $\nu'_t \ge 0$, and $(c_t\trans d)\,\nu'_t = 0$. These are
+the KKT conditions of the strictly convex QP
+\[
+\min_d\; \tfrac12\, d\trans \Sig d + \mu\trans d
+\quad\text{subject to}\quad E d = 0,\quad c_t\trans d \le 0 \;\; (t \in T),
+\]
+so $d$ is its unique solution, the classical directional derivative of a parametric
+program without strict complementarity \citep{jittorntrum1984, bonnans2000}.
+
+\paragraph{The complementarity problem.}
+Let $E$ have linearly independent rows, let $Z$ be a basis of its null space, and let
+$C_T$ collect the columns $c_t$, $t \in T$. Every $d$ with $Ed = 0$ is $d = Zy$, and the
+direction problem becomes $\min_y \tfrac12\, y\trans H y + \mu\trans Z y$ subject to
+$C_T\trans Z y \le 0$, with $H = Z\trans \Sig Z \succ 0$ because $\Sig \succ 0$ and $Z$
+has full column rank. Its KKT conditions, with slacks $s = -C_T\trans Z y$ and
+multipliers $\nu \ge 0$, eliminate $y = -H\inv Z\trans(\mu + C_T \nu)$ and leave the
+linear complementarity problem
+\[
+s = q + M\nu, \qquad s \ge 0,\; \nu \ge 0,\; s\trans\nu = 0, \qquad
+M = C_T\trans Z H\inv Z\trans C_T,\quad q = C_T\trans Z H\inv Z\trans \mu .
+\]
+$M$ is positive semidefinite, and positive definite exactly when $Z\trans C_T$ has full
+column rank. Suppose $Z\trans C_T\, x = 0$. Then $C_T x$ lies in the null space of
+$Z\trans$, which is the row space of $E$, so $C_T x = E\trans z$ for some $z$, and
+$[\,E\trans,\ C_T\,]\,(-z, x) = 0$. The hypothesis that the gradients of $E$ and of the
+tied constraints are linearly independent forces $z = 0$ and $x = 0$. Hence $M \succ 0$,
+and in particular $M$ is a P-matrix: every principal minor is positive.
+
+\paragraph{The correspondence with the implementation.}
+Each tied constraint $t$ contributes one complementary pair $(s_t, \nu_t)$, and a
+partition visited at $\lambda^{\star}$ makes exactly one of the two basic: $s_t$ when the
+constraint is released (a free weight, an inactive row), $\nu_t$ when it is enforced (a
+blocked weight, an active row). The $\beta$-system of that partition
+(\S\ref{sec:blockelim}) is the equality-constrained form of the direction problem with
+the enforced constraints held, so its solution is the basic solution of the
+complementarity problem. Table~\ref{tab:pivots} lists the six event types of the code
+(\srcfile{src/cvxcla/_events.py}{\_events.py}). Each fires at $\lambda^{\star}$ exactly
+when the basic variable of its pair is negative: a released constraint whose slack would
+turn negative as $\lambda$ falls, or an enforced one whose multiplier would.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llll}
+\hline
+Event (column) & Status of $t$ & Basic variable & Fires at $\lambda^{\star}$ when \\
+\hline
+free weight reaches its upper bound (0) & released & $s_t$ & $\beta_i < 0$ \\
+free weight reaches its lower bound (1) & released & $s_t$ & $\beta_i > 0$ \\
+blocked weight leaves its upper bound (2) & enforced & $\nu_t$ & $\delta_i < 0$ \\
+blocked weight leaves its lower bound (3) & enforced & $\nu_t$ & $\delta_i > 0$ \\
+inactive row binds (0, row block) & released & $s_t$ & $g_j\trans\beta < 0$ \\
+active row releases (1, row block) & enforced & $\nu_t$ & $\eta^{\beta}_j > 0$ \\
+\hline
+\end{tabular}
+\caption{The six event types of the event scan and the complementary pair each one
+pivots. A coordinate's status admits one event type at a time, so a coordinate index
+identifies the pair.}
+\label{tab:pivots}
+\end{table}
+
+\paragraph{The pivoting rule.}
+When several events fire at $\lambda^{\star}$, \code{select\_next\_event}
+(\srcfile{src/cvxcla/pathtracer.py}{pathtracer.py}) flips the one with the lowest
+coordinate index, assets before inequality rows, and changes the status of that
+coordinate alone. By the correspondence above this is a simple principal pivot on the
+lowest-index pair whose basic variable is negative, in a fixed ordering of the pairs:
+Murty's least-index method \citep{murty1974}, which terminates on every linear
+complementarity problem with a P-matrix, for every $q$ \citep{murty1974, cottle1992}.
+The pivot depends only on the current partition, so a partition repeated at
+$\lambda^{\star}$ would repeat forever; none is, and the walk leaves $\lambda^{\star}$ after
+finitely many steps with a feasible basic solution, along a segment of positive length.
+
+\paragraph{Termination.}
+Each segment of positive length uses a partition never used before, and there are
+finitely many partitions; each tie between two such segments takes finitely many steps.

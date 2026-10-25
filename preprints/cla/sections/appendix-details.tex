@@ -1,0 +1,77 @@
+\section{Implementation details}
+\label{sec:details}
+
+\subsection{The event guards}
+\label{sec:guards}
+
+Slopes are tested against a floor of $\sqrt{\varepsilon_{\text{mach}}}$ in the
+problem's own units, not against the user tolerance, which would let a tiny but genuine
+slope go unnoticed. With $m = \lVert\mu\rVert_\infty$ and
+$\sigma = \lVert\Sig\mathbf{1}\rVert_\infty/n$, $\lambda$ has the scale $\sigma/m$.
+Weight slopes $\beta_i$ and slack slopes $g_j\trans\beta$ carry units of $1/\lambda$
+and are tested against $\sqrt{\varepsilon_{\text{mach}}}\,m/\sigma$; multiplier slopes
+$\delta_i$, $\eta^{\beta}_j$ carry the units of $\mu$ and are tested against
+$\sqrt{\varepsilon_{\text{mach}}}\,m$. The $\lambda$ window is a relative $10^{-10}$
+taken against $\max(\lvert\lambda\rvert, \sigma/m)$, so that it does not vanish as
+$\lambda \to 0$.
+
+\label{sec:invariance}\label{sec:moreexp}%
+The trace does not depend on the units (\target{validate-scaling}). Rescaling the returns
+by $c$ and the covariance by $s$, each from $10^{-6}$ to $10^{6}$, leaves all $29$
+turning points of the $40$-asset problem in place: the weights agree to
+$8\times10^{-15}$, and $\lambda c/s$ to a relative $1.2\times10^{-13}$. Multiplying the
+slope floors by any factor from $10^{-6}$ to $10^{4}$ leaves the traces of the $40$- and
+$494$-asset S\&P 500 problems, the $600$-day window and the $320$-asset factor market bit
+for bit unchanged. Only at $10^{6}$ does the floor start to swallow genuine slopes: the
+$40$-asset trace is still unchanged, the $600$-day window's weights move by
+$7\times10^{-2}$, and the trace of the $494$-asset problem and of the factor market is
+declined. So on these inputs genuine slopes and round-off are about ten orders of
+magnitude apart. A turning point
+lost to the floor would leave the later ones feasible but not optimal, which the KKT
+certificate reports as a stationarity or dual-feasibility residual.
+
+\subsection{The gross-exposure lift}
+\label{sec:liftdetail}
+
+Both legs of an asset are never free together on the path. Write $g_i$ for the $i$-th
+entry of $\Sig w - \lambda\mu + A\trans\nu + G\trans\eta_G$ and $\eta\ge 0$ for the
+multiplier of the cap; the reduced gradients of the two legs are $g_i + \eta$ and
+$-g_i + \eta$. A free long leg has $g_i = -\eta$, so its short leg's reduced gradient
+is $2\eta$; a long leg at its upper bound has $g_i + \eta \le 0$, so its short leg's is
+at least $2\eta$ (and symmetrically). The idle leg can therefore enter only where $\eta$
+vanishes, at the release of the cap, and the event search drops that competing leg
+event so the release fires.
+
+At the first vertex, overlapping legs (the cap tight with a zero multiplier) are removed
+by subtracting $\min(x_i^+, x_i^-)$ from both, which leaves $w$ and every other
+constraint unchanged; a cap at the smallest feasible gross exposure ($c = 1$ under a
+full budget), which fails Slater's condition, is handled by solving
+$\min \mathbf{1}\trans x$ first and pinning every leg with a positive reduced cost.
+
+\subsection{The degenerate first vertex}
+\label{sec:vertexdetail}
+
+The maximum-return vertex can be degenerate: every weight on a bound (any inequality row on a
+long-only problem whose best asset takes the whole budget), or a duplicated tight row.
+Its partition is then read off the linear program's duals, generalising the budget rule
+of \S\ref{sec:first}. At a degenerate vertex these are not unique, and the solution the simplex
+reports can show too few zero reduced costs to free enough assets. For example, with
+three assets, $\mu = (3, 2, 1)$, long-only, the budget and the row $w_2 = 0$, HiGHS
+reports duals that free only the first asset at $w = (1, 0, 0)$, whereas the equally
+optimal multipliers $1$ on both rows free the other two. The code therefore first moves
+the reported duals to a vertex of the optimal dual set, stepping along directions that
+keep the tight dual constraints tight until they determine the multipliers. A basis is
+read off that dual vertex: the assets strictly inside their bounds, then the tight rows
+with zero multiplier, which are released, then the assets on a bound with zero reduced
+cost, in order of decreasing return, which are freed. The active rows then have a square,
+nonsingular free block, the first segment starts at the vertex itself, and the implied
+multipliers are those of the dual vertex, so the partition is dual feasible. The optimal
+dual set has no vertex, and the vertex is refused, when a tight row touches only assets
+fixed at both bounds.
+
+Nearly dependent equality rows, such as $\mathbf{1}\trans w = 1$ and
+$(\mathbf{1} + \epsilon v)\trans w = 1$, which encode $v\trans w = 0$ only at scale
+$\epsilon$, would be enforced by the linear program only to its tolerance divided by
+$\epsilon$. When the row-normalised equality matrix has a reciprocal condition number
+below $10^{-6}$ they are handed to HiGHS in orthonormal rows, $Q\trans w = R^{-\mathsf{T}}
+b$ with $A\trans = QR$.

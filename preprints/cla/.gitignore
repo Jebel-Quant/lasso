@@ -1,0 +1,3 @@
+# The figures are committed here, unlike in the other preprints: make_figures.py is run by
+# hand, since its scaling figures report wall-clock times.
+!figures/

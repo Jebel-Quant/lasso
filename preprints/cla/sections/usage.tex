@@ -1,0 +1,211 @@
+\section{Using the package}
+\label{sec:usage}
+
+The package \citep{cvxcla} is installed with \code{pip install cvxcla}; it is pure
+\proglang{Python} and needs \pkg{NumPy}, \pkg{SciPy} and \pkg{cvx-linalg}
+(Computational details). The workflow goes through a single class, \code{CLA}. The user supplies $\mu$, the
+covariance (a dense array or any backend of \S\ref{sec:operators}), the bounds, and
+the constraints; constructing the object traces the whole frontier. The example traces
+a small long-only, fully-invested problem and reads off the maximum-Sharpe portfolio.
+
+\begin{CodeInput}
+import numpy as np
+from cvxcla import CLA, FactorCovariance
+
+rng = np.random.default_rng(1)
+n, k = 6, 2
+d = rng.uniform(0.1, 0.5, n)            # idiosyncratic variances
+U = rng.standard_normal((n, k))         # factor loadings
+Delta = np.diag(rng.uniform(0.5, 2.0, k))
+Sigma = np.diag(d) + U @ Delta @ U.T    # a dense 2-factor covariance
+mean = rng.standard_normal(n)
+
+cla = CLA(
+    mean=mean, covariance=Sigma,
+    lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
+    a=np.ones((1, n)), b=np.ones(1),    # fully invested: sum(w) = 1
+)
+print("turning points:", len(cla.turning_points))
+sr, w = cla.frontier.max_sharpe
+print("max Sharpe:", round(sr, 4))
+print("weights:", np.round(w, 3))
+\end{CodeInput}
+
+\begin{CodeOutput}
+turning points: 7
+max Sharpe: 2.4037
+weights: [0.    0.    0.704 0.296 0.    0.   ]
+\end{CodeOutput}
+
+Switching to a structured backend changes only the covariance argument; because the
+factor backend represents the \emph{same} $\Sig$, it returns the same frontier to round-off.
+
+\begin{CodeInput}
+factor = FactorCovariance(d=d, u=U, delta=np.diag(Delta))
+cla_factor = CLA(
+    mean=mean, covariance=factor,
+    lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
+    a=np.ones((1, n)), b=np.ones(1),
+)
+w_dense = np.array([t.weights for t in cla.turning_points])
+w_factor = np.array([t.weights for t in cla_factor.turning_points])
+print("identical frontier:", np.allclose(w_dense, w_factor))
+\end{CodeInput}
+
+\begin{CodeOutput}
+identical frontier: True
+\end{CodeOutput}
+
+A fluent builder, \code{CLA.problem}, assembles the same arguments step by step through
+methods such as \code{.budget}, \code{.equality} and \code{.inequality}; an extra \code{.equality} row,
+such as a fixed sector weight, makes the first turning point the linear program of
+\S\ref{sec:first}.
+
+
+\subsection{The interface}
+\label{sec:api}
+
+\code{CLA} takes the problem as keyword arguments, all \pkg{NumPy} arrays of floats, and
+traces the frontier in its constructor. Required are \code{mean} ($\mu$, length $n$),
+\code{covariance} (an $n\times n$ array, which is wrapped as a \code{DenseCovariance},
+or any backend of \S\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
+(length $n$), and \code{a}, \code{b} ($m\times n$ and length $m$; a budget is
+\code{a = np.ones((1, n))}, \code{b = np.ones(1)}). Optional are \code{g}, \code{h}
+($p\times n$ and length $p$) for $Gw \le h$, \code{leverage} for the cap
+$\lVert w\rVert_1 \le c$, and \code{tol} (default $10^{-5}$), the tolerance for deciding
+that a weight sits on a bound and for validating each turning point; the event ordering
+uses its own relative window of at most $10^{-10}$ (\S\ref{sec:events}). The arrays (and a
+dense covariance) are copied into read-only arrays when the object is built, so
+changing the caller's arrays afterwards cannot put the stored turning points out of step
+with the data; a backend is used as given. Non-finite data are refused at this point,
+as are NaN bounds. Redundant equality rows are
+dropped, and \code{cla.a}, \code{cla.b} then hold the reduced system.
+
+The result is \code{cla.turning\_points}, a list of \code{TurningPoint} objects with the
+\code{weights}, the value \code{lamb} of $\lambda$, the boolean mask \code{free} of free
+assets, and the mask \code{active\_ineq} of active rows of $G$. The maximum-return
+vertex appears twice, at $\lambda = \infty$ and again at the first finite turning point,
+where the path leaves it; \code{len(cla)} is the number of turning points.
+\code{cla.frontier} wraps them as a \code{Frontier}
+(\srcfile{src/cvxcla/types.py}{types.py}), which exposes the \code{weights},
+\code{returns}, \code{variance}, \code{volatility} and \code{sharpe\_ratio} of the
+turning points and a \code{plot} method. Because the frontier is piecewise linear in
+weight space, \code{interpolate(num)} returns intermediate portfolios with no
+discretisation error.
+
+\subsection{The frontier and the maximum-Sharpe portfolio}
+\label{sec:frontier}
+
+\code{max\_sharpe} maximises $\mu\trans w/\sqrt{w\trans\Sig w}$, the Sharpe ratio with a
+zero risk-free rate (supply excess returns as $\mu$ otherwise), over the computed
+frontier. On a segment $w(t) = (1-t)\,w_0 + t\,w_1$, $t \in [0,1]$, the return is affine
+and the variance quadratic in $t$,
+\begin{equation}
+S(t) = \frac{a_0 + a_1 t}{\sqrt{c_0 + c_1 t + c_2 t^2}}, \qquad
+\begin{aligned}
+a_0 &= \mu\trans w_0, & c_0 &= w_0\trans\Sig w_0, & c_2 &= \Delta\trans\Sig\Delta,\\
+a_1 &= \mu\trans\Delta, & c_1 &= 2\,w_0\trans\Sig\Delta, & \Delta &= w_1 - w_0,
+\end{aligned}
+\end{equation}
+and the numerator of $S'(t)$ is affine in $t$ (its $t^2$ terms cancel), so $S$ has at
+most one stationary point,
+\begin{equation}\label{eq:tstar}
+t^\star = \frac{a_0 c_1 - 2 a_1 c_0}{a_1 c_1 - 2 a_0 c_2}.
+\end{equation}
+The maximum on the segment is the largest of $S(0)$, $S(1)$ and, when
+$0 < t^\star < 1$, $S(t^\star)$; a stationary point outside the segment is ignored, an
+optimum at a turning point is found as an end point, and when $a_1 c_1 = 2 a_0 c_2$ there
+is no stationary point and only the end points are compared. The code applies this
+rule to every segment of the frontier and returns the best candidate, so the result is
+the exact maximum over the computed frontier, without relying on the ratio being
+unimodal, at the cost of one matrix--vector product with $\Sig$ per segment.
+
+Points of zero variance are skipped (\code{sharpe\_ratio} reports NaN there); with no
+positive variance \code{max\_sharpe} raises a \code{ValueError}, and with no positive
+expected return it warns and returns the least negative ratio. Whether the ratio,
+computed from estimated $\mu$ and $\Sig$, predicts future performance is a statistical
+question outside the package (\S\ref{sec:estimators}).
+
+\subsection{Supported inputs and errors}
+\label{sec:errors}
+
+
+
+
+Table~\ref{tab:errors} sorts the inputs into kinds, each with its own exception and
+remedy, and each row is a test in the package
+(\srcfile{tests/test_errors.py}{tests/test\_errors.py} and
+\srcfile{tests/test_degenerate_vertex.py}{tests/test\_degenerate\_vertex.py}). All are raised by the constructor. The package errors derive from \code{CLAError} and also from the built-in
+exception raised before (\code{ValueError}, or \code{RuntimeError}), so existing
+handlers keep working.
+
+
+
+A sample covariance from fewer observations than assets is a case that used to be
+declined and no longer is. It is singular, and its free block becomes singular partway
+along the frontier. The budget row still holds the free assets on its null space, where
+the block stays positive definite, so the trace goes on there (Appendix~\ref{sec:degeneracy}).
+A ridged Gram backend (\S\ref{sec:gram}) traces a different, regularised frontier:
+
+\noindent\begin{minipage}{\textwidth}
+\begin{CodeInput}
+from cvxcla import GramCovariance
+
+returns = 0.01 * rng.standard_normal((4, n)) + 0.001    # 4 days, 6 assets: rank 3
+long_only = dict(lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
+                 a=np.ones((1, n)), b=np.ones(1))
+cla = CLA(mean=returns.mean(axis=0),
+          covariance=np.cov(returns, rowvar=False), **long_only)
+ridged = CLA(mean=returns.mean(axis=0),
+             covariance=GramCovariance(returns, ridge=1e-4), **long_only)
+print("turning points:", len(cla), "| with a ridge:", len(ridged))
+\end{CodeInput}
+\begin{CodeOutput}
+turning points: 5 | with a ridge: 7
+\end{CodeOutput}
+\end{minipage}
+
+Release~2.3.3 declined the first of these. Every turning point of the trace above
+matches an interior-point solve of the same quadratic program.
+
+\begin{table}[tb]
+\centering
+\small
+\renewcommand{\arraystretch}{1.25}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\begin{tabular}{@{}L{0.62\textwidth}L{0.32\textwidth}@{}}
+\toprule
+Input & Remedy \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Malformed input}: \code{ValueError}, before the walk} \\
+Non-symmetric $\Sig$; non-finite data or NaN bounds; an indefinite factor $\Delta$;
+wrong shapes & correct the data \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Infeasible}: \code{InfeasibleProblemError}, before the walk} \\
+Crossed bounds; an unreachable budget; constraints with no feasible point; dependent
+equality rows that contradict the others & change the constraints \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Harmless degeneracy}: traced, nothing raised} \\
+Redundant equality rows; duplicated, never-binding or locally redundant inequality
+rows; a degenerate maximum-return vertex whose optimal dual set has a vertex, and tied
+maximum returns (\S\ref{sec:first}); a singular covariance whose free blocks the active
+rows keep positive definite (Appendix~\ref{sec:degeneracy}) & -- \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Unsupported degeneracy}: \code{DegenerateProblemError}} \\
+Before the walk: a degenerate vertex whose optimal dual set has no vertex, as when a
+tight row touches only assets fixed at both bounds; infinite bounds that make the
+return unbounded & perturb the bounds or constraints \\
+During the walk: a free block singular even on the null space of the active rows, or
+active rows dependent on the free set & a ridge or factor model; loosen a cap \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Numerical failure}: \code{NumericalError}, during the walk} \\
+Iteration cap; projection fails; a turning point violates a constraint
+& regularise $\Sig$ or relax \code{tol}; report it \\
+\bottomrule
+\end{tabular}
+\caption{Supported and unsupported inputs, grouped by the exception each raises and
+when, with the usual remedy. ``Before the walk'' is input validation and the first
+vertex; ``during the walk'' is a turning point of the trace.}
+\label{tab:errors}
+\end{table}
+
