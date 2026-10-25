@@ -570,6 +570,23 @@ def zero_sum_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return np.linalg.solve(kkt, np.append(x.T @ y, 0.0))[:p]
 
 
+# Each problem's constraint, as Table 2 prints it. The note's macros \trans and \one apply.
+CONSTRAINTS = {
+    "plain": "none",
+    "nonnegative": r"$\beta\ge0$",
+    "wide": r"none, $p>n$",
+    "box": r"$|\beta_j|\le u$",
+    "cholesterol": r"$|\beta_{\mathrm{s1}}+\beta_{\mathrm{s2}}+\beta_{\mathrm{s3}}|\le h$",
+    "pinned": r"$x_1\trans\beta=y_1$",
+    "zero-sum": r"$\one\trans\beta=0$",
+    "zero-sum, signs": r"$\one\trans\beta=0$, $\beta_{2j}\ge0$",
+    "zero-sum, caps": r"$\one\trans\beta=0$, $|\beta_j|\le u$",
+    "monotone": r"$\beta_j\le\beta_{j+1}$",
+    "sum to one": r"$\one\trans\beta=1$",
+    "sCD14": r"$\one\trans\beta=0$",
+}
+
+
 def problems() -> dict[str, Lasso]:
     """Every problem the note reports, by the name its table uses."""
     xd, yd, _ = diabetes()
@@ -1224,7 +1241,7 @@ def table_tex(rows: list[Row]) -> str:
     accepts a ``\\bottomrule`` of the note's own.
     """
     return "".join(
-        f"{r.name:<15} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
+        f"{r.name:<15} & {CONSTRAINTS[r.name]} & {r.n:>3} & {r.p:>3} & {r.knots:>2} & {r.reference:<4} & "
         f"{sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
         for r in rows
     ) + "\\bottomrule\n"
@@ -1382,7 +1399,8 @@ def test_table_tex(rows: list[Row]) -> None:
     assert len(tex) == len(rows)
     assert rule == r"\bottomrule"
     assert sci(8.6e-14) == r"$8.6\times10^{-14}$"
-    assert all(line.endswith(r"\\") and line.count("&") == 6 for line in tex)
+    assert all(line.endswith(r"\\") and line.count("&") == 7 for line in tex)
+    assert set(CONSTRAINTS) >= {r.name for r in rows}  # every problem has its constraint
 
 
 def test_example() -> None:
