@@ -424,11 +424,9 @@ there, and that event wins a tie, which arises when $p>n$ because every correlat
 vanishes at $\lambda=0$ together with $\eta$. The path then ends at the limit
 $\lambda\to0^+$, where the fit first interpolates \cite[Proposition~3]{perspective}.
 
-The two forms give the same knots where $t=\|\beta(\lambda)\|_1$ is strictly decreasing
-in $\lambda$ \cite[Theorem~1 and Corollary~1]{perspective}, which fails only if the support's sign
-vector lies in the span of the active constraint normals \cite[Proposition~1]{perspective}. Under $\one\trans\beta=0$ that
-would need every nonzero coefficient to have the same sign, impossible for a nonzero
-$\beta$ that sums to zero.
+The two forms give the same knots unless the support's sign vector lies in the span of
+the active constraint normals \cite[Corollary~1 and Proposition~1]{perspective}, which a
+nonzero $\beta$ summing to zero, with coefficients of both signs, never allows.
 
 \medskip\noindent
 \fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
@@ -456,11 +454,12 @@ plain LASSO by a homotopy instead.
 \section{Numerical evidence}
 \label{sec:evidence}
 
-The checks test two predictions of \cite{perspective}: that the penalty form returns
-the knots of $\mathrm{L}_\lambda$ (their Lemma~1), and that the budget form returns them
-too (their Theorem~1 and Corollary~1). The author of \texttt{cvxcla} wrote the checks,
-so the references are chosen to know nothing of it: LARS, an interior-point solver, the
-optimality conditions, and three path algorithms written by others.
+Each check tests a prediction of \cite{perspective}. Their Lemma~1 makes
+$\mathrm{L}_\lambda$ and the CLA one parametric quadratic program, so the penalty form
+should return the knots of $\mathrm{L}_\lambda$: LARS tests this knot by knot where it
+applies, and the interior-point solver and the optimality conditions everywhere.
+Their Theorem~1 and Corollary~1 give the bound form the same knots, so the budget form
+should return them too: comlasso and \texttt{c-lasso} test this on the zero sums.
 
 \subsection{Test problems and checks}
 \label{sec:checks}
@@ -551,11 +550,11 @@ coefficient. \emph{KKT}: largest violation of the optimality conditions of
 
 The CLA returns LARS's knots to $10^{-13}$, including on the wide design, where
 \evWideKnots{} knots carry the path to the interpolating fit. The KKT residuals are at
-the level of rounding throughout, including on the problems LARS cannot take. In positive mode the last point
-\texttt{lars\_path} returns is labelled $\alpha=0$ but is the path at
-$\lambda=\evLarsEnd$, where it found nothing left to enter; its KKT violation at
-$\lambda=0$ is \evLarsKKT{}. The CLA carries on to the nonnegative least-squares fit, so the
-table compares that last knot with \texttt{scipy.optimize.nnls} \cite{lawson1974}
+the level of rounding throughout, including on the problems LARS cannot take. In
+positive mode \texttt{lars\_path} labels its last point $\alpha=0$, but it is the path at
+$\lambda=\evLarsEnd$ (KKT violation \evLarsKKT{} at $\lambda=0$), so the table compares
+the CLA's last knot, the nonnegative least-squares fit, with
+\texttt{scipy.optimize.nnls} \cite{lawson1974}
 instead.
 
 \subsection{Scale and cost}
@@ -609,9 +608,8 @@ the path's by more than \stIpmBetter{}, relative, within its tolerance.
 \texttt{cvxcla} declines one of the problems, for every seed: \emph{Duplicate} at
 \stEpsLo{} without a cap, where both twins become free (Section~\ref{sec:limits});
 under the cap they never are, and the path is exact. \emph{Wide,
-zero-sum}, where $X\trans X$ is singular, is traced, and with $\operatorname{cond}(X)$
-near $10^{16}$ it has the largest residual in the table, \stKKT{}
-(Section~\ref{sec:limits}).
+zero-sum}, with $\operatorname{cond}(X)$ near $10^{16}$, is traced, with the largest
+residual in the table (Section~\ref{sec:limits}).
 
 \begin{table}[!htbp]
 \centering
@@ -775,8 +773,14 @@ The checks here support the identity of Schmelzer and Hastie \cite{perspective}
 wherever the encodings reach: on every problem, a CLA written for portfolios returns the exact knots
 or stops with an error where its arithmetic cannot be trusted. With $p>n$ the paths stay exact, with no
 ridge, where the other path algorithms for general constraints trace a ridged problem
-that ends elsewhere. The checks also made the CLA better at portfolios: it now takes
-tied forecasts and low-rank covariances.
+that ends elsewhere.
+
+\paragraph{When to use it} \texttt{cvxcla.Lasso} is for LASSO paths under constraints
+\texttt{lars\_path} does not take: caps, signs on some coefficients, equality and
+inequality rows and zero sums, also with $p>n$. It returns the knots at less cost than
+a grid of interior-point solves (Section~\ref{sec:scale}). For the plain or positive
+LASSO \texttt{lars\_path} is enough, and two nearly identical columns should be merged
+first.
 
 \section*{Code and data availability}
 
@@ -801,8 +805,10 @@ $10^{-10}$, and costs are given only as ratios.
 \paragraph{Competing interests}
 
 The author works at Jebel Quant Research, which hosts the code, and maintains
-\texttt{cvxcla}; Section~\ref{sec:evidence} checks every path without it. There are no
-other competing interests.
+\texttt{cvxcla}, which computes every path. The checks are the author's; the references
+they compare against are not. LARS, Clarabel, comlasso, \texttt{ConstrainedLasso.jl} and
+\texttt{c-lasso} were written by others, and the optimality conditions need no solver.
+There are no other competing interests.
 
 \paragraph{Acknowledgements}
 
