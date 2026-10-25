@@ -5,8 +5,10 @@ path, each with its LaTeX source and the code and data behind it.
 
 ## Preprints
 
-- [`preprints/lasso/`](preprints/lasso) — *The Efficient Frontier from a LASSO Solver*
-  ([arXiv:2609.37108](https://arxiv.org/abs/2609.37108)): one script that reproduces
+- [`preprints/lasso/`](preprints/lasso) — *The Efficient Frontier from a LASSO Solver*,
+  published in the *Journal of Reproducible Statistics* 1, 7 (2026)
+  ([doi:10.68365/jrepstat.2026.7](https://doi.org/10.68365/jrepstat.2026.7);
+  [arXiv:2609.37108](https://arxiv.org/abs/2609.37108)): one script that reproduces
   every figure and number, a script that fetches the Fama-French returns it checks
   against, and an R check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
 - [`preprints/constrained_lasso/`](preprints/constrained_lasso) — *The Constrained LASSO
