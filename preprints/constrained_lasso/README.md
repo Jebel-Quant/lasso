@@ -1,98 +1,102 @@
-# The constrained LASSO is a portfolio: source and code
+# The constrained LASSO is a portfolio: source, code and data
 
-The LaTeX source of the note *The Constrained LASSO is a Portfolio*
-(Schmelzer, 2026), and the code behind its figures and numbers. It runs the CLA–LASSO
-identity of Schmelzer and Hastie ([arXiv:2609.25704](https://arxiv.org/abs/2609.25704))
-the other way from the LASSO-solver note in [`../lasso/`](../lasso). That note computes
-efficient frontiers with a LASSO solver. This one computes constrained-LASSO paths with a
-Critical Line Algorithm that knows nothing about regression.
-
-The note opens with the diabetes LASSO, capped: every coefficient must satisfy
-`|β_j| ≤ u`. Without the cap, least squares plays the cholesterol measures off against
-each other and gives HDL a positive coefficient. scikit-learn's `lars_path` takes no
-constraint but `positive`, so it cannot cap. The CLA computes the exact path under
-caps, signs, equality constraints, among them the zero sum of compositional data, and
-inequality rows `Cβ ≤ h`, including rows that exclude β = 0 (`h_r < 0`). That includes the cases where an encoding starts
-on a degenerate vertex (a monotone fit, caps or rows under a zero sum, weights that sum
-to one, a zero sum with p > n), which cvxcla relaxes, extrapolates and certifies.
-
-Every path comes from one call, `cvxcla.Lasso` ([`cvxcla`](https://github.com/cvxgrp/cvxcla)
-2.7.0, pinned). This folder holds no CLA and no encoding of its own; it states the
-problems, calls `cvxcla`, and checks the paths without it. `cvxcla.Lasso` runs the CLA in
-Markowitz's general form, `min ½ x'Σx − (q + γμ)'x` subject to `Ax = b`, `Gx ≤ h`,
-`l ≤ x ≤ u`, traced from `γ = ∞` down to 0, through one of the two encodings the note
-describes:
-
-- **Penalty form.** Split β into positive and negative parts, `Σ = S'GS`, `μ = −1`,
-  `q = S'X'y`. The parameter `γ` is λ itself. Coefficient bounds become position limits,
-  equality rows `Aβ = b` become budget rows (nondegenerate start needed, so `b ≠ 0`), and
-  inequality rows `Cβ ≤ h` become rows `CSz ≤ h`. With `b ≠ 0` or some `h_r < 0` the path
-  starts at the feasible point of smallest ℓ1 norm.
-- **Budget form.** Rescale the ℓ1 ball to the simplex, `β = t·Sw`, and add a riskless cash
-  asset for the unused budget. This is Markowitz's long-only, fully invested problem with
-  `γ = 1/t`. Homogeneous constraints (`Aβ = 0`, sign constraints) carry over, and the path
-  ends where cash enters.
-
-On the diabetes data, a p > n design and compositional data with `Σβ = 0`, every LARS knot
-comes back to 1e-13. The constrained cases match an interior-point solver to its own
-accuracy, and every knot, and every segment from end to end, satisfies the LASSO's KKT conditions to 1e-15.
-
-The note's own CLA was removed in favour of `cvxcla`'s. That switch exposed a bug in it:
-under tight caps it returned paths that broke the optimality conditions without saying
-so. The checks above are what caught it, and they are what the paths rest on now.
-
-The same comparison runs on real data: counts of 60 genera in 151 stool samples from an
-HIV study, with the inflammation marker sCD14 as the response (Noguera-Julian et al.,
-2016, as shipped with the R package coda4microbiome). On each of the first ten segments
-of the zero-sum path, at most one of the 60 possible reference genera gives the zero-sum
-LASSO's selection.
+The LaTeX source of the note *The Constrained LASSO is a Portfolio* (Schmelzer, 2026),
+and everything needed to reproduce its figures and numbers. The note computes
+constrained-LASSO paths with a stock Critical Line Algorithm, `cvxcla.Lasso` from
+[`cvxcla`](https://github.com/cvxgrp/cvxcla) 2.7.0, using the identity between the CLA
+and the LASSO path proved by Schmelzer and Hastie
+([arXiv:2609.25704](https://arxiv.org/abs/2609.25704)). It runs that identity the other
+way from the LASSO-solver note in [`../lasso/`](../lasso): there a LASSO solver computes
+efficient frontiers, here a portfolio solver computes LASSO paths, under caps, signs,
+equality and inequality rows and zero sums, also with more predictors than observations.
+This folder holds no CLA of its own: it states the problems, calls `cvxcla`, and checks
+every path without it.
 
 ## Contents
 
 ```
 constrained_lasso.tex   the note
-Makefile                builds constrained_lasso.pdf (make figures first)
+Makefile                builds constrained_lasso.pdf from constrained_lasso.tex (make figures first)
 python/
-  make_figures.py       both forms (on cvxcla's CLA), three figures, Tables 2 and 3, both examples, and the checks as pytest tests
-  make_figures.py.lock  the locked environment: Python 3.12 and every package, by version and hash
-  fetch_scd14.py        downloads the sCD14 data from CRAN into data/scd14.csv (git ignores data/)
-  classo_check.py       runs c-lasso 1.0.11 (NumPy 1.26, its own lock) on the saved zero-sum paths
-  classo_check.py.lock  its locked environment
-  fetch_scd14.py.lock   its locked environment
-R/
-  comlasso_check.R      runs comlasso 0.2 (Jeon et al., fetched at a pinned commit, SHA-256 checked) on the saved zero-sum paths
+  make_figures.py       every figure, table and number in the note, and the checks as pytest tests
+  fetch_scd14.py        downloads the sCD14 data of Section 5 from CRAN (not redistributed)
+  classo_check.py       runs c-lasso 1.0.11 on the exact zero-sum paths (Section 5.6)
+  *.py.lock             the locked environment of each script: Python 3.12 and every package
 julia/
   classopath.jl         the path algorithm of Gaines et al., ported from ConstrainedLasso.jl to Julia 1
-  gaines_check.jl       runs it on every problem of Table 2 against the exact paths
+  gaines_check.jl       runs it on every problem of Table 2 against the exact paths (Section 5.6)
   Project.toml          its environment, pinned with Manifest.toml (Julia 1.12)
   LICENSE.classopath    ConstrainedLasso.jl's MIT licence
+R/comlasso_check.R      runs comlasso 0.2 on the exact zero-sum paths (Section 5.6, in CI too)
 ```
 
-`python/make_figures.py` writes `figures/example.pdf` (the diabetes path without and with the cap, Fig. 1), `figures/path.pdf`
-(the diabetes path against the LARS knots, Fig. 2), and from the real data
-`figures/scd14.pdf` (Fig. 3). It also writes the rows of
-Table 2 as `figures/evidence.tex`, the zero-sum problems at scale (up to 500 parts) as
-Table 3 in `figures/scale.tex`, and the numbers the text quotes as `figures/example.tex`
-and `figures/scd14.tex`, which the note inputs, so the text and the table always show
-what the code computed.
+`python/make_figures.py` writes the figures to `figures/` (`example.pdf`, `path.pdf`,
+`portfolio.pdf`, `scd14.pdf`), the rows of Tables 2 to 5 (`evidence.tex`, `scale.tex`,
+`stress.tex`, `wide.tex`), and every number the text quotes, as `figures/*.tex` files
+that the note inputs. The three checks against other path algorithms write theirs to
+`figures/classo.tex`, `figures/gaines.tex` and `figures/comlasso.tex`. The text and the
+tables therefore always show what the code computed.
 
 ## Running it
 
-`python/make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/) script
-with pinned dependencies, seeded and offline once the data are there (the diabetes data
-ship with scikit-learn). The sCD14 data are not ours and are not committed:
-`python/fetch_scd14.py` downloads coda4microbiome 0.2.4 from CRAN, checks its SHA-256 and
-writes `data/scd14.csv`. It carries the line `# fetch: on build`, so `make figures` runs
-it first, here and in CI; it does nothing when the file is already there. Without the
-file, `make_figures.py` skips the real data and its test, but the note needs them.
-`python/make_figures.py.lock` fixes Python 3.12 and every transitive dependency to an exact
-version and hash; `uv run` uses it automatically. After changing a pin, refresh it with
-`uv lock --script python/make_figures.py`.
-Run it from this directory:
+`python/make_figures.py` is a self-contained [PEP 723](https://peps.python.org/pep-0723/)
+script with pinned dependencies, so [uv](https://docs.astral.sh/uv/) needs nothing else.
+Each script in `python/` has a lockfile next to it that fixes Python 3.12 and every
+transitive dependency to an exact version and hash; `uv run` uses it automatically, and
+`uv run --locked` fails if it is out of date. After changing a pin, refresh it with
+`uv lock --script python/make_figures.py`. Run it from this directory:
 
 ```sh
-make figures    # fetch the data if needed, run make_figures.py, classo_check.py, gaines_check.jl
-make test       # the same numbers as pytest checks (uv run python/make_figures.py test)
-uv run python/make_figures.py timings   # the cost ratios of the note, and the machine
-make pdf        # build constrained_lasso.pdf from constrained_lasso.tex and figures/
+make figures                            # fetch the data, then make_figures.py and the three checks
+make test                               # the numbers as pytest checks, with tolerances
+make pdf                                # build constrained_lasso.pdf from the .tex and figures/
+uv run python/make_figures.py           # the figures and numbers alone, without the three checks
+uv run python/make_figures.py timings   # the cost ratios the note quotes, and the machine
+uv run python/make_figures.py export    # write the exact zero-sum paths for the checks
 ```
+
+`make figures` runs, in order, `python/fetch_scd14.py`, `python/make_figures.py`, then
+the three scripts marked `# run: after figures`: `python/classo_check.py` in its own
+locked environment (c-lasso needs NumPy 1.26), `julia/gaines_check.jl` in the Julia
+environment that `julia/Manifest.toml` pins, and `R/comlasso_check.R` with Rscript (it
+needs the CRAN package Rglpk). Each reads the paths that `make_figures.py` saved. The
+tests exit nonzero if any number misses its tolerance, and everything except the
+download is seeded and runs offline.
+
+The note gives costs as ratios (a grid of interior-point solves against one path),
+because the seconds depend on the machine and the ratios do not; `timings` measures
+them and is the only part whose results the script does not write into the text.
+Residuals near rounding differ in their last digits on another CPU or BLAS build, so the
+tests check them against tolerances between 1e-12 and 1e-10.
+
+The workflow [`comlasso-check.yml`](../../.github/workflows/comlasso-check.yml) runs the
+comlasso check on every pull request that touches this preprint, with R 4.6.1 and Rglpk
+from a dated CRAN snapshot, on zero-sum paths freshly exported by `make_figures.py
+export`. comlasso itself is fetched from its authors' repository at a pinned commit and
+checked by SHA-256.
+
+## Data
+
+Section 5 runs on the diabetes data, simulated problems and one real data set.
+
+**Diabetes.** The data LARS was introduced with ship with scikit-learn, so they need no
+download.
+
+**sCD14 (downloaded).** Counts of 60 bacterial genera in 151 stool samples from a study
+of the gut microbiome in HIV infection (Noguera-Julian et al., 2016), with the
+inflammation marker sCD14 as the response, as distributed with the R package
+[coda4microbiome](https://cran.r-project.org/package=coda4microbiome) 0.2.4 (MIT
+licence). They are not ours and are not committed. `uv run python/fetch_scd14.py`
+downloads the package's source tarball from CRAN, checks its SHA-256, and writes
+`data/scd14.csv`, which git ignores. The script refuses a tarball with another digest
+and does nothing when the file is already there. It carries the line
+`# fetch: on build`, so `make figures` runs it first, here and in CI. Without the file,
+`make_figures.py` skips the real data and its test, but the note needs them. SHA-256 of
+`data/scd14.csv`:
+
+```
+3c6dcd6c18e10ea6f09bdd34329df3a8ce0a11dccd8026bf6c9a71f3c086d0da
+```
+
+**Simulated problems.** Every other problem of Tables 2 to 5 is simulated inside
+`python/make_figures.py` from fixed seeds, so it needs no data.
