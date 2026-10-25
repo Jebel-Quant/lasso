@@ -106,6 +106,13 @@ jobs:
       - name: Rebuild TeX's generated files
         run: sudo mktexlsr && sudo updmap-sys && sudo fmtutil-sys --byfmt pdflatex
 
+      # A restore from the cache brings pdflatex back but can leave bibtex out: a PR's first
+      # run, which installs afresh, has it, and its later runs, which restore, do not. A
+      # preprint with a BibTeX bibliography (refs/*.bib) needs it, so reinstall it then.
+      - name: Make sure BibTeX is there
+        if: hashFiles(format('{0}/refs/*.bib', matrix.dir)) != ''
+        run: command -v bibtex || sudo apt-get install -y -q --reinstall texlive-binaries
+
       # The dependencies are pinned inline in each python/*.py script (PEP 723) and locked
       # in the .py.lock next to it, so key uv's cache on both.
       - uses: astral-sh/setup-uv@v7.6.0
