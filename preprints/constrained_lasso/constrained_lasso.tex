@@ -164,9 +164,10 @@ a tie for the largest expected return and a covariance of low rank. Both were fi
 $\ell_1$ penalty on Markowitz portfolios to make them sparse, and a companion note
 \cite{lassonote} computes efficient frontiers with a LASSO solver. Both use regression
 to build portfolios. This note goes the other way. Section~\ref{sec:cla} recalls the
-CLA, Sections~\ref{sec:penalty} and~\ref{sec:budget} give the encodings,
-Section~\ref{sec:evidence} checks the paths and Section~\ref{sec:limits} says where
-they stop.
+CLA, Section~\ref{sec:encodings} gives the two encodings, Section~\ref{sec:starts} says
+where the path starts and ends and collects them in Algorithm~1,
+Section~\ref{sec:evidence} checks the paths, and Section~\ref{sec:limits} gives the
+limits.
 
 \begin{table}[t]
 \centering
@@ -210,7 +211,7 @@ bound, not a row, so that singularity does not arise. CLASSO adds a ridge when $
 and its code had not been released when we wrote, so we do not run it. The CLA is an
 active-set method of the same kind, written for portfolios and used here as released.
 With $p>n$ the other path algorithms for general constraints add a ridge, which
-decides where their path ends; the CLA needs none (Section~\ref{sec:limits}). Microbiome
+decides where their path ends; the CLA needs none (Section~\ref{sec:starts}). Microbiome
 studies often have more taxa than samples, so this is the case a user of the zero-sum
 LASSO meets first.
 
@@ -293,7 +294,10 @@ inside their bounds as there are equality rows and rows tight at it. Then the bo
 matrix in \eqref{eq:border} is nonsingular and the walk can begin. This is the
 nondegenerate case; \texttt{cvxcla} declines a degenerate start.
 
-\section{The penalty form}
+\section{Two encodings}
+\label{sec:encodings}
+
+\subsection{The penalty form}
 \label{sec:penalty}
 
 The first encoding reads the penalty $\lambda\|\beta\|_1$ as a cost: every unit of
@@ -342,18 +346,6 @@ definite on the null space of the active rows, the standing assumption of
 rounding can move to $\gamma\approx10^{-16}$; \texttt{cvxcla} treats an event whose
 parameter is round-off as one at $\gamma=0$.
 
-\paragraph{The start} Without equality rows the starting vertex is $z=0$: all
-positions are closed, because each costs more than it can earn. The first event is the
-first entry, at $\gamma=\max_j|c_j|$ over the allowed signs, which is LARS's
-$\lambda_{\max}$. With equality rows, or a row $C\beta\le h$ with $h_r<0$ that leaves
-$z=0$ infeasible, the start is the linear program $\min\one\trans z$ over $ASz=b$,
-$CSz\le h$, $0\le z\le\bar u$, the point of smallest $\ell_1$ norm on the constraint set
-(Section~\ref{sec:limits}). For generic $A$ and $b\ne0$ it is a unique vertex with $m$
-nonzeros. The path holds still there, $\delta=0$, until a second coefficient enters.
-In general, every constrained LASSO path is constant from some $\lambda_0$ on, at a
-least-squares fit over the feasible points of smallest $\ell_1$ norm, and $\lambda_0$
-takes the place of $\lambda_{\max}$ \cite[Proposition~3]{perspective}.
-
 Figure~\ref{fig:path}(a) shows the penalty form on the diabetes data \cite{efron2004},
 where there are no constraints and LARS can check every knot.
 
@@ -371,10 +363,10 @@ of the LASSO path; to its right the least-squares fit is diluted by cash.}
 \label{fig:portfolio}
 \end{figure}
 
-\section{The budget form}
+\subsection{The budget form}
 \label{sec:budget}
 
-With $A\beta=0$ the penalty form starts degenerate (Section~\ref{sec:limits}). The
+With $A\beta=0$ the penalty form starts degenerate (Section~\ref{sec:starts}). The
 second encoding starts instead from the bound $\|\beta\|_1\le t$, a cap $t$ on the
 leverage, whose path is that
 of $\mathrm{L}_\lambda$ indexed by $t=\|\beta(\lambda)\|_1$ \cite[Theorem~1]{perspective},
@@ -410,26 +402,81 @@ condition with penalty $t\eta$ and constraint multipliers $t\nu$. The cash row r
 $\eta\ge0$ while cash is held at zero.
 \end{proof}
 
-The two ends of the CLA path have plain meanings. At $\gamma=\infty$, $t=0$, the start
-is the linear program $\max c\trans Sw$ over the simplex: put the whole budget on the
-best asset. Without equality rows that is the predictor most correlated with the
-response. It enters with the sign of its correlation and with
-$\lambda=\lim\eta/\gamma=\max_j|c_j|$, just as in LARS. Under $\one\trans\beta=0$ it is
-one long and one short position of weight $\tfrac12$ each, the most and the least
-correlated predictors, entering together. That is why two coefficients leave zero at
-once in Figure~\ref{fig:real}. Both starts are generically unique and
-nondegenerate.
-
-At the other end, cash leaves its bound when its gradient $\eta$ reaches zero: then
-$\lambda=0$ and the LASSO path is over (Figure~\ref{fig:portfolio}(b)). The run stops
-there. That event wins a tie, which arises when $p>n$ because every correlation
-vanishes at $\lambda=0$ together with $\eta$. The path then ends at the limit
-$\lambda\to0^+$, where the fit first interpolates \cite[Proposition~3]{perspective}.
-
 The two forms give the same knots unless the support's sign vector lies in the span of
 the active constraint normals \cite[Corollary~1 and Proposition~1]{perspective}. Under a
 zero sum that never happens: a nonzero $\beta$ that sums to zero has coefficients of
 both signs.
+
+\section{Where the path starts and ends}
+\label{sec:starts}
+
+The two encodings differ most at the ends of the path. A nondegenerate start lets the
+walk begin at once; a degenerate one needs a relaxation.
+
+\paragraph{Nondegenerate starts} In the penalty form without equality rows the starting
+vertex is $z=0$: all positions are closed, because each costs more than it can earn.
+The first event is the first entry, at $\gamma=\max_j|c_j|$ over the allowed signs,
+which is LARS's $\lambda_{\max}$. Rows $C\beta\le h$ with $h>0$ are slack at $z=0$, so
+they leave the start unchanged, and a row joins the active set when the path reaches
+it, like a bound. With equality rows, or a row with $h_r<0$ that leaves $z=0$
+infeasible, the start is the linear program $\min\one\trans z$ over $ASz=b$,
+$CSz\le h$, $0\le z\le\bar u$: the point of smallest $\ell_1$ norm on the constraint
+set. For generic $A$ and $b\ne0$ it is a unique vertex with $m$ nonzeros, and the path
+holds still there, $\delta=0$, until a second coefficient enters. In general, every
+constrained LASSO path is constant from some $\lambda_0$ on, at a least-squares fit
+over the feasible points of smallest $\ell_1$ norm, and $\lambda_0$ takes the place of
+$\lambda_{\max}$ \cite[Proposition~3]{perspective}. That fit can take a quadratic
+program to find. Under the fully invested constraint $\one\trans\beta=1$ of sparse
+portfolio regression \cite{brodie2009} every long-only $\beta$ in the simplex has
+$\|\beta\|_1=1$, so the starting linear program is not unique; \texttt{cvxcla} starts
+on the tied face where its quadratic term is smallest, which is that fit.
+
+In the budget form the start, at $\gamma=\infty$ and $t=0$, is the linear program
+$\max c\trans Sw$ over the simplex: put the whole budget on the best asset. Without
+equality rows that is the predictor most correlated with the response. It enters with
+the sign of its correlation and with $\lambda=\lim\eta/\gamma=\max_j|c_j|$, just as in
+LARS. Under $\one\trans\beta=0$ it is one long and one short position of weight
+$\tfrac12$ each, the most and the least correlated predictors, entering together. That
+is why two coefficients leave zero at once in Figure~\ref{fig:real}. Both starts are
+generically unique and nondegenerate.
+
+\paragraph{Degenerate starts} With $b=0$ the penalty form's starting vertex is $z=0$,
+with no free coordinates for $m>0$ rows. This is a degenerate vertex: the multipliers at
+the start are not determined by the active set, and \eqref{eq:border} is singular. For
+homogeneous equality rows with signs the budget form is the remedy, because rescaling to
+the simplex moves the start off the origin. It cannot take rows or caps, which move with
+the parameter once rescaled (Proposition~\ref{prop:budget}). Caps or inequality rows
+under a zero sum therefore leave only the penalty form, which starts degenerate there. So do
+homogeneous rows ($h=0$), such as the ordering constraints of a monotone fit: all are
+tight at $\beta=0$.
+
+\texttt{cvxcla} resolves both by relaxation, an implementation device rather than part
+of the method. It traces the problem twice, with the homogeneous rows relaxed to
+$h_r=\varepsilon$ and $2\varepsilon$ and a zero sum to $A\beta=\varepsilon Ad$ and
+$2\varepsilon Ad$ for a generic feasible point $d$. Both runs start nondegenerate. The relaxation enters only the right-hand side of
+\eqref{eq:border}, so where the two runs pass through the same active sets their knots
+are affine in $\varepsilon$, and
+$2(\lambda_k,\beta_k)(\varepsilon)-(\lambda_k,\beta_k)(2\varepsilon)$ is the knot at
+$\varepsilon=0$. That condition cannot be checked in advance. \texttt{cvxcla} therefore
+returns the extrapolated path only if a linear program finds multipliers that satisfy
+the optimality conditions of \eqref{eq:lasso} at every knot and segment midpoint, to
+$10^{-9}$ relative to $\|c\|_\infty$. Otherwise it retries with smaller $\varepsilon$
+and finally declines. The paths it returns are checked like every other path in
+Section~\ref{sec:evidence}.
+
+\paragraph{The end of the path} As $\lambda\to0^+$ the path ends at the least-squares
+fit of smallest $\ell_1$ norm under the constraints \cite[Proposition~3]{perspective}.
+In the budget form this is where cash leaves its bound, its gradient $\eta$ reaching
+zero (Figure~\ref{fig:portfolio}(b)), and the run stops there. With $p>n$ the end is an
+interpolating fit, and there that event wins a tie, since every correlation vanishes
+together with $\eta$. $X\trans X$ is then singular, but the bordered system needs a
+positive definite Hessian only on the null space of the active rows, the standing
+assumption of \cite{perspective}, so the free set can outgrow the rank of $X$. The
+other path algorithms for general constraints add a ridge: $10^{-4}$ in Gaines et al.\
+when $n<p$, $10^{-3}$ in \texttt{c-lasso}, and $10^{-4}\max_j G_{jj}$ in CLASSO. At
+that ridge the authors of CLASSO report objectives up to $4\times10^{-2}$, relative,
+above the unregularised ones \cite[Table~3]{hobson2026}. Each then traces a nearby
+problem whose path ends elsewhere.
 
 \medskip\noindent
 \fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
@@ -444,12 +491,15 @@ $\beta=Sw/\gamma$ at $\lambda=\eta/\gamma$.
 \item Otherwise use the penalty form of Proposition~\ref{prop:penalty} and run the CLA
 from $\gamma=\infty$ to $0$. A turning point at $\gamma$ is the knot $\beta=Sz$ at
 $\lambda=\gamma$. With $b\ne0$, or a row with $h_r<0$, the start is the feasible point
-of smallest $\ell_1$ norm (Section~\ref{sec:limits}).
+of smallest $\ell_1$ norm.
+\item If the start is degenerate, trace the penalty form twice, with the homogeneous rows
+relaxed by $\varepsilon$ and $2\varepsilon$, extrapolate the knots to $\varepsilon=0$,
+and return the path only if it passes the certificate.
 \item Between two knots $\beta$ is affine in $\lambda$, so any other point on the path is
 an interpolation.
 \end{enumerate}
 \texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.7.0)
-carries out steps~1--4 and returns the knots. With no constraint at all it traces the
+carries out steps~1--5 and returns the knots. With no constraint at all it traces the
 plain LASSO by a homotopy instead.
 \end{minipage}}
 \medskip
@@ -484,7 +534,10 @@ of \emph{Zero-sum, caps} are at half the largest zero-sum least-squares coeffici
 \emph{Monotone} is a Gaussian design with $n=100$, $p=\moP$ and an ordered truth, under
 the rows $\beta_j-\beta_{j+1}\le0$. \emph{Sum to one}
 predicts one unit's outcomes over 40 periods from those of 20 donors, as a synthetic
-control does, with weights that may be negative.
+control does, with weights that may be negative. \emph{Floor}, not in the table, is the diabetes LASSO with
+$\beta_{\texttt{bmi}}$ at least half its least-squares value, a row that leaves $\beta=0$ infeasible. Its path has \flKnots{} knots. It
+lies within \flGap{} of an interior-point solve at every midpoint and meets the
+optimality conditions to \flKKT{}.
 \emph{sCD14} is the same model on real data from a study of the gut microbiome in HIV
 infection \cite{noguerajulian2016}, as distributed with the R package
 \texttt{coda4microbiome} \cite{calle2023}. The predictors come from the counts of
@@ -612,7 +665,7 @@ tolerance.
 \stEpsLo{} without a cap, where both twins become free (Section~\ref{sec:limits});
 under the cap they never are, and the path is exact. \emph{Wide,
 zero-sum}, with $\operatorname{cond}(X)$ near $10^{16}$, is traced, with the largest
-residual in the table (Section~\ref{sec:limits}).
+residual in the table (Section~\ref{sec:starts}).
 
 \begin{table}[!htbp]
 \centering
@@ -695,70 +748,10 @@ to \clWideGapHi{} times the largest coefficient from the CLA over the \stSeeds{}
 and \clWideGapUnridged{} with the ridge at $10^{-12}$.
 
 
-\section{Where the two forms stop}
+\section{Limits and when to use it}
 \label{sec:limits}
 
-The two forms stop in two places: at a degenerate start, and at a free block that is
-singular to working precision.
-
-\paragraph{Degenerate starts} With $b=0$ the penalty form's starting vertex is $z=0$,
-with no free coordinates for $m>0$ rows. This is a degenerate vertex: the multipliers at
-the start are not determined by the active set, and \eqref{eq:border} is singular. For
-homogeneous equality rows with signs the budget form is the remedy, because rescaling to
-the simplex moves the start off the origin. It cannot take rows or caps, which move with
-the parameter once rescaled (Proposition~\ref{prop:budget}). Caps or inequality rows
-under a zero sum therefore leave only the penalty form, which starts degenerate there. So do
-homogeneous rows ($h=0$), such as the ordering constraints of a monotone fit: all are
-tight at $\beta=0$.
-
-\texttt{cvxcla} resolves both by relaxation, an implementation device rather than part
-of the method. It traces the problem twice, with the homogeneous rows relaxed to
-$h_r=\varepsilon$ and $2\varepsilon$ and a zero sum to $A\beta=\varepsilon Ad$ and
-$2\varepsilon Ad$ for a generic feasible point $d$. Both runs start nondegenerate. The relaxation enters only the right-hand side of
-\eqref{eq:border}, so where the two runs pass through the same active sets their knots
-are affine in $\varepsilon$, and
-$2(\lambda_k,\beta_k)(\varepsilon)-(\lambda_k,\beta_k)(2\varepsilon)$ is the knot at
-$\varepsilon=0$. That condition cannot be checked in advance. \texttt{cvxcla} therefore
-returns the extrapolated path only if a linear program finds multipliers that satisfy
-the optimality conditions of \eqref{eq:lasso} at every knot and segment midpoint, to
-$10^{-9}$ relative to $\|c\|_\infty$. Otherwise it retries with smaller $\varepsilon$
-and finally declines. The paths it returns are then checked like every other path in
-Section~\ref{sec:evidence} (\emph{Monotone} and \emph{Zero-sum, caps},
-Table~\ref{tab:evidence}).
-
-\paragraph{Starts that need no relaxation} Rows $C\beta\le h$ with $h>0$ enter the
-penalty form as rows $CSz\le h$ of the CLA. They are slack at the start $z=0$, so the
-start is unchanged. A row joins the active set when the path reaches it, like a
-bound. \emph{Cholesterol} tests this (Table~\ref{tab:evidence}).
-
-Other starts are nondegenerate but lie away from $\beta=0$. A nonhomogeneous row can
-make the starting linear program non-unique. The standard case is the fully invested
-constraint $\one\trans\beta=1$ of sparse portfolio regression \cite{brodie2009}: every
-long-only $\beta$ in the simplex has $\|\beta\|_1=1$. The path then starts at the
-least-squares fit over the simplex and stays there \cite[Proposition~3]{perspective}.
-Finding it takes a quadratic program rather than a linear one, and \texttt{cvxcla}
-starts on the tied face where its quadratic term is smallest, which is that fit
-(\emph{Sum to one}, Table~\ref{tab:evidence}). A row with $h_r<0$ leaves $\beta=0$
-infeasible, and the penalty form starts at the feasible point of smallest $\ell_1$
-norm, as for \emph{Pinned}. \emph{Floor} tests this. The diabetes LASSO with
-$\beta_{\texttt{bmi}}$ at least half its least-squares value has \flKnots{} knots. It
-lies within \flGap{} of an interior-point solve at every midpoint and meets the
-optimality conditions to \flKKT{}.
-
-\paragraph{More predictors than observations} With equality rows and $p>n$, $X\trans X$
-is singular. The bordered system, however, needs a positive definite Hessian only on the
-null space of the active rows, the standing assumption of \cite{perspective}, so the
-free set can outgrow the rank of $X$. As $\lambda\to0^+$ the path ends at the
-least-squares fit of smallest $\ell_1$ norm under the constraints
-\cite[Proposition~3]{perspective}, here an interpolating fit. \texttt{cvxcla} stops
-there (Tables~\ref{tab:stress} and~\ref{tab:wide}). The other path algorithms for general constraints add a ridge:
-$10^{-4}$ in Gaines et al.\ when $n<p$, $10^{-3}$ in \texttt{c-lasso}, and
-$10^{-4}\max_j G_{jj}$ in CLASSO. At that ridge, the authors of CLASSO report
-objectives up to $4\times10^{-2}$, relative, above the unregularised ones
-\cite[Table~3]{hobson2026}.
-Each then traces a nearby problem whose path ends elsewhere.
-
-\paragraph{What stays out of reach} When two columns nearly coincide and both become
+When two columns nearly coincide and both become
 free, moving weight from one to the other barely changes the fit. Unless an active row
 forbids that move, \eqref{eq:border} is then singular to working precision and
 \texttt{cvxcla} stops (\emph{Duplicate} at \stEpsLo{}, Table~\ref{tab:stress}). This is
@@ -770,6 +763,13 @@ terminates. The non-terminating examples of Hobson et al.\ \cite{hobson2026} nee
 multipliers that are not unique, which a nonsingular \eqref{eq:border} rules out, and
 every walk here ended.
 
+\paragraph{When to use it} \texttt{cvxcla.Lasso} is for LASSO paths under constraints
+\texttt{lars\_path} does not take: caps, signs on some coefficients, equality and
+inequality rows and zero sums, also with $p>n$. It returns the knots at less cost than
+a grid of interior-point solves (Section~\ref{sec:scale}). For the plain or positive
+LASSO, \texttt{lars\_path} is enough. Two nearly identical columns should be merged
+first.
+
 \section{Conclusion}
 \label{sec:conclusion}
 
@@ -778,13 +778,6 @@ wherever the encodings reach. On every problem, a CLA written for portfolios ret
 the exact knots, or stops with an error where its arithmetic cannot be trusted. With
 $p>n$ the paths stay exact with no ridge, where the other path algorithms for general
 constraints trace a ridged problem that ends elsewhere.
-
-\paragraph{When to use it} \texttt{cvxcla.Lasso} is for LASSO paths under constraints
-\texttt{lars\_path} does not take: caps, signs on some coefficients, equality and
-inequality rows and zero sums, also with $p>n$. It returns the knots at less cost than
-a grid of interior-point solves (Section~\ref{sec:scale}). For the plain or positive
-LASSO, \texttt{lars\_path} is enough. Two nearly identical columns should be merged
-first.
 
 \section*{Code and data availability}
 
