@@ -100,9 +100,12 @@ test:
 	$(if $(FIGURES),uv run $(FIGURES) test)
 
 # arXiv compiles the source itself, so a submission is the .tex and the figures it
-# includes, laid out as here, not the PDF. Only the figures the note includes go in:
-# figures/ can hold drawings the note no longer uses. A table the script writes into
-# figures/ and the note \inputs goes in too. The same tree is packed twice, as a
+# includes, not the PDF. Only the figures the note includes go in: figures/ can hold
+# drawings the note no longer uses. A table the script writes into figures/ and the note
+# \inputs goes in too. The figures sit flat at the root of the submission, beside the
+# .tex, so the packaged copy of the .tex (and of its sections) looks for them there: its
+# \graphicspath{{figures/}} becomes {{./}} and \input{figures/...} loses the prefix. The
+# sources in the repository are left as they are. The same tree is packed twice, as a
 # tarball and as a zip, for whichever the upload form takes.
 ARXIV_SRC     := arxiv-src
 ARXIV_CHECK   := arxiv-build
@@ -116,12 +119,17 @@ arxiv: $(ARXIV_TARBALL) $(ARXIV_ZIP)
 
 $(ARXIV_TARBALL): $(MAIN).tex $(SECTIONS) $(BIB) $(VENDOR) $(INCLUDED)
 	rm -rf $(ARXIV_SRC)
-	mkdir -p $(ARXIV_SRC)/figures
+	mkdir -p $(ARXIV_SRC)
 	cp $(MAIN).tex $(ARXIV_SRC)/
-	$(if $(INCLUDED),cp $(INCLUDED) $(ARXIV_SRC)/figures/)
+	$(if $(INCLUDED),cp $(INCLUDED) $(ARXIV_SRC)/)
 	$(if $(SECTIONS),mkdir -p $(ARXIV_SRC)/sections && cp $(SECTIONS) $(ARXIV_SRC)/sections/)
 	$(if $(BIB),mkdir -p $(ARXIV_SRC)/refs && cp $(BIB) $(ARXIV_SRC)/refs/)
 	$(if $(VENDOR),cp $(VENDOR) $(ARXIV_SRC)/)
+	sed -i.orig -e 's#\\graphicspath{{figures/}}#\\graphicspath{{./}}#' -e 's#\\input{figures/#\\input{#g' \
+	  $(ARXIV_SRC)/$(MAIN).tex $(addprefix $(ARXIV_SRC)/,$(SECTIONS))
+	find $(ARXIV_SRC) -name '*.orig' -delete
+	@! grep -rnE '\\(input|includegraphics|graphicspath)[^}]*figures/' $(ARXIV_SRC) --include='*.tex' || \
+	  { echo "the packaged .tex still points into figures/"; exit 1; }
 	tar czf $@ -C $(ARXIV_SRC) .
 	tar tzf $@
 
