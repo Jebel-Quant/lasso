@@ -118,11 +118,15 @@ def main() -> None:
               f"the exact path {shipped[name]:.1e}, and {unridged[name]:.1e} with the ridge at {RIDGE:.0e}")
         # As shipped c-lasso is close to the path but off it by its ridge, and with p > n
         # far off it; without the ridge it is on it. Flag it if any of that ever changes.
+        # With p > n the grid runs down to WIDE_LAMIN and cond(X) reaches 1e15, so even the
+        # 1e-12 ridge moves the answer by ~1e-10 there (seed 12: 9.8e-11 on macOS, 1.5e-10
+        # on Linux CI); 1e-8 is the bound Table 5 uses for Wide too.
         if name.startswith("wide"):
             assert shipped[name] > 1e-1, shipped[name]
+            assert unridged[name] < 1e-8, unridged[name]
         else:
             assert 1e-9 < shipped[name] < 1e-2, shipped[name]
-        assert unridged[name] < 1e-10, unridged[name]
+            assert unridged[name] < 1e-10, unridged[name]
     square = [name for name in shipped if not name.startswith("wide")]
     wide = [name for name in shipped if name.startswith("wide")]
     (FIGURES / "classo.tex").write_text(

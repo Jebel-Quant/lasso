@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "cvxcla==2.7.0",
+#     "cvxcla==2.7.1",
 #     "cvxpy==1.9.3",
 #     "matplotlib==3.11.2",
 #     "numpy==2.5.4",
@@ -51,6 +51,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from cvxcla import Lasso as CvxclaLasso
+from matplotlib.transforms import blended_transform_factory
 from scipy.optimize import linprog, nnls
 from sklearn.datasets import load_diabetes
 from sklearn.linear_model import lars_path
@@ -322,11 +323,11 @@ def large_composition(n: int, p: int, seed: int = SEED, k: int = 10) -> Lasso:
 
 @dataclass
 class ScaleRow:
-    """One line of the scale table: a large zero-sum problem."""
+    """One line of the scale table: a large zero-sum problem, the worst over the seeds."""
 
     n: int
     p: int
-    knots: int
+    knots: tuple[int, int]  # fewest and most knots
     kkt: float
 
 
@@ -338,22 +339,34 @@ def scale() -> list[ScaleRow]:
     """
     rows = []
     for n, p in SCALE:
-        prob = large_composition(n, p)
-        path = trace(prob)
-        rows.append(ScaleRow(n, p, len(path.lam), certify(prob, path)))
+        knots, kkt = [], 0.0
+        for seed in SCALE_SEEDS:
+            prob = large_composition(n, p, seed=seed)
+            path = trace(prob)
+            knots.append(len(path.lam))
+            kkt = max(kkt, certify(prob, path))
+        rows.append(ScaleRow(n, p, (min(knots), max(knots)), kkt))
     return rows
+
+
+def knot_range(knots: tuple[int, int]) -> str:
+    """Fewest and most knots over the seeds, as the tables print them: 43--45, or 42."""
+    return f"{knots[0]}" if knots[0] == knots[1] else f"{knots[0]}--{knots[1]}"
 
 
 def scale_tex(rows: list[ScaleRow]) -> str:
     """The body of Table 3, for the note to input, with its closing rule."""
-    return "".join(f"{r.n:>4} & {r.p:>3} & {r.knots:>3} & {sci(r.kkt)}\\\\\n"
+    return "".join(f"{r.n:>4} & {r.p:>3} & {knot_range(r.knots):>7} & {sci(r.kkt)}\\\\\n"
                    for r in rows) + "\\bottomrule\n"
 
 
 # The hostile problems of Table 4: how close to one another the columns are allowed to get.
 STRESS_RHO = 0.99999  # pairwise correlation of the equicorrelated design
 STRESS_DUPLICATE = (1e-4, 1e-6)  # noise, relative to its spread, on a copy of bmi
-STRESS_SEEDS = (SEED, SEED + 1, SEED + 2)  # each hostile problem is drawn this many times
+# Each hostile problem of Tables 4 and 5 is drawn from these seeds, and each size of Table 3
+# from the first three: the tables report the worst case over them.
+STRESS_SEEDS = tuple(range(SEED, SEED + 10))
+SCALE_SEEDS = STRESS_SEEDS[:3]
 
 
 def correlated(rho: float = STRESS_RHO, seed: int = SEED, n: int = 100, p: int = 40) -> tuple[np.ndarray, np.ndarray]:
@@ -469,7 +482,7 @@ def stress(
                 path = trace(prob)
             except ValueError as err:  # cvxcla's DegenerateProblemError is a ValueError too
                 row.declined += 1
-                row.reason = str(err).split(":")[0]
+                row.reason = str(err)
                 continue
             k = len(path.lam)
             row.knots = (k, k) if row.knots is None else (min(row.knots[0], k), max(row.knots[1], k))
@@ -498,7 +511,7 @@ def stress_tex(rows: list[StressRow]) -> str:
         head = f"{name:<21} & {r.n:>3} & {r.p:>3} & {sci(r.cond):<19} & "
         if r.declined == len(STRESS_SEEDS):
             return head + r"\multicolumn{4}{c}{declined}\\" + "\n"
-        knots = f"{r.knots[0]}" if r.knots[0] == r.knots[1] else f"{r.knots[0]}--{r.knots[1]}"
+        knots = knot_range(r.knots)
         if r.declined:
             knots += f" ({r.declined} declined)"
         return head + f"{knots:>5} & {r.reference:<4} & {sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
@@ -511,19 +524,24 @@ def stress_numbers(rows: list[StressRow]) -> str:
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "stRho": f"{STRESS_RHO}",
         "stSeeds": NUMBERS[len(STRESS_SEEDS)],
+        "stSeedFirst": str(STRESS_SEEDS[0]),
+        "stSeedLast": str(STRESS_SEEDS[-1]),
+        "scSeeds": NUMBERS[len(SCALE_SEEDS)],
         "stEpsHi": sci(max(STRESS_DUPLICATE)),
         "stEpsLo": sci(min(STRESS_DUPLICATE)),
         "stKKT": sci(max(r.kkt for r in traced)),
         "stLarsKKT": sci(max(r.ref_kkt for r in traced if r.ref_kkt is not None)),
         "stIpmGap": sci(max(r.gap for r in traced if r.reference == "IPM")),
         "stIpmBetter": sci(max(0.0, -min(r.ref_excess for r in traced if r.ref_excess is not None))),
+        # Under the cap the near-duplicate is declined only where both twins become free first.
+        "stDupBoxDeclined": NUMBERS[{r.name: r for r in rows}[f"duplicate {min(STRESS_DUPLICATE):.0e}, box"].declined],
     }.items())
 
 
 def wide_tex(rows: list[StressRow]) -> str:
     """The body of Table 5, with its closing rule."""
     def line(r: StressRow) -> str:
-        knots = f"{r.knots[0]}" if r.knots[0] == r.knots[1] else f"{r.knots[0]}--{r.knots[1]}"
+        knots = knot_range(r.knots)
         return f"{r.name:<16} & {knots:>7} & {sci(r.gap):<19} & {sci(r.kkt)}\\\\\n"
     return "".join(line(r) for r in rows) + "\\bottomrule\n"
 
@@ -919,12 +937,36 @@ def lars_positive_end(prob: Lasso, path: LassoPath) -> tuple[float, float]:
     raise AssertionError("lars_path's last point is not on the CLA path")
 
 
+@dataclass
+class SegmentDemo:
+    """A wrong path that a check at its knots and midpoints passes, and the whole-segment check fails."""
+
+    sampled: float  # the largest KKT residual at the two ends and the midpoint
+    whole: float  # the whole-segment check on the same path
+    exact: float  # the whole-segment check on the exact path
+
+
+def segment_demo() -> SegmentDemo:
+    """With p = 1, y = 1 and a cap of 1/2, one straight segment from (5/4, 0) to (1/4, 1/2).
+
+    The exact path is 0 down to lambda = 1, then 1 - lambda up to the cap at lambda = 1/2,
+    then the cap. The one segment misses both knots, yet meets the path at its ends and at
+    its midpoint, so a check at those three points alone passes it.
+    """
+    prob = Lasso(np.eye(1), np.ones(1), upper=np.full(1, 0.5))
+    fake = LassoPath(lam=np.array([1.25, 0.25]), beta=np.array([[0.0], [0.5]]))
+    lam, beta = midpoints(fake)
+    sampled = max(kkt_residual(prob, *z) for z in zip([*fake.lam, *lam], [*fake.beta, *beta], strict=True))
+    return SegmentDemo(sampled, certify(prob, fake), certify(prob, trace(prob)))
+
+
 def evidence_numbers(rows: list[Row]) -> str:
     """The numbers the text of Section 5 and Figure 2 quote, as LaTeX macros."""
     by = {r.name: r for r in rows}
     probs = problems()
     lam_end, kkt_end = lars_positive_end(probs["nonnegative"], trace(probs["nonnegative"]))
     plain = trace(probs["plain"])
+    demo = segment_demo()
     return "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in {
         "evWideKnots": str(by["wide"].knots),
         "evPlainKnots": str(by["plain"].knots),
@@ -934,6 +976,8 @@ def evidence_numbers(rows: list[Row]) -> str:
         "evIpmWorst": sci(max(r.gap for r in rows if r.reference == "IPM")),
         "evLarsEnd": f"{lam_end:.2f}",
         "evLarsKKT": sci(kkt_end),
+        "evSegSampled": sci(demo.sampled) if demo.sampled else "0",
+        "evSegWhole": f"{demo.whole:.2f}",
     }.items())
 
 
@@ -1075,7 +1119,12 @@ SCD14_SHOWN = 8  # Figure 3 draws the coefficients largest at lambda = 0 in colo
 SCD14_STRIDE = 3  # and marks the interior-point solve at every third segment midpoint
 
 
-def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath, shown: int, stride: int) -> None:
+# The colourblind-safe qualitative palette of Okabe and Ito, for the eight genera of Figure 3.
+OKABE_ITO = ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+
+
+def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath, shown: int, stride: int,
+               names: list[str] | None = None) -> None:
     """A CLA path against lambda, with interior-point solves at some segment midpoints.
 
     Sixty coefficients and a solve at every midpoint overplot into a solid band, so only
@@ -1089,33 +1138,60 @@ def path_panel(ax: plt.Axes, prob: Lasso, path: LassoPath, shown: int, stride: i
     rest = np.setdiff1d(np.arange(path.beta.shape[1]), top)
     ax.axhline(0, color=MUTED, lw=0.6)
     ax.plot(path.lam, path.beta[:, rest], "-", color=GRID, lw=0.7, zorder=1)
-    ax.plot(path.lam, path.beta[:, top], "-", color=BLUE, lw=1.1, zorder=2)
-    ax.plot(lam, ref[:, top], "o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8, zorder=3)
+    for colour, j in zip(OKABE_ITO, top, strict=True):
+        ax.plot(path.lam, path.beta[:, j], "-", color=colour, lw=1.1, zorder=2)
+        ax.plot(lam, ref[:, j], "o", ms=3.8, mfc="none", mec=INK, mew=0.6, zorder=3)
+    if names is not None:
+        # Each line is labelled at its right-hand end, lambda = 0, the labels pushed apart
+        # just enough not to overlap, so the series read without relying on hue.
+        ends = path.beta[-1, top]
+        order = np.argsort(ends)
+        lo, hi = ax.get_ylim()
+        step = 0.055 * (hi - lo)
+        placed = ends[order].copy()
+        for i in range(1, len(placed)):
+            placed[i] = max(placed[i], placed[i - 1] + step)
+        placed -= max(0.0, placed[-1] - hi)
+        for i in range(len(placed) - 2, -1, -1):
+            placed[i] = min(placed[i], placed[i + 1] - step)
+        margin = blended_transform_factory(ax.transAxes, ax.transData)
+        for k, i in enumerate(order):
+            ax.plot([1.0, 1.03], [ends[i], placed[k]], color=OKABE_ITO[i], lw=0.6, transform=margin, clip_on=False)
+            ax.text(1.04, placed[k], names[top[i]], transform=margin, fontsize=6, color=INK, va="center")
     ax.set_xscale("symlog", linthresh=path.lam[0] / 50)
     ax.set_xlim(path.lam[0] * 1.05, 0)
-    ax.set_xlabel(r"penalty $\lambda$ (decreasing)")
+    ax.set_xlabel(r"penalty $\lambda$ (decreasing; symlog, linear below $\lambda_{\max}/50$)")
     ax.set_ylabel(r"coefficient $\beta_j$")
 
 
 def path_legend(fig: plt.Figure) -> None:
     """The legend shared by the path panels."""
     handles = [
-        plt.Line2D([], [], color=BLUE, lw=1.1, label=f"CLA path, {SCD14_SHOWN} largest"),
+        plt.Line2D([], [], color=OKABE_ITO[0], lw=1.1, label=f"CLA path, {SCD14_SHOWN} largest (labelled)"),
         plt.Line2D([], [], color=GRID, lw=0.7, label="the other genera"),
-        plt.Line2D([], [], ls="none", marker="o", ms=3.8, mfc="none", mec=ORANGE, mew=0.8,
+        plt.Line2D([], [], ls="none", marker="o", ms=3.8, mfc="none", mec=INK, mew=0.6,
                    label="interior-point solve, mid-segment"),
     ]
     fig.legend(handles=handles, loc="lower center", ncols=3)
 
 
+def genus(name: str) -> str:
+    """A taxon as Figure 3 labels it: g_Prevotella as Prevotella, f_X_g_unclassified as X (unclassified)."""
+    rank, _, rest = name.partition("_")
+    if "_g_" in rest:
+        family, _, tail = rest.partition("_g_")
+        return f"{family} ({tail.replace('_', ' ').lower()})"
+    return rest.replace("_", " ")
+
+
 def fig_scd14(out: Path) -> None:
     """The real-data example: the zero-sum path of sCD14 on 60 genera."""
-    prob, _ = scd14()
-    fig, ax = plt.subplots(figsize=(4.8, 3.2))
-    path_panel(ax, prob, trace(prob), SCD14_SHOWN, SCD14_STRIDE)
+    prob, names = scd14()
+    fig, ax = plt.subplots(figsize=(6.0, 3.4))
+    path_panel(ax, prob, trace(prob), SCD14_SHOWN, SCD14_STRIDE, [genus(n) for n in names])
     ax.set_title("sCD14 on 60 genera, zero-sum LASSO by the CLA", fontsize=8, color=INK)
     path_legend(fig)
-    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    fig.tight_layout(rect=(0, 0.08, 0.80, 1))
     fig.savefig(out)
     plt.close(fig)
 
@@ -1259,7 +1335,7 @@ def main() -> None:
         print(f"  h = {r.h:.0e}: {r.knots} knots, KKT {r.kkt:.1e}, gap to h = 0 {r.gap:.1e} ({r.gap / r.h:.2f} h)")
     print("\nscale, zero-sum compositions:")
     for r in big:
-        print(f"  n = {r.n:4d}, p = {r.p:3d}: {r.knots:3d} knots, KKT {r.kkt:.1e}")
+        print(f"  n = {r.n:4d}, p = {r.p:3d}: {knot_range(r.knots):>7} knots, KKT {r.kkt:.1e}")
     print(f"{'problem':<16} {'n':>4} {'p':>4} {'knots':>6} {'ref':>5} {'gap':>9} {'KKT':>9}")
     for r in rows:
         print(f"{r.name:<16} {r.n:>4} {r.p:>4} {r.knots:>6} {r.reference:>5} {r.gap:9.1e} {r.kkt:9.1e}")
@@ -1318,20 +1394,23 @@ def test_kkt(rows: list[Row]) -> None:
 
 
 def test_segment_check_sees_between_samples() -> None:
-    """A wrong segment that is right at both ends and at its midpoint fails the whole-segment check.
+    """A wrong segment that is right at both ends and at its midpoint fails the whole-segment check."""
+    demo = segment_demo()
+    assert demo.sampled < 1e-12
+    assert demo.whole > 0.2
+    assert demo.exact < 1e-12
 
-    With p = 1, y = 1 and a cap of 1/2 the path is 0 down to lambda = 1, then 1 - lambda
-    up to the cap at lambda = 1/2, then the cap. One straight segment from (5/4, 0) to
-    (1/4, 1/2) misses both knots, yet meets the path at its ends and its midpoint, so a
-    check at those three points alone passes it.
+
+def test_deterministic() -> None:
+    """On one machine the discrete results repeat exactly; only residuals near rounding may move.
+
+    Every random design is drawn from a recorded seed, so a second run over the same seeds
+    must give the same knot counts, decline the same problems, and pass the same checks.
     """
-    prob = Lasso(np.eye(1), np.ones(1), upper=np.full(1, 0.5))
-    fake = LassoPath(lam=np.array([1.25, 0.25]), beta=np.array([[0.0], [0.5]]))
-    lam, beta = midpoints(fake)
-    sampled = max(kkt_residual(prob, *z) for z in zip([*fake.lam, *lam], [*fake.beta, *beta], strict=True))
-    assert sampled < 1e-12
-    assert certify(prob, fake) > 0.2
-    assert certify(prob, trace(prob)) < 1e-12
+    def discrete(rows: list[StressRow]) -> list[tuple]:
+        return [(r.name, r.knots, r.declined, r.kkt is not None and r.kkt < 1e-10) for r in rows]
+    assert discrete(stress()) == discrete(stress())
+    assert [(r.knots, r.kkt < 1e-10) for r in scale()] == [(r.knots, r.kkt < 1e-10) for r in scale()]
 
 
 def test_table_tex(rows: list[Row]) -> None:
@@ -1376,23 +1455,27 @@ def test_scale() -> None:
 def test_stress() -> None:
     """On the hostile problems the path is exact or declined, never wrong.
 
-    Only the near-duplicate without a cap is declined; Wide, zero-sum, which needs a
-    singular Gram solved on the zero sum's null space, is traced (since cvxcla 2.6.0).
+    The near-duplicate at 1e-6 without a cap is declined for every seed. Under the cap
+    it is declined only on the seeds where both twins become free before the cap binds,
+    and then for the same reason, a free block singular to working precision. Nothing
+    else is declined. Wide, zero-sum, which needs a singular Gram solved on the zero
+    sum's null space, is traced (since cvxcla 2.6.0).
 
     Against LARS, two exact paths can part by as much as the conditioning allows,
     cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
     rounding. Against the interior-point solver, the solver's objective is never better
-    than the path's by more than its tolerance, so a gap there is the solver's. The two
-    problems cvxcla declines, it declines for every seed.
+    than the path's by more than its tolerance, so a gap there is the solver's.
     """
     rows = {r.name: r for r in stress()}
-    every = len(STRESS_SEEDS)
-    assert {n: r.declined for n, r in rows.items() if r.declined} == {"duplicate 1e-06": every}
+    assert rows["duplicate 1e-06"].declined == len(STRESS_SEEDS)
+    assert {n for n, r in rows.items() if r.declined} <= {"duplicate 1e-06", "duplicate 1e-06, box"}
+    if rows["duplicate 1e-06, box"].declined:
+        assert "numerically singular" in rows["duplicate 1e-06, box"].reason, rows
     for r in rows.values():
-        if r.declined:
+        if r.kkt is None:
             continue
-        # Wide, zero-sum has cond(X) near 1e16, and its residuals reach a few 1e-12.
-        assert r.kkt < 1e-11, r
+        # Wide, zero-sum has cond(X) near 1e16, and its residuals reach about 1e-11.
+        assert r.kkt < 1e-10, r
         if r.reference == "LARS":
             assert r.gap < r.cond**2 * np.finfo(float).eps, r
             assert r.ref_kkt < 1e-12, r
@@ -1409,11 +1492,15 @@ def test_wide() -> None:
     path with p > n the fit almost interpolates, the objective falls to 1e-4 of its value
     at beta = 0, and a difference at the rounding of the sum of squares is a few 1e-12 of
     it. The inequality rows bind, so they are tested.
+
+    The residuals are looser too. At the end of a path with p > n, near lambda = 1e-4
+    lambda_max, the fit almost interpolates and cond(X) is near 1e16, and on one seed of
+    Zero-sum, signs the residual there reaches 1e-9. Everywhere else it stays at rounding.
     """
     rows = stress(wide_problems)
     for r in rows:
         assert r.declined == 0, r
-        assert r.kkt < 1e-11, r
+        assert r.kkt < 1e-8, r
         assert r.ref_excess > -1e-11, r
     for seed in STRESS_SEEDS:
         prob = wide_problems(seed)["inequality rows"][0]
@@ -1473,7 +1560,8 @@ def test_cholesterol_row_binds() -> None:
 # --------------------------------------------------------------------------------------
 # Timings: machine-dependent, so run by hand and quoted only as ratios
 # --------------------------------------------------------------------------------------
-TIMING_REPEATS = 5  # each timed step runs this often, and the fastest run counts
+TIMING_REPEATS = 11  # each timed step runs this often after one warm-up; the median counts
+SCALE_REPEATS = 3  # at p = 500 a grid takes minutes, so Table 3's sizes are timed this often
 GRID_POINTS = 100  # points in the lambda grid of the interior-point baseline
 
 
@@ -1491,18 +1579,25 @@ def machine() -> str:
     return f"{name or 'unknown CPU'}, {os.cpu_count()} threads, Python {platform.python_version()}"
 
 
-def fastest(step: Callable[[], object], repeats: int = TIMING_REPEATS) -> float:
-    """Seconds of the fastest of ``repeats`` runs of ``step``.
+def timed(step: Callable[[], object], repeats: int = TIMING_REPEATS) -> np.ndarray:
+    """Seconds of each of ``repeats`` runs of ``step``, after one untimed warm-up run.
 
-    Other work on the machine can only slow a run down, so the fastest run is the
-    closest to what the step itself costs, and it varies far less than a single run.
+    The warm-up takes the one-off costs out: CVXPY compiles the grid's problem on its
+    first solve, and later solves reuse it.
     """
+    step()
     seconds = []
     for _ in range(repeats):
         start = time.perf_counter()
         step()
         seconds.append(time.perf_counter() - start)
-    return min(seconds)
+    return np.array(seconds)
+
+
+def ratio(grid_s: np.ndarray, path_s: np.ndarray) -> str:
+    """The grid's cost over the path's: the ratio of the medians, and the range of the ratio over the runs."""
+    runs = grid_s / path_s
+    return f"{np.median(grid_s) / np.median(path_s):5.0f}x the path (runs {runs.min():.0f}x to {runs.max():.0f}x)"
 
 
 def grid(prob: Lasso, lam_max: float) -> Callable[[], None]:
@@ -1533,23 +1628,24 @@ def grid(prob: Lasso, lam_max: float) -> Callable[[], None]:
 
 def timings() -> None:
     """Print, for each constrained problem, what the exact path costs against a grid."""
-    print(f"machine: {machine()}; each time the fastest of {TIMING_REPEATS} runs")
+    print(f"machine: {machine()}; each step timed {TIMING_REPEATS} times after a warm-up, "
+          f"runs paired in order; the median and the range of the ratio")
     for name, prob in problems().items():
         if name not in ("box", "cholesterol", "zero-sum", "sCD14"):
             continue
         path = trace(prob)
-        path_s = fastest(lambda prob=prob: trace(prob))
-        grid_s = fastest(grid(prob, path.lam[0]), repeats=3)  # the first run compiles; later ones reuse it
-        print(f"  {name:<11} {len(path.lam):3d} knots: path {path_s * 1e3:7.1f} ms, "
-              f"{GRID_POINTS}-point Clarabel grid {grid_s / path_s:6.0f}x the path")
-    print("Table 3, the zero-sum problems at scale (the grid timed twice: the first run compiles):")
+        path_s = timed(lambda prob=prob: trace(prob))
+        grid_s = timed(grid(prob, path.lam[0]))
+        print(f"  {name:<11} {len(path.lam):3d} knots: path {np.median(path_s) * 1e3:7.1f} ms, "
+              f"{GRID_POINTS}-point Clarabel grid {ratio(grid_s, path_s)}")
+    print(f"Table 3, the zero-sum problems at scale, each step timed {SCALE_REPEATS} times after a warm-up:")
     for n, p in SCALE:
         prob = large_composition(n, p)
         path = trace(prob)
-        path_s = fastest(lambda prob=prob: trace(prob))
-        grid_s = fastest(grid(prob, path.lam[0]), repeats=2)
-        print(f"  n = {n:4d}, p = {p:3d}, {len(path.lam):3d} knots: path {path_s:6.2f} s, "
-              f"{GRID_POINTS}-point Clarabel grid {grid_s / path_s:4.0f}x the path")
+        path_s = timed(lambda prob=prob: trace(prob), SCALE_REPEATS)
+        grid_s = timed(grid(prob, path.lam[0]), SCALE_REPEATS)
+        print(f"  n = {n:4d}, p = {p:3d}, {len(path.lam):3d} knots: path {np.median(path_s):6.2f} s, "
+              f"{GRID_POINTS}-point Clarabel grid {ratio(grid_s, path_s)}")
 
 
 if __name__ == "__main__":

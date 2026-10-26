@@ -80,9 +80,10 @@ it to a released CLA written for portfolios. On caps, signs, equality and inequa
 rows, monotone fits and zero sums, on simulated and real data, up to 500 predictors and
 on problems built to break a path algorithm, the paths reproduce LARS, an interior-point
 solver and three independent path algorithms, and meet the LASSO's optimality
-conditions to rounding. A design with two nearly identical columns is declined with an
-error rather than answered wrongly. With more predictors than observations the paths
-stay exact, where the path algorithms for general constraints add a ridge that moves
+conditions to rounding, or to $10^{-9}$ where a path with more predictors than
+observations nears an interpolating fit. A design with two nearly identical columns is
+declined with an error rather than answered wrongly. With more predictors than
+observations the paths stay exact, where the path algorithms for general constraints add a ridge that moves
 the end of the path.
 
 \medskip\noindent
@@ -107,23 +108,28 @@ parameter, so the whole \emph{path} is a finite list of \emph{knots}. scikit-lea
 for nonnegative coefficients. There is no place for any other constraint.
 
 Many regressions need one. The diabetes data that LARS was introduced with
-\cite{efron2004} are an example: $n=442$ patients, ten standardised baseline variables
+\cite{efron2004} illustrate what a constraint can do: $n=442$ patients, ten standardised baseline variables
 and, as the response, a measure of disease progression a year later. Six of the
 variables are blood serum measurements, and three of them are closely related measures
 of cholesterol: total cholesterol (\texttt{s1}), LDL (\texttt{s2}) and HDL
 (\texttt{s3}). Least squares plays them off against each other. It gives total
 cholesterol a coefficient of $\exTC$ and LDL one of $\exLDL$: two large effects of
-opposite sign that mostly cancel. HDL, whose low levels are a risk factor for diabetes
-\cite{wilson2007}, gets $\exHDL$, as if more of it made the disease progress faster. The LASSO path ends at the least-squares fit, so it gets there
-too. A cap on every coefficient, $|\beta_j|\le u$, stops the offsetting; we take
-$u=\exCap$, half the largest least-squares coefficient.
+opposite sign that mostly cancel. HDL gets $\exHDL$, as if more of it made the disease
+progress faster. Low HDL is a risk factor for incident diabetes \cite{wilson2007}; the
+response here is progression in patients who have the disease, so that finding suggests
+a negative sign but does not establish one. The LASSO path ends at the least-squares
+fit, so it gets there too. A cap on every coefficient, $|\beta_j|\le u$, stops the
+offsetting. We take $u=\exCap$, half the largest least-squares coefficient, a value
+chosen after seeing the fit. The example shows what a cap does to offsetting
+coefficients; it is not offered as a better model of the disease.
 
 Figure~\ref{fig:example} shows what the cap does. Without it the path passes the cap at
 \exOver{} of its \exKnots{} knots and ends with HDL positive. With it no coefficient
 passes the cap, and HDL stays negative along the whole path, although no sign is
 imposed. That does not hang on the choice of $u$: every whole-number cap up to
 \exKeepHi{} keeps HDL negative along the whole path, and only looser caps let it turn
-positive. The capped path has \exCapped{} knots.
+positive. That is a property of these data, not a finding about HDL. The capped path
+has \exCapped{} knots.
 
 \begin{figure}[t]
 \centering
@@ -132,7 +138,10 @@ positive. The capped path has \exCapped{} knots.
 $|\beta_j|\le u=\exCap$. The shaded bands are beyond the cap. Left: the plain LASSO, the
 path \texttt{lars\_path} computes; the coefficients that pass the cap are in orange.
 Right: every coefficient capped. Lines: the exact path, by the CLA in the penalty form.
-Circles: an interior-point solve at the midpoint of every segment.}
+Circles: an interior-point solve at the midpoint of every segment. The horizontal axis
+is $\lambda$, decreasing to the right, on a symmetric-log scale: logarithmic above
+$\lambda_{\max}/50$ and linear below it, so that the end of the path at $\lambda=0$ is
+shown.}
 \label{fig:example}
 \end{figure}
 
@@ -160,7 +169,12 @@ The layer is two encodings, Propositions~\ref{prop:penalty} and~\ref{prop:budget
 the LASSO; that paper supplies the general identity of which they are instances. The
 checks also exposed two defects in the CLA that refused ordinary portfolio problems too,
 a tie for the largest expected return and a covariance of low rank. Both were fixed in
-\texttt{cvxcla} 2.6.0 \cite{cvxcla}; the release used here is 2.7.0. Brodie et al.\ \cite{brodie2009} put an
+\texttt{cvxcla} 2.6.0 \cite{cvxcla}. Drawing the hostile problems of
+Section~\ref{sec:hostile} over more seeds exposed three more, on a design whose columns
+are nearly collinear: two in the check that a bound held along a segment is still
+optimal, which refused a correct path, and one in the plain LASSO homotopy, which lost
+the second of two events at the same $\lambda$. All three were fixed in 2.7.1, the
+release used here. Brodie et al.\ \cite{brodie2009} put an
 $\ell_1$ penalty on Markowitz portfolios to make them sparse, and a companion note
 \cite{lassonote} computes efficient frontiers with a LASSO solver. Both use regression
 to build portfolios. This note goes the other way. Section~\ref{sec:cla} recalls the
@@ -213,7 +227,7 @@ active-set method of the same kind, written for portfolios and used here as rele
 With $p>n$ the other path algorithms for general constraints add a ridge, which
 decides where their path ends; the CLA needs none (Section~\ref{sec:starts}). Microbiome
 studies often have more taxa than samples, so this is the case a user of the zero-sum
-LASSO meets first.
+LASSO meets first. Table~\ref{tab:software} collects what each accepts.
 
 \paragraph{Notation} The design is $X\in\R^{n\times p}$, with $n$ observations and $p$
 predictors, and the response is $y\in\R^n$. Write $G=X\trans X$ and $c=X\trans y$. The
@@ -453,16 +467,19 @@ tight at $\beta=0$.
 \texttt{cvxcla} resolves both by relaxation, an implementation device rather than part
 of the method. It traces the problem twice, with the homogeneous rows relaxed to
 $h_r=\varepsilon$ and $2\varepsilon$ and a zero sum to $A\beta=\varepsilon Ad$ and
-$2\varepsilon Ad$ for a generic feasible point $d$. Both runs start nondegenerate. The relaxation enters only the right-hand side of
+$2\varepsilon Ad$ for a generic feasible point $d$. In release 2.7.1, $\varepsilon$ is
+$10^{-6}$ times the scale $\|c\|_\infty/\max_jG_{jj}$ of a coefficient, then $10^{-7}$ and
+$10^{-8}$ times it if needed. Both runs start nondegenerate. The relaxation enters only the right-hand side of
 \eqref{eq:border}, so where the two runs pass through the same active sets their knots
 are affine in $\varepsilon$, and
 $2(\lambda_k,\beta_k)(\varepsilon)-(\lambda_k,\beta_k)(2\varepsilon)$ is the knot at
 $\varepsilon=0$. That condition cannot be checked in advance. \texttt{cvxcla} therefore
 returns the extrapolated path only if a linear program finds multipliers that satisfy
 the optimality conditions of \eqref{eq:lasso} at every knot and segment midpoint, to
-$10^{-9}$ relative to $\|c\|_\infty$. Otherwise it retries with smaller $\varepsilon$
-and finally declines. The paths it returns are checked like every other path in
-Section~\ref{sec:evidence}.
+$10^{-9}$ relative to $\|c\|_\infty$. Otherwise it retries with the next $\varepsilon$
+and, after the last, declines. The extrapolation only proposes a path; the certificate
+is what guarantees the path returned. The paths it returns are checked again, like every
+other path, in Section~\ref{sec:evidence}.
 
 \paragraph{The end of the path} As $\lambda\to0^+$ the path ends at the least-squares
 fit of smallest $\ell_1$ norm under the constraints \cite[Proposition~3]{perspective}.
@@ -498,7 +515,7 @@ and return the path only if it passes the certificate.
 \item Between two knots $\beta$ is affine in $\lambda$, so any other point on the path is
 an interpolation.
 \end{enumerate}
-\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.7.0)
+\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.7.1)
 carries out steps~1--5 and returns the knots. With no constraint at all it traces the
 plain LASSO by a homotopy instead.
 \end{minipage}}
@@ -533,8 +550,10 @@ parts have nonzero true coefficients. The signs of
 of \emph{Zero-sum, caps} are at half the largest zero-sum least-squares coefficient.
 \emph{Monotone} is a Gaussian design with $n=100$, $p=\moP$ and an ordered truth, under
 the rows $\beta_j-\beta_{j+1}\le0$. \emph{Sum to one}
-predicts one unit's outcomes over 40 periods from those of 20 donors, as a synthetic
-control does, with weights that may be negative. \emph{Floor}, not in the table, is the diabetes LASSO with
+predicts one unit's outcomes over 40 periods from those of 20 donors with weights that
+sum to one. Unlike the classic synthetic control \cite{abadie2010}, which also requires
+the weights to be nonnegative, the weights here may be negative; adding the signs would
+be one more bound. \emph{Floor}, not in the table, is the diabetes LASSO with
 $\beta_{\texttt{bmi}}$ at least half its least-squares value, a row that leaves $\beta=0$ infeasible. Its path has \flKnots{} knots. It
 lies within \flGap{} of an interior-point solve at every midpoint and meets the
 optimality conditions to \flKKT{}.
@@ -544,20 +563,25 @@ infection \cite{noguerajulian2016}, as distributed with the R package
 \rdGenera{} bacterial genera in \rdSamples{} stool samples, and the response is the
 level of sCD14, a marker of inflammation, in thousands. Each count gets a pseudocount of one, since a zero has no
 logarithm, and the predictors are the centred log-shares. Its path has \rdKnots{} knots
-(Figure~\ref{fig:real}).
+(Figure~\ref{fig:real}). Like the diabetes problems, \emph{sCD14} is a computational
+demonstration on real data. No biological inference is intended, and none should be
+drawn from its path.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.6\textwidth]{scd14.pdf}
 \caption{The zero-sum LASSO of sCD14 on the log-shares of \rdGenera{} genera
-\cite{noguerajulian2016}: the path by the CLA in the budget form, the eight genera
-largest at $\lambda=0$ in colour and the others in grey, with an interior-point solve at
+\cite{noguerajulian2016}: the path by the CLA in the budget form. The eight genera
+largest at $\lambda=0$ are drawn in a colourblind-safe palette \cite{okabe2008} and
+labelled at their right-hand end, the others in grey, with an interior-point solve at
 every third segment midpoint for those eight (circles). Table~\ref{tab:evidence} checks
-every midpoint of every coefficient.}
+every midpoint of every coefficient. The axis is that of Figure~\ref{fig:example}:
+$\lambda$ decreasing, symmetric-log, linear below $\lambda_{\max}/50$. A computational
+demonstration; no biological inference is drawn.}
 \label{fig:real}
 \end{figure}
 
-Every path comes from \texttt{cvxcla.Lasso} 2.7.0. The bounds are passed even where
+Every path comes from \texttt{cvxcla.Lasso} 2.7.1. The bounds are passed even where
 they are infinite, so that the CLA computes it. Where LARS applies it is the reference,
 compared knot by knot in both $\lambda$ and $\beta$. Elsewhere the reference is an
 interior-point solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midpoint of
@@ -565,10 +589,16 @@ every segment. There the path is affine in $\lambda$, so it is known exactly fro
 two ends. This comparison is only as sharp as the solver. Its largest gap in
 Table~\ref{tab:evidence} is \evIpmWorst{}, relative, on a path whose optimality
 conditions hold to rounding. The third check evaluates the optimality conditions of \eqref{eq:lasso}
-directly at every knot and along every segment. A linear program picks the multipliers
-$\kappa$ of $A\beta=b$ and $\eta\ge0$ of the active rows of $C\beta\le h$ that satisfy
-the conditions best. The violation is then evaluated exactly at those multipliers, so
-the solver's own tolerance cannot hide one. With
+directly at every knot and along every segment. Its unknowns are the multipliers
+$\kappa$ of $A\beta=b$ and $\eta$ of the active rows of $C\beta\le h$. A linear program
+chooses them, under $\eta\ge0$, to minimise one number $\tau$: the largest violation of
+all the conditions below, taken jointly. Each condition, written as an inequality
+$\phi_i(\kappa,\eta)\le0$ that is affine in the multipliers, becomes the row
+$\phi_i(\kappa,\eta)\le\tau$, and the program minimises $\tau$. Its optimum is zero
+exactly when $\beta$ is optimal. The violation is then evaluated again, exactly, at the
+multipliers found, so the solver's own tolerance cannot hide one. A small reported
+value therefore certifies optimality to that size, and a real violation cannot be
+masked: no choice of multipliers brings it below the optimum of the program. With
 $r=G\beta-c+A\trans\kappa+C\trans\eta$ the conditions are
 $r_j=-\lambda\operatorname{sign}\beta_j$ on the interior of the support;
 $|r_j|\le\lambda$ at zero, or only $r_j\ge-\lambda$ under $\beta_j\ge0$ and
@@ -582,8 +612,13 @@ ends. A linear program finds multipliers at both ends under the midpoint's patte
 both ends must fit that pattern: inside a segment no coefficient may change sign or
 leave a bound, and no row may come loose. A path that is right at both ends of a
 segment and at its midpoint, but cuts across a knot, fails this check. The published
-tests include one. The largest violation, relative to
-$\|c\|_\infty$, is the last column of the table.
+tests include one (\texttt{test\_segment\_check\_sees\_between\_samples}). With $p=1$,
+$y=1$ and the cap $\beta\le\tfrac12$, the path is zero down to $\lambda=1$, then
+$1-\lambda$ up to the cap at $\lambda=\tfrac12$. A single segment from
+$(\lambda,\beta)=(\tfrac54,0)$ to $(\tfrac14,\tfrac12)$ misses both knots, yet meets the
+path at its ends and at its midpoint, where the largest violation of the optimality
+conditions is \evSegSampled{}. The segment check returns \evSegWhole{}, relative to $\|c\|_\infty$. The
+largest violation, relative to $\|c\|_\infty$, is the last column of the table.
 
 \begin{table}[!htbp]
 \centering
@@ -615,17 +650,19 @@ $\lambda=\evLarsEnd$, so the CLA's last knot is compared with
 \label{sec:scale}
 
 Table~\ref{tab:scale} extends the test to simulated zero-sum
-problems of up to $p=500$ parts. At that size a midpoint solve per segment would cost
+problems of up to $p=500$ parts, each size drawn with \scSeeds{} seeds. At that size a midpoint solve per segment would cost
 more than the path itself, so the table reports only the optimality conditions. They
 hold to rounding. A second check at the largest size comes from the other encoding. The
 penalty form, relaxed, returns the same \encLargestKnots{} knots to \encLargestGap{}, as
 it does on every zero-sum problem here (\texttt{figures/encodings.tex}).
 For a sense of cost, take a grid of 100 interior-point solves (Clarabel through CVXPY,
-compiled once with $\lambda$ as a parameter). It costs about 100 times as much as the
-whole CLA path at $p=100$, 350 times at $p=500$, and 14 to 100 times on the constrained
-diabetes and zero-sum problems of Table~\ref{tab:evidence}. These are ratios of the
-fastest of several runs on an Apple M4 Pro, the only numbers the script does not write
-into the text. The grid also misses every knot between grid points.
+compiled once with $\lambda$ as a parameter). It costs about 90 times as much as the
+whole CLA path at $p=100$, 340 times at $p=500$, and 14 to 110 times on the constrained
+diabetes and zero-sum problems of Table~\ref{tab:evidence}. Each step was run once to
+warm up and then timed 11 times, 3 times at the sizes of Table~\ref{tab:scale}, on an
+Apple M4 Pro. The ratios are of the medians; the ratio of any two paired runs stays
+within 8\% of it. These are the only numbers the script does not write into the text.
+The grid also misses every knot between grid points.
 
 \begin{table}[!htbp]
 \centering
@@ -636,8 +673,9 @@ $n$ & $p$ & knots & KKT \\
 \midrule
 \input{figures/scale.tex}
 \end{tabular}
-\caption{The budget form on simulated zero-sum problems of growing size: the largest KKT
-violation at every knot and along every segment, as in Table~\ref{tab:evidence}.}
+\caption{The budget form on simulated zero-sum problems of growing size, over
+\scSeeds{} seeds: the range of the knot counts, and the largest KKT violation at every
+knot and along every segment, as in Table~\ref{tab:evidence}.}
 \label{tab:scale}
 \end{table}
 
@@ -645,7 +683,7 @@ violation at every knot and along every segment, as in Table~\ref{tab:evidence}.
 \label{sec:hostile}
 
 Table~\ref{tab:stress} adds problems chosen to make a path algorithm fail, each drawn with
-\stSeeds{} seeds, and reports the worst case. \emph{Correlated} is a Gaussian design
+\stSeeds{} seeds (\stSeedFirst{} to \stSeedLast{}), and reports the worst case. \emph{Correlated} is a Gaussian design
 with $n=100$ and $p=40$ in which every pair of columns has correlation \stRho{}. It is
 run alone, under a box and under a zero sum. \emph{Duplicate} adds to the diabetes data
 an eleventh column, \texttt{bmi} plus noise of \stEpsHi{} or \stEpsLo{} times its
@@ -656,14 +694,20 @@ spread, so that two columns nearly coincide; it is run alone and under the cap o
 Every path that is traced meets the optimality conditions to \stKKT{} or better. The
 gaps to the references grow with the conditioning. Against LARS the gap stays below
 $\operatorname{cond}(X)^2$ times the machine epsilon, and LARS's own KKT residual is at
-most \stLarsKKT{}: both paths are right. Against the interior-point solver the gap
-reaches \stIpmGap{} on \emph{Duplicate}. Even there the solver's objective is never
-lower than the path's by more than \stIpmBetter{}, relative, which is within its
-tolerance.
+most \stLarsKKT{}: both paths are right. The same reading covers a minimiser that is
+not unique. LARS and the CLA may then trace different paths of minimisers, and a gap
+between them is no defect as long as both meet the optimality conditions; the
+certificate, not the agreement, is what each path is held to. Against the interior-point solver the gap
+reaches \stIpmGap{} on \emph{Duplicate}, where two nearly identical columns leave the
+minimiser all but unique: the solver can split the weight between the twins differently
+at almost the same objective. Even there the solver's objective is never lower than the
+path's by more than \stIpmBetter{}, relative, which is within its tolerance.
 
-\texttt{cvxcla} declines one of the problems, for every seed: \emph{Duplicate} at
-\stEpsLo{} without a cap, where both twins become free (Section~\ref{sec:limits});
-under the cap they never are, and the path is exact. \emph{Wide,
+\texttt{cvxcla} declines \emph{Duplicate} at \stEpsLo{} without a cap for every seed,
+because both twins become free (Section~\ref{sec:limits}). Under the cap it declines
+\stDupBoxDeclined{} of the \stSeeds{} seeds, for the same reason: on those draws both
+twins become free before the cap binds. On the others they never are both free, and the
+path is exact. Nothing else is declined. \emph{Wide,
 zero-sum}, with $\operatorname{cond}(X)$ near $10^{16}$, is traced, with the largest
 residual in the table (Section~\ref{sec:starts}).
 
@@ -693,7 +737,10 @@ smallest norm; two binding inequality rows that cap the net effect of three pred
 as in \emph{Cholesterol}; the row of \emph{Pinned}; and a zero sum with the signs of
 \emph{Zero-sum, signs} or with the caps of the box. \texttt{cvxcla} declines none of
 them. Every path meets the optimality conditions to \wdKKT{} or better along every
-segment, and the interior-point solver agrees to \wdGap{}. Its objective is never lower
+segment. The largest residuals come at the end of a path, near
+$\lambda=10^{-4}\lambda_{\max}$, where the fit almost interpolates; elsewhere they are at
+rounding. The largest is on one seed of \emph{Zero-sum, signs}, with
+$\operatorname{cond}(X)$ near $10^{16}$. and the interior-point solver agrees to \wdGap{}. Its objective is never lower
 than the path's by more than \wdIpmBetter{}, relative. That happens only near the end
 of a path, where the fit almost interpolates and the objective is small.
 
@@ -731,7 +778,7 @@ The algorithm of Gaines et al.\ \cite{gaines2018} ships in MATLAB and in Julia. 
 ported the Julia package to Julia~1 without changing the algorithm (Code availability)
 and ran it on every problem of Table~\ref{tab:evidence}. Started at the exact first
 knot, where that is simple to state, it agrees with the CLA to \gaStarted{} on the
-\gaStartedCount{} such problems with $n\ge p$. On \emph{Wide}, where $n<p$, its ridge
+\gaStartedCount{} such problems with $n\ge p$: \gaStartedNames{}. On \emph{Wide}, where $n<p$, its ridge
 keeps it \gaWide{} away. As shipped, its own start puts it off the path on all
 \gaProblems{} problems, by \gaShippedMin{} to \gaShippedMax{} relative to the largest
 coefficient. It takes the first knot from a linear program that does not involve $y$,
@@ -768,7 +815,40 @@ every walk here ended.
 inequality rows and zero sums, also with $p>n$. It returns the knots at less cost than
 a grid of interior-point solves (Section~\ref{sec:scale}). For the plain or positive
 LASSO, \texttt{lars\_path} is enough. Two nearly identical columns should be merged
-first.
+first. Table~\ref{tab:software} lists what each path algorithm accepts.
+
+\begin{table}[!htbp]
+\centering
+\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\toprule
+ & \texttt{lars\_path} & \texttt{c-lasso} & comlasso & Gaines et al. & CLASSO & \texttt{cvxcla} \\
+\midrule
+caps $l\le\beta\le u$            & --  & --  & --  & rows & rows & yes \\
+per-coefficient signs           & all & --  & --  & rows & rows & yes \\
+equality rows $A\beta=b$        & --  & $b=0$ & zero sums & yes & yes & yes \\
+inequality rows $C\beta\le h$   & --  & --  & --  & yes & yes & yes \\
+zero sums                       & --  & yes & on blocks & yes & yes & yes \\
+$p>n$                           & yes & yes & yes & yes & yes & yes \\
+$p>n$ without a ridge           & yes & --  & yes & --  & --  & yes \\
+\bottomrule
+\end{tabular}
+\caption{What each exact path algorithm accepts. \emph{Rows}: a bound or sign is
+written as an inequality row. \emph{All}: \texttt{positive=True} makes every coefficient
+nonnegative, none can be chosen alone. \texttt{c-lasso} takes $C\beta=0$; comlasso takes
+zero sums on blocks of coefficients. The ridges are $10^{-3}$ in \texttt{c-lasso},
+$10^{-4}$ in Gaines et al.\ when $n<p$, and $10^{-4}\max_jG_{jj}$ in CLASSO, whose code
+was not released when we wrote; its column is from its paper \cite{hobson2026}.}
+\label{tab:software}
+\end{table}
+
+We do not compare run times with comlasso, the algorithm of Gaines et al.\ or
+\texttt{c-lasso}. None runs here as its authors would run it today: comlasso is R code
+built for R~3.2 and read under R~4, the algorithm of Gaines et al.\ is our port of
+Julia~0.6 code, and \texttt{c-lasso} returns a grid of its own with a ridge. A timing
+across R, Julia and Python would measure the languages and the ports as much as the
+algorithms. A user choosing among them should first ask which constraints each
+accepts, and then time them on their own problem.
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -784,18 +864,34 @@ constraints trace a ridged problem that ends elsewhere.
 The software is in \texttt{preprints/constrained\_lasso/} of
 \url{https://github.com/Jebel-Quant/lasso}, under the MIT licence. Each script has a
 lockfile that fixes Python 3.12 and every package by version and hash.
-\texttt{python/make\_figures.py} computes every path with \texttt{cvxcla.Lasso} 2.7.0
+\texttt{python/make\_figures.py} computes every path with \texttt{cvxcla.Lasso} 2.7.1
 \cite{cvxcla}, runs every check, and writes every figure, table and number the text
 quotes. \texttt{python/classo\_check.py} runs \texttt{c-lasso} 1.0.11.
-\texttt{R/comlasso\_check.R} loads comlasso 0.2 unchanged from its authors' repository
-at a pinned, checksummed commit, since R~4 will not install a package built for R~3.
+\texttt{R/comlasso\_check.R} runs comlasso 0.2 under R~4.6.1, locally and in CI. The
+package was built for R~3.2, and R~4 refuses to install a package built before R~4.0,
+so the script does not install it. It fetches the package from its authors' repository
+at a pinned commit, checks its SHA-256, and reads its functions from the package's
+serialized code with \texttt{lazyLoad}, unchanged. comlasso is plain R, with no
+compiled code, so nothing in it depends on the R~3 build; its one dependency,
+\texttt{Rglpk}, comes from a dated CRAN snapshot.
 \texttt{julia/classopath.jl} ports \texttt{ConstrainedLasso.jl}, written for Julia~0.6,
 to Julia~1.12, with each departure marked; none changes the algorithm.
 \texttt{julia/gaines\_check.jl} runs it in a pinned environment. The sCD14 data are not
 redistributed: \texttt{python/fetch\_scd14.py} downloads \texttt{coda4microbiome} 0.2.4
-from CRAN and checks its SHA-256. \texttt{make figures} runs all five, in CI as well.
+from CRAN or, should CRAN drop it, from a dated snapshot of Posit Package Manager. It
+checks the SHA-256 of the tarball, and that of the data file inside it, which is the
+same byte for byte in both. \texttt{make figures} runs all five, in CI as well.
 
-The lockfiles fix the software, not the hardware: residuals near rounding differ in the
+Every random design is drawn inside \texttt{python/make\_figures.py} from a seed
+recorded there: seed 7 for the problems of Table~\ref{tab:evidence}, seeds 7 to 9 for
+Table~\ref{tab:scale}, and seeds \stSeedFirst{} to \stSeedLast{} for
+Tables~\ref{tab:stress} and~\ref{tab:wide}. On a fixed platform the discrete results
+reproduce exactly: the knot counts, which problems are declined, and whether each path
+passes the certificate. A test runs the problems of Tables~\ref{tab:scale}
+and~\ref{tab:stress} twice and checks that they do. Only residuals near rounding vary,
+and only in their last digits.
+
+The lockfiles fix the software, not the hardware: those residuals also differ in the
 last digits on another CPU, so the tests use tolerances between $10^{-12}$ and
 $10^{-10}$, and costs are given only as ratios.
 
@@ -812,6 +908,14 @@ There are no other competing interests.
 I thank Trevor Hastie for many helpful discussions.
 
 \begin{thebibliography}{99}\footnotesize\raggedright\setlength{\itemsep}{0pt}
+
+\bibitem{abadie2010}
+A.~Abadie, A.~Diamond, and J.~Hainmueller.
+\newblock Synthetic control methods for comparative case studies: estimating the effect
+of {C}alifornia's tobacco control program.
+\newblock \emph{Journal of the American Statistical Association}, 105(490):493--505, 2010.
+\newblock \href{https://doi.org/10.1198/jasa.2009.ap08746}{\texttt{doi:10.1198/jasa.2009.ap08746}}.
+
 
 \bibitem{brodie2009}
 J.~Brodie, I.~Daubechies, C.~De~Mol, D.~Giannone, and I.~Loris.
@@ -891,6 +995,12 @@ M.~Noguera-Julian, M.~Rocafort, Y.~Guill\'en, et al.
 \newblock \emph{EBioMedicine}, 5:135--146, 2016.
 \newblock \href{https://doi.org/10.1016/j.ebiom.2016.01.032}{\texttt{doi:10.1016/j.ebiom.2016.01.032}}.
 
+
+\bibitem{okabe2008}
+M.~Okabe and K.~Ito.
+\newblock Color universal design ({CUD}): how to make figures and presentations that
+are friendly to colorblind people.
+\newblock 2008. \url{https://jfly.uni-koeln.de/color/}.
 
 \bibitem{osborne2000}
 M.~R. Osborne, B.~Presnell, and B.~A. Turlach.

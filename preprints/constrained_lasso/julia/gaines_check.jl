@@ -174,6 +174,7 @@ function main()
         "gaProblems" => words(length(shipped)),
         "gaStarted" => sci(maximum(started[n] for n in exact)),  # from the exact first knot
         "gaStartedCount" => words(length(exact)),
+        "gaStartedNames" => join(exact, ", ", " and "),  # which problems those are
         "gaWide" => sci(maximum(started[n] for n in wide)),
     ]
     open(joinpath(FIGURES, "gaines.tex"), "w") do io
