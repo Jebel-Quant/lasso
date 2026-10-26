@@ -78,7 +78,9 @@ def cla(mu, S, lo, up, tol=1e-9):
         F[k], last = not F[k], k
         path.append((lam, w.copy()))
 \end{lstlisting}
-\caption{A complete CLA for box bounds and one budget row, written with the KKT conditions.}
+\caption{A complete CLA for box bounds and one budget row, written with the KKT conditions.
+A runnable copy that checks it against \pkg{cvxcla} is at
+\url{https://gist.github.com/tschm/a622ba482795b4a9fc452c64e1024982}.}
 \label{fig:kktcla}
 \end{figure}
 
