@@ -65,7 +65,9 @@ download is seeded and runs offline.
 
 The note gives costs as ratios (a grid of interior-point solves against one path),
 because the seconds depend on the machine and the ratios do not; `timings` measures
-them and is the only part whose results the script does not write into the text.
+them and is the only part whose results the script does not write into the text. It
+runs each step once to warm up, then 11 times, and prints the ratio of the medians with
+the range of the ratio over the paired runs.
 Residuals near rounding differ in their last digits on another CPU or BLAS build, so the
 tests check them against tolerances between 1e-12 and 1e-10.
 
@@ -87,9 +89,12 @@ of the gut microbiome in HIV infection (Noguera-Julian et al., 2016), with the
 inflammation marker sCD14 as the response, as distributed with the R package
 [coda4microbiome](https://cran.r-project.org/package=coda4microbiome) 0.2.4 (MIT
 licence). They are not ours and are not committed. `uv run python/fetch_scd14.py`
-downloads the package's source tarball from CRAN, checks its SHA-256, and writes
-`data/scd14.csv`, which git ignores. The script refuses a tarball with another digest
-and does nothing when the file is already there. It carries the line
+downloads the package's source tarball from CRAN (`src/contrib`, then the CRAN archive),
+or, should CRAN drop it, from the Posit Package Manager snapshot of 2026-09-01. It checks
+the tarball's SHA-256 against that source's digest and the SHA-256 of `data/sCD14.rda`
+inside it, which is the same in every source, and writes `data/scd14.csv`, which git
+ignores. The script refuses any other digest and does nothing when the file is already
+there. It carries the line
 `# fetch: on build`, so `make figures` runs it first, here and in CI. Without the file,
 `make_figures.py` skips the real data and its test, but the note needs them. SHA-256 of
 `data/scd14.csv`:
@@ -99,4 +104,8 @@ and does nothing when the file is already there. It carries the line
 ```
 
 **Simulated problems.** Every other problem of Tables 2 to 5 is simulated inside
-`python/make_figures.py` from fixed seeds, so it needs no data.
+`python/make_figures.py` from seeds recorded there (`SEED`, `SCALE_SEEDS`,
+`STRESS_SEEDS`): seed 7 for Table 2, seeds 7 to 9 for Table 3, seeds 7 to 16 for Tables
+4 and 5. On one machine the knot counts, the declined problems and the certificate
+outcomes reproduce exactly (`test_deterministic` runs Tables 3 and 4 twice to check);
+only residuals near rounding move, in their last digits.

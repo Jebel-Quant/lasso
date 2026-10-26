@@ -13,9 +13,10 @@
 The data are 16S counts of 60 genera in 151 stool samples from an HIV study
 (Noguera-Julian et al., 2016), with the inflammation marker sCD14 measured in each
 sample. They ship with the R package coda4microbiome (MIT licence) as ``x_sCD14`` and
-``y_sCD14``. This script downloads that package's source tarball from CRAN, checks its
-SHA-256, reads ``data/sCD14.rda`` from it without unpacking anything to disk, and writes
-the counts and the response to ``data/scd14.csv``, one row per sample.
+``y_sCD14``. This script downloads that package's source tarball from CRAN, or from a
+dated mirror should CRAN drop it, checks its SHA-256 and that of ``data/sCD14.rda``
+inside it, reads that file without unpacking anything to disk, and writes the counts
+and the response to ``data/scd14.csv``, one row per sample.
 
 The data are not the authors' of this note, so git ignores the file, and `make data`
 fetches it on every build, in CI too (the line ``# fetch: on build`` above opts in). CRAN
@@ -43,24 +44,35 @@ import rdata
 import requests
 
 TARBALL = "coda4microbiome_0.2.4.tar.gz"
-# The current release sits in src/contrib, and moves to the archive once a newer one is out.
-URLS = [
-    f"https://cran.r-project.org/src/contrib/{TARBALL}",
-    f"https://cran.r-project.org/src/contrib/Archive/coda4microbiome/{TARBALL}",
-]
-TARBALL_SHA256 = "8125320e1da29ed5c937e2da2ad2a48bfc14e3416499fa585eb1e86b21dd54bf"
+CRAN_SHA256 = "8125320e1da29ed5c937e2da2ad2a48bfc14e3416499fa585eb1e86b21dd54bf"
+# Each source with the SHA-256 of its tarball, tried in turn. On CRAN the current release
+# sits in src/contrib and moves to the archive once a newer one is out. Should CRAN drop
+# it, a dated snapshot of Posit Package Manager keeps it; Posit repacks the tarball, so
+# its digest differs, but the data file inside is byte for byte CRAN's (MEMBER_SHA256).
+SOURCES = {
+    f"https://cran.r-project.org/src/contrib/{TARBALL}": CRAN_SHA256,
+    f"https://cran.r-project.org/src/contrib/Archive/coda4microbiome/{TARBALL}": CRAN_SHA256,
+    f"https://packagemanager.posit.co/cran/2026-09-01/src/contrib/{TARBALL}":
+        "53f5bd4b35513dce5a71323fba065628652f754e3ec3882b90dd939a69583766",
+}
 MEMBER = "coda4microbiome/data/sCD14.rda"
+MEMBER_SHA256 = "0334b8324313cd964a393245cfa002c558caab4e0efec2e906e1c3f92cff76af"
 OUT = Path(__file__).resolve().parent.parent / "data" / "scd14.csv"
 OUT_SHA256 = "3c6dcd6c18e10ea6f09bdd34329df3a8ce0a11dccd8026bf6c9a71f3c086d0da"
 
 
 def download() -> bytes:
-    """The package tarball, from whichever CRAN location still has it."""
-    for url in URLS:
+    """The package tarball, from the first source that still has it, checked against that source's digest."""
+    for url, expected in SOURCES.items():
         resp = requests.get(url, timeout=60)
-        if resp.ok:
-            return resp.content
-    msg = f"{TARBALL} found at none of {URLS}"
+        if not resp.ok:
+            continue
+        digest = hashlib.sha256(resp.content).hexdigest()
+        if digest != expected:
+            msg = f"{url} has SHA-256 {digest}, expected {expected}"
+            raise RuntimeError(msg)
+        return resp.content
+    msg = f"{TARBALL} found at none of {list(SOURCES)}"
     raise RuntimeError(msg)
 
 
@@ -69,15 +81,14 @@ def main() -> None:
     if OUT.exists() and hashlib.sha256(OUT.read_bytes()).hexdigest() == OUT_SHA256:
         print(f"{OUT} is already the note's snapshot")
         return
-    blob = download()
-    digest = hashlib.sha256(blob).hexdigest()
-    if digest != TARBALL_SHA256:
-        msg = f"{TARBALL} has SHA-256 {digest}, expected {TARBALL_SHA256}"
-        raise RuntimeError(msg)
-    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
+    with tarfile.open(fileobj=io.BytesIO(download()), mode="r:gz") as archive:
         member = archive.extractfile(MEMBER)
         assert member is not None, MEMBER
-        data = rdata.conversion.convert(rdata.parser.parse_data(member.read()))
+        raw = member.read()
+    if hashlib.sha256(raw).hexdigest() != MEMBER_SHA256:
+        msg = f"{MEMBER} is not the note's snapshot"
+        raise RuntimeError(msg)
+    data = rdata.conversion.convert(rdata.parser.parse_data(raw))
 
     counts = data["x_sCD14"]
     frame = pd.DataFrame(np.asarray(counts, dtype=np.int64),
