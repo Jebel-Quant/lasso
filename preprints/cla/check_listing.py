@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "cvxcla==2.7.0",
+#     "cvxcla==2.7.1",
 #     "numpy==2.4.6",
 # ]
 # ///
