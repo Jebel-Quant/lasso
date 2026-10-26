@@ -169,7 +169,12 @@ The layer is two encodings, Propositions~\ref{prop:penalty} and~\ref{prop:budget
 the LASSO; that paper supplies the general identity of which they are instances. The
 checks also exposed two defects in the CLA that refused ordinary portfolio problems too,
 a tie for the largest expected return and a covariance of low rank. Both were fixed in
-\texttt{cvxcla} 2.6.0 \cite{cvxcla}; the release used here is 2.7.0. Brodie et al.\ \cite{brodie2009} put an
+\texttt{cvxcla} 2.6.0 \cite{cvxcla}. Drawing the hostile problems of
+Section~\ref{sec:hostile} over more seeds exposed three more, on a design whose columns
+are nearly collinear: two in the check that a bound held along a segment is still
+optimal, which refused a correct path, and one in the plain LASSO homotopy, which lost
+the second of two events at the same $\lambda$. All three were fixed in 2.7.1, the
+release used here. Brodie et al.\ \cite{brodie2009} put an
 $\ell_1$ penalty on Markowitz portfolios to make them sparse, and a companion note
 \cite{lassonote} computes efficient frontiers with a LASSO solver. Both use regression
 to build portfolios. This note goes the other way. Section~\ref{sec:cla} recalls the
@@ -462,7 +467,7 @@ tight at $\beta=0$.
 \texttt{cvxcla} resolves both by relaxation, an implementation device rather than part
 of the method. It traces the problem twice, with the homogeneous rows relaxed to
 $h_r=\varepsilon$ and $2\varepsilon$ and a zero sum to $A\beta=\varepsilon Ad$ and
-$2\varepsilon Ad$ for a generic feasible point $d$. In release 2.7.0, $\varepsilon$ is
+$2\varepsilon Ad$ for a generic feasible point $d$. In release 2.7.1, $\varepsilon$ is
 $10^{-6}$ times the scale $\|c\|_\infty/\max_jG_{jj}$ of a coefficient, then $10^{-7}$ and
 $10^{-8}$ times it if needed. Both runs start nondegenerate. The relaxation enters only the right-hand side of
 \eqref{eq:border}, so where the two runs pass through the same active sets their knots
@@ -510,7 +515,7 @@ and return the path only if it passes the certificate.
 \item Between two knots $\beta$ is affine in $\lambda$, so any other point on the path is
 an interpolation.
 \end{enumerate}
-\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.7.0)
+\texttt{cvxcla.Lasso(X, y, a=A, b=b, g=C, h=h, lower=l, upper=u)} (release 2.7.1)
 carries out steps~1--5 and returns the knots. With no constraint at all it traces the
 plain LASSO by a homotopy instead.
 \end{minipage}}
@@ -576,7 +581,7 @@ demonstration; no biological inference is drawn.}
 \label{fig:real}
 \end{figure}
 
-Every path comes from \texttt{cvxcla.Lasso} 2.7.0. The bounds are passed even where
+Every path comes from \texttt{cvxcla.Lasso} 2.7.1. The bounds are passed even where
 they are infinite, so that the CLA computes it. Where LARS applies it is the reference,
 compared knot by knot in both $\lambda$ and $\beta$. Elsewhere the reference is an
 interior-point solve (Clarabel through CVXPY, tolerances $10^{-12}$) at the midpoint of
@@ -859,7 +864,7 @@ constraints trace a ridged problem that ends elsewhere.
 The software is in \texttt{preprints/constrained\_lasso/} of
 \url{https://github.com/Jebel-Quant/lasso}, under the MIT licence. Each script has a
 lockfile that fixes Python 3.12 and every package by version and hash.
-\texttt{python/make\_figures.py} computes every path with \texttt{cvxcla.Lasso} 2.7.0
+\texttt{python/make\_figures.py} computes every path with \texttt{cvxcla.Lasso} 2.7.1
 \cite{cvxcla}, runs every check, and writes every figure, table and number the text
 quotes. \texttt{python/classo\_check.py} runs \texttt{c-lasso} 1.0.11.
 \texttt{R/comlasso\_check.R} runs comlasso 0.2 under R~4.6.1, locally and in CI. The

@@ -3,7 +3,7 @@
 The LaTeX source of the note *The Constrained LASSO is a Portfolio* (Schmelzer, 2026),
 and everything needed to reproduce its figures and numbers. The note computes
 constrained-LASSO paths with a stock Critical Line Algorithm, `cvxcla.Lasso` from
-[`cvxcla`](https://github.com/cvxgrp/cvxcla) 2.7.0, using the identity between the CLA
+[`cvxcla`](https://github.com/cvxgrp/cvxcla) 2.7.1, using the identity between the CLA
 and the LASSO path proved by Schmelzer and Hastie
 ([arXiv:2609.25704](https://arxiv.org/abs/2609.25704)). It runs that identity the other
 way from the LASSO-solver note in [`../lasso/`](../lasso): there a LASSO solver computes
