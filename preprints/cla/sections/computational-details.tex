@@ -1,7 +1,10 @@
 \section*{Computational details}
 \addcontentsline{toc}{section}{Computational details}
 
-The results in this paper were obtained with \pkg{cvxcla}~2.6.0 \citep{cvxcla}, whose Critical Line Algorithm is unchanged in release~2.7.0, and
+The results in this paper were obtained with \pkg{cvxcla}~2.6.0 \citep{cvxcla}. Release~2.7.1 changes its Critical Line Algorithm only
+in the check that a bound held along a segment is still optimal, for problems with no
+active rows and with a linear benchmark term, neither of which arises here; the checks
+of this paper give the same results under it. They were run with
 \proglang{Python}~3.14.6 on an Apple M4 Pro (14 cores, 48~GB of memory) under
 macOS~15.6.1. \pkg{NumPy}~2.4.6 and \pkg{SciPy}~1.17.1 were linked against Apple's
 Accelerate BLAS, and the first turning point under a general equality system is found
@@ -12,12 +15,12 @@ with the HiGHS solver through \code{scipy.optimize.linprog}. The comparisons use
 read with \pkg{pandas}~3.0.3 and \pkg{pyarrow}~24.0.0.
 
 \paragraph{Software availability.}
-\pkg{cvxcla} is released under the MIT license. Release~2.7.0, which ships the experiment script in the form used here, is
+\pkg{cvxcla} is released under the MIT license. Release~2.7.1, which ships the experiment script in the form used here, is
 archived on Zenodo \citep{cvxcla} with DOI \textbf{[TODO: the Zenodo DOI of this release]}; the source is
 developed at \url{https://github.com/cvxgrp/cvxcla}, and every source link in this paper
-points to the release tag \code{v2.7.0}. The package declares only lower bounds on its
+points to the release tag \code{v2.7.1}. The package declares only lower bounds on its
 dependencies, and its continuous integration also tests them at those bounds; the
-experiment script pins the exact versions above. The test suite, some $570$ unit and
+experiment script pins the exact versions above. The test suite, some $600$ unit and
 property-based tests (the latter with \pkg{Hypothesis}), enforces full line coverage of
 the library.
 
