@@ -28,6 +28,8 @@ julia/
   Project.toml          its environment, pinned with Manifest.toml (Julia 1.12)
   LICENSE.classopath    ConstrainedLasso.jl's MIT licence
 R/comlasso_check.R      runs comlasso 0.2 on the exact zero-sum paths (Section 5.6, in CI too)
+response/
+  jrepstat-revision-1.md  the response to the referees of the Journal of Reproducible Statistics
 ```
 
 `python/make_figures.py` writes the figures to `figures/` (`example.pdf`, `path.pdf`,
