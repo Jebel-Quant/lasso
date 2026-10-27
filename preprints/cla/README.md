@@ -2,7 +2,8 @@
 
 The LaTeX source of the software paper for [`cvxcla`](https://github.com/cvxgrp/cvxcla),
 written for the *Journal of Statistical Software*, and the scripts behind its figures and
-checks. It moved here from
+checks. The preprint is on SSRN,
+[doi:10.2139/ssrn.7583179](https://doi.org/10.2139/ssrn.7583179). It moved here from
 [`Jebel-Quant/homotopy`](https://github.com/Jebel-Quant/homotopy), where its history
 before the move remains.
 
