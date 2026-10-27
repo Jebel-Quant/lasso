@@ -554,6 +554,8 @@ def wide_numbers(rows: list[StressRow]) -> str:
         "wdKKT": sci(max(r.kkt for r in rows)),
         "wdGap": sci(max(r.gap for r in rows)),
         "wdIpmBetter": sci(max(0.0, -min(r.ref_excess for r in rows))),
+        # these two bounds depend on the CPU (Section 5.5), so the text names the one that wrote them
+        "wdMachine": r"\texttt{" + platform.machine().replace("_", r"\_") + "}",
     }.items())
 
 
@@ -1461,8 +1463,8 @@ def test_stress() -> None:
     else is declined. Wide, zero-sum, which needs a singular Gram solved on the zero
     sum's null space, is traced (since cvxcla 2.6.0).
 
-    Against LARS, two exact paths can part by as much as the conditioning allows,
-    cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
+    Against LARS, two exact paths can part by as much as the conditioning allows, of the
+    order of cond(X)^2 times the machine epsilon, and both meet the optimality conditions to
     rounding. Against the interior-point solver, the solver's objective is never better
     than the path's by more than its tolerance, so a gap there is the solver's.
     """
@@ -1477,7 +1479,8 @@ def test_stress() -> None:
         # Wide, zero-sum has cond(X) near 1e16, and its residuals reach about 1e-11.
         assert r.kkt < 1e-10, r
         if r.reference == "LARS":
-            assert r.gap < r.cond**2 * np.finfo(float).eps, r
+            # cond(X)^2 eps is the scale of the gap, not a bound: on aarch64 Linux, Duplicate 1e-04 is 1.6 times it
+            assert r.gap < 10 * r.cond**2 * np.finfo(float).eps, r
             assert r.ref_kkt < 1e-12, r
         else:
             assert r.ref_excess > -1e-12, r  # the solver beats the path by no more than its tolerance
@@ -1496,12 +1499,16 @@ def test_wide() -> None:
     The residuals are looser too. At the end of a path with p > n, near lambda = 1e-4
     lambda_max, the fit almost interpolates and cond(X) is near 1e16, and on one seed of
     Zero-sum, signs the residual there reaches 1e-9. Everywhere else it stays at rounding.
+
+    Both bounds depend on the CPU at that one end of a path. On x86_64 and Apple silicon
+    the solver's objective is lower by at most about 1e-11, relative, on aarch64 Linux by
+    1.1e-10, and the residual reaches 1.3e-9 and 1.5e-9; the tolerances allow for all three.
     """
     rows = stress(wide_problems)
     for r in rows:
         assert r.declined == 0, r
         assert r.kkt < 1e-8, r
-        assert r.ref_excess > -1e-11, r
+        assert r.ref_excess > -1e-9, r
     for seed in STRESS_SEEDS:
         prob = wide_problems(seed)["inequality rows"][0]
         end = trace(prob).beta[-1]
