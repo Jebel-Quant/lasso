@@ -694,9 +694,10 @@ spread, so that two columns nearly coincide; it is run alone and under the cap o
 Every path that is traced meets the optimality conditions to \stKKT{} or better. The
 gaps to the references grow with the conditioning. Against LARS the gap is of the order
 of $\operatorname{cond}(X)^2$ times the machine epsilon, the size a perturbation of
-rounding size can move the solution of a least-squares problem, and on
-\emph{Duplicate} the CPU decides on which side of it the gap falls: on \texttt{aarch64}
-Linux it is $3.7\times10^{-7}$, 1.6 times that size. LARS's own KKT residual is at most
+rounding size can move the solution of a least-squares problem. On \emph{Duplicate} the
+CPU decides on which side of it the gap falls: against $2.3\times10^{-7}$, it is
+$1.7\times10^{-7}$ on Apple silicon, $2.4\times10^{-7}$ on \texttt{x86\_64} and
+$3.7\times10^{-7}$ on \texttt{aarch64} Linux. LARS's own KKT residual is at most
 \stLarsKKT{}: both paths are right. The same reading covers a minimiser that is
 not unique. LARS and the CLA may then trace different paths of minimisers, and a gap
 between them is no defect as long as both meet the optimality conditions; the
