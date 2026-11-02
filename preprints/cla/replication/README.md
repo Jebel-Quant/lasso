@@ -9,6 +9,7 @@ external timing baseline that the paper does not report and with one step added,
 ```
 make_figures.py                 every figure and every numerical check
 make_figures.py.lock            the script's locked environment
+custom_backend.py               the complete block-diagonal backend of Section 5.2
 data/sp500_pct_returns.parquet  the frozen S&P 500 daily returns used by the data-driven steps
 ```
 
@@ -24,6 +25,7 @@ into an isolated environment:
 uv run make_figures.py all            # every figure and every check, writes figures/
 uv run make_figures.py all --quick    # the same, without the two slow scaling sweeps
 uv run make_figures.py frontier       # one figure; run with no argument for the list
+uv run custom_backend.py              # the backend of Section 5.2 against the dense matrix
 ```
 
 Inputs are drawn from fixed seeds and the returns are committed, so after the packages

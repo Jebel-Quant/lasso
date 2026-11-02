@@ -89,8 +89,10 @@ of $O(n_\F^3)$ each, $O(n^4)$ operations, while the per-step cost of the factor 
 $O(n^2 K)$ in total. At small $n$ a step's fixed overhead hides both rates, and the two backends are at
 parity up to $n\approx 80$. Over the largest four sizes ($320$ to $2560$) the fitted
 exponents are $\approx 2.9$ for the dense backend and $\approx 1.4$ for the factor
-backend (Figure~\ref{fig:scaling}), below the operation counts because per-step
-overhead has not yet given way entirely to arithmetic. The factor backend is about $3.5\times$
+backend (Figure~\ref{fig:scaling}), below the operation counts. These sizes are not
+yet asymptotic: per-step \proglang{Python} overhead weighs on the small traces, and the
+dense factorizations reach the BLAS's peak rate only on large free blocks, so the local
+exponent of the dense backend still rises, to about $3.2$ over the last doubling. The factor backend is about $3.5\times$
 faster at $n=640$, $10\times$ at $1280$ and $34\times$ at $n=2560$, where it traces the
 $2561$ turning points in about $1.2$~s against $40$~s
 (Figure~\ref{fig:scaling}).

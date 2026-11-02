@@ -105,26 +105,16 @@ discretization error.
 \code{max\_sharpe} maximizes $\mu\trans w/\sqrt{w\trans\Sig w}$, the Sharpe ratio with a
 zero risk-free rate (supply excess returns as $\mu$ otherwise), over the computed
 frontier. On a segment $w(t) = (1-t)\,w_0 + t\,w_1$, $t \in [0,1]$, the return is affine
-and the variance quadratic in $t$,
-\begin{equation}
-S(t) = \frac{a_0 + a_1 t}{\sqrt{c_0 + c_1 t + c_2 t^2}}, \qquad
-\begin{aligned}
-a_0 &= \mu\trans w_0, & c_0 &= w_0\trans\Sig w_0, & c_2 &= \Delta\trans\Sig\Delta,\\
-a_1 &= \mu\trans\Delta, & c_1 &= 2\,w_0\trans\Sig\Delta, & \Delta &= w_1 - w_0,
-\end{aligned}
-\end{equation}
-and the numerator of $S'(t)$ is affine in $t$ (its $t^2$ terms cancel), so $S$ has at
-most one stationary point,
+and the variance quadratic in $t$, so the Sharpe ratio $S(t)$ has at most one stationary
+point,
 \begin{equation}\label{eq:tstar}
-t^\star = \frac{a_0 c_1 - 2 a_1 c_0}{a_1 c_1 - 2 a_0 c_2}.
+t^\star = \frac{a_0 c_1 - 2 a_1 c_0}{a_1 c_1 - 2 a_0 c_2},
 \end{equation}
-The maximum on the segment is the largest of $S(0)$, $S(1)$ and, when
-$0 < t^\star < 1$, $S(t^\star)$; a stationary point outside the segment is ignored, an
-optimum at a turning point is found as an end point, and when $a_1 c_1 = 2 a_0 c_2$ there
-is no stationary point and only the end points are compared. The code applies this
-rule to every segment of the frontier and returns the best candidate, so the result is
-the exact maximum over the computed frontier, without relying on the ratio being
-unimodal, at the cost of one matrix--vector product with $\Sig$ per segment.
+with $a_0 = \mu\trans w_0$, $a_1 = \mu\trans(w_1 - w_0)$ and $c_0 + c_1 t + c_2 t^2$ the
+variance along the segment. The code compares $S(0)$, $S(1)$ and, when
+$0 < t^\star < 1$, $S(t^\star)$ on every segment and returns the best, the exact maximum
+over the computed frontier, without assuming the ratio is unimodal, at the cost of one
+matrix--vector product with $\Sig$ per segment.
 
 Points of zero variance are skipped (\code{sharpe\_ratio} reports NaN there); with no
 positive variance \code{max\_sharpe} raises a \code{ValueError}, and with no positive

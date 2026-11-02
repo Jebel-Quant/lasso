@@ -30,7 +30,7 @@ jss: $(MAIN).pdf $(ARXIV_TARBALL)
 	cp -R $(ARXIV_SRC) $(JSS_DIR)/source
 	curl -fsSL -o $(JSS_DIR)/$(SDIST) $(SDIST_URL)
 	echo "$(SDIST_SHA)  $(JSS_DIR)/$(SDIST)" | shasum -a 256 -c -
-	cp make_figures.py make_figures.py.lock replication/README.md $(JSS_DIR)/replication/
+	cp make_figures.py make_figures.py.lock replication/README.md replication/custom_backend.py replication/custom_backend.py.lock $(JSS_DIR)/replication/
 	cp figures/data/sp500_pct_returns.parquet $(JSS_DIR)/replication/data/
 	cd $(JSS_DIR) && zip -qr ../$(JSS_ZIP) .
 	unzip -l $(JSS_ZIP)

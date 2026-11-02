@@ -101,13 +101,16 @@ $K$ is the number of directions kept. An indefinite $\Delta$ is refused: a signe
 low-rank term can still give a positive-definite $\Sig$, but $W$ would then be
 indefinite, so such a covariance is passed as a dense matrix. Since $d > 0$, $W$ is
 positive definite, and the factor solve needs no guard of its own beyond the one on
-$\Sig_{\F\F}$. Against the dense trace of the same $\Sig$, the factor trace has the same
-turning points and weights equal to $1.0\times10^{-12}$, with KKT residuals of at most
-$1.0\times10^{-13}$, for $\Delta$ with condition numbers up to $10^{14}$, loadings
+$\Sig_{\F\F}$.
+
+The factor backend was tested against the dense trace of the same $\Sig$ on
+ill-conditioned models: $\Delta$ with condition numbers up to $10^{14}$, loadings
 collinear to within $10^{-10}$, and the full rank $K = n = 120$
-(\target{validate-factor}). Every active constraint row adds a column to the solve and a
-row to the Schur complement, so with many active rows that term dominates the cost. A low-rank \emph{approximation} of a sample covariance traces the frontier of
-the approximation, which is a different frontier (Section~\ref{sec:estimators}).
+(\target{validate-factor}). It finds the same turning points, with weights equal to
+$1.0\times10^{-12}$ and KKT residuals of at most $1.0\times10^{-13}$. A low-rank
+\emph{approximation} of a sample covariance is a different matter: it traces the
+frontier of the approximation, which is a different frontier
+(Section~\ref{sec:estimators}).
 
 \paragraph{Data matrix (Gram).}
 \label{sec:gram}
@@ -147,23 +150,24 @@ A backend is a subclass of \code{QuadraticForm} that implements the five members
 Table~\ref{tab:protocol}. For a block-diagonal covariance, assets in groups with no
 cross-group covariance (a structure the package does not ship), the free-block solve
 splits into one Cholesky solve per block. The two members that carry the structure are
-below; \code{n}, \code{matvec} and \code{block\_matvec} are a few lines each, and the
-complete, runnable class is in the package documentation
+below; \code{n}, \code{matvec} and \code{block\_matvec} are a few lines each. The
+complete class, with the check below, is \code{custom\_backend.py} in the replication
+materials and is also in the package documentation
 (\srcfile{docs/custom-backend.md}{docs/custom-backend.md}).
 
 \begin{CodeChunk}
 \begin{CodeInput}
-class BlockDiagonal(QuadraticForm):   # Sigma = blockdiag(S_1, ..., S_m)
+class BlockDiagonalCovariance(QuadraticForm):  # blockdiag(S_1, ..., S_m)
     def solve_free(self, free, rhs):
         out = np.empty_like(rhs, dtype=float)
         # one (positions, free sub-block) pair per group
-        for pos, sub in self._parts(free):
+        for pos, sub in self._free_blocks(free):
             out[pos] = cho_solve(cho_factor(sub), rhs[pos])
         return out
 
     def rcond_free(self, free):
         eig = np.concatenate(
-            [np.linalg.eigvalsh(sub) for _, sub in self._parts(free)]
+            [np.linalg.eigvalsh(sub) for _, sub in self._free_blocks(free)]
         )
         return eig.min() / eig.max()
 \end{CodeInput}

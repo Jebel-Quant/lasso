@@ -5,14 +5,16 @@
 A candidate turning point can be optimal to solver precision but not exactly feasible:
 round-off accumulated over hundreds of turning points can leave a free weight a hair
 outside its box. \code{CLA.\_emit} projects such a point back onto the feasible set
-before it validates it. The projection is a numerical repair: it keeps the point
-optimal to working accuracy only when the correction is small and lies in near-flat
-directions of the objective, where round-off usually sits, so we measure it below. For the plain budget with no active inequality row the projection
-onto the capped simplex is closed-form (a single shift, found by bisection, then a
-clip). Under a general $A$ or an active row of $G$
-the code alternates a box clip with the affine projection onto $\{w : C w = c\}$,
-$C = [\,A;\,G_{\Sset}\,]$, written in orthonormal rows so that its Gram matrix is the
-identity rather than $CC\trans$. It usually converges in one iteration, stops once the box is violated by at most
+before it validates it. The projection is a numerical repair. It keeps the point optimal
+to working accuracy only when the correction is small and lies in near-flat directions
+of the objective, where round-off usually sits, so we measure it below.
+
+For the plain budget with no active inequality row the projection onto the capped
+simplex is a single shift of the weights, found by bisection, followed by a clip.
+Under a general $A$ or an active row of $G$ the code alternates a box clip with the
+affine projection onto $\{w : C w = c\}$, $C = [\,A;\,G_{\Sset}\,]$, written in
+orthonormal rows so that its Gram matrix is the identity rather than $CC\trans$. It
+usually converges in one iteration. It stops once the box is violated by at most
 $10^{-12}$, and raises a \code{ProjectionError} if $100$ iterations do not get there.
 
 The measurements of \target{validate-projection} support this for the problems tested.

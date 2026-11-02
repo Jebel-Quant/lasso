@@ -5,10 +5,13 @@
 A partition (free set, blocked bounds, active rows $\Sset$) is valid at $\lambda$ when
 its segment respects the bounds and the inactive rows and its multipliers have the right
 signs. Each of these conditions is affine in $\lambda$. An event fires at
-$\lambda^{\star}$ because one of them is zero there with a slope that violates it below
-$\lambda^{\star}$ (the slope floor makes every event a strict crossing), and an affine
-function that crosses zero stays on the wrong side, so a partition left at
-$\lambda^{\star}$ is invalid at every $\lambda < \lambda^{\star}$. Since $\lambda$ never
+$\lambda^{\star}$ only when one of them is zero there and its slope is nonzero with the
+sign that violates it below $\lambda^{\star}$ (the strict inequalities of
+Table~\ref{tab:pivots}); a condition with zero slope is constant and never fires. An
+affine function with nonzero slope that crosses zero stays on the wrong side, so a
+partition left at $\lambda^{\star}$ is invalid at every $\lambda < \lambda^{\star}$.
+In floating point the slope floor of Appendix~\ref{sec:guards} stands in for the test
+that a slope is nonzero. Since $\lambda$ never
 increases, a partition can recur only at the same $\lambda^{\star}$, within a tie.
 
 \paragraph{The direction problem at a tie.}

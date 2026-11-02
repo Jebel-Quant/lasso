@@ -179,30 +179,53 @@ Appendix~\ref{sec:proof} gives the full argument, including the correspondence b
 the event types of the code and the complementary pairs of the problem.
 \end{proof}
 
-The proposition holds in exact arithmetic and under its hypotheses; what it adds is that
-the walk never revisits a partition. Two weaker statements hold without them. Because
-$\Sig \succ 0$ the optimiser $w(\lambda)$ is unique, and for a fixed set of active
-constraints it is affine in $\lambda$ on the interval where that set is optimal; there
-are finitely many such sets, so the frontier itself has finitely many turning points
-whether or not the constraints are independent. And an iteration cap of $100(n+p+1)$
-stops every trace: a trace that reaches it raises an error and never returns a partial
-frontier, and no trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
-In exact arithmetic, then, the one thing left unproved outside the hypotheses is that
-the walk leaves every tie without revisiting a partition. This concerns a degenerate maximum-return vertex,
-resolved from a vertex of its optimal dual set, or, under tied maximum returns, from the
-minimiser of the quadratic term on the tied face (Section~\ref{sec:first}); a singular $\Sig$
-that the active rows keep positive definite on their null space, outside
-$\Sig\succ0$ (Appendix~\ref{sec:degeneracy}); the lifted problem
-of Section~\ref{sec:leverage}, whose singular covariance masks the competing leg events; and
-ties with dependent constraints, where the matrix $M$ of Appendix~\ref{sec:proof} is
-only positive semidefinite and the least-index result no longer applies (a partition
-with dependent active rows is refused, Section~\ref{sec:ineq}). Appendix~\ref{sec:degeneracy}
-lists which test families satisfy the hypotheses. In floating point the tie window and
-the slope floor make the computed signs agree with the exact ones, which is not proved
-either. At run time every turning point is validated against the bounds, $A w = b$ and
-$G w \le h$ before it is accepted, and the KKT certificate of Section~\ref{sec:exactness}
-checks the traces of Section~\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for
-optimality.
+The proposition holds in exact arithmetic and under its hypotheses.
+Table~\ref{tab:coverage} sorts the features of the package by what is proved for them.
+Two weaker statements hold more widely. Because $\Sig \succ 0$ the optimiser
+$w(\lambda)$ is unique, and for a fixed set of active constraints it is affine in
+$\lambda$ on the interval where that set is optimal; there are finitely many such sets,
+so the frontier has finitely many turning points whether or not the constraints are
+independent. And an iteration cap of $100(n+p+1)$ stops every trace. A walk in which
+every coordinate changes status once takes $n+p+1$ steps, and the cap allows a hundred
+times that; a trace that reaches it raises an error and never returns a partial
+frontier. No trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
+Outside the hypotheses, then, what is left unproved is only that the walk leaves every
+tie without revisiting a partition.
+
+\begin{table}[t]
+\centering
+\small
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\begin{tabular}{@{}L{0.34\textwidth}L{0.36\textwidth}L{0.24\textwidth}@{}}
+\toprule
+Feature & Outside the hypotheses because & What holds \\
+\midrule
+Box bounds, $Aw = b$, $Gw \le h$, $\Sig \succ 0$ & -- (if the active constraints are
+independent at every turning point) & Proposition~\ref{prop:termination} \\
+Degenerate maximum-return vertex (Section~\ref{sec:first}) & dependent active constraints
+at the start & finite frontier; cap \\
+Tied maximum returns (Section~\ref{sec:first}) & the start is resolved on a face of
+optima & finite frontier; cap \\
+Dependent constraints at a later tie & $M$ of Appendix~\ref{sec:proof} only positive
+semidefinite & finite frontier; cap \\
+Singular $\Sig$, solved on the null space (Appendix~\ref{sec:degeneracy}) & $\Sig \not\succ 0$ & cap \\
+Gross-exposure cap (Section~\ref{sec:leverage}) & the lifted covariance is singular & finite frontier in $w$; cap \\
+\bottomrule
+\end{tabular}
+\caption{What is proved for each feature. ``Finite frontier'' is the finite number of
+turning points; ``cap'' is the iteration cap, which stops every trace with an error
+rather than a partial frontier. A partition with dependent active rows is refused
+(Section~\ref{sec:ineq}).}
+\label{tab:coverage}
+\end{table}
+
+In floating point the tie window and the slope floor make the computed signs agree with
+the exact ones; that is not proved either. At run time every turning point is validated
+against the bounds, $A w = b$ and $G w \le h$ before it is accepted, and the KKT
+certificate of Section~\ref{sec:exactness} checks the traces of
+Section~\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for optimality.
+Appendix~\ref{sec:degeneracy} lists which test families satisfy the hypotheses.
 
 When no admissible event has a positive ratio the walk has reached the minimum-variance
 portfolio and appends a final turning point $w = \alpha$ at $\lambda = 0$.
