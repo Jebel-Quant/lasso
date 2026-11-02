@@ -53,10 +53,10 @@ $\min \mathbf{1}\trans x$ first and pinning every leg with a positive reduced co
 
 The maximum-return vertex can be degenerate: every weight on a bound (any inequality row on a
 long-only problem whose best asset takes the whole budget), or a duplicated tight row.
-Its partition is then read off the linear program's duals, generalising the budget rule
-of \S\ref{sec:first}. At a degenerate vertex these are not unique, and the solution the simplex
+Its partition is then read off the linear program's duals, generalizing the budget rule
+of Section~\ref{sec:first}. At a degenerate vertex these are not unique, and the solution the simplex
 reports can show too few zero reduced costs to free enough assets. For example, with
-three assets, $\mu = (3, 2, 1)$, long-only, the budget and the row $w_2 = 0$, HiGHS
+three assets, $\mu = (3, 2, 1)$, long-only, the budget and the row $w_2 = 0$, \pkg{HiGHS}
 reports duals that free only the first asset at $w = (1, 0, 0)$, whereas the equally
 optimal multipliers $1$ on both rows free the other two. The code therefore first moves
 the reported duals to a vertex of the optimal dual set, stepping along directions that
@@ -72,6 +72,6 @@ fixed at both bounds.
 Nearly dependent equality rows, such as $\mathbf{1}\trans w = 1$ and
 $(\mathbf{1} + \epsilon v)\trans w = 1$, which encode $v\trans w = 0$ only at scale
 $\epsilon$, would be enforced by the linear program only to its tolerance divided by
-$\epsilon$. When the row-normalised equality matrix has a reciprocal condition number
-below $10^{-6}$ they are handed to HiGHS in orthonormal rows, $Q\trans w = R^{-\mathsf{T}}
+$\epsilon$. When the row-normalized equality matrix has a reciprocal condition number
+below $10^{-6}$ they are handed to \pkg{HiGHS} in orthonormal rows, $Q\trans w = R^{-\mathsf{T}}
 b$ with $A\trans = QR$.

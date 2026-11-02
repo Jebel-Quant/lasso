@@ -17,7 +17,7 @@ $10^{-12}$, and raises a \code{ProjectionError} if $100$ iterations do not get t
 
 The measurements of \target{validate-projection} support this for the problems tested.
 On the rank-deficiency sweep of Figure~\ref{fig:degeneracy} and the S\&P 500 windows of
-\S\ref{sec:estimators}, the projection changes between none and four turning points per
+Section~\ref{sec:estimators}, the projection changes between none and four turning points per
 trace; the largest weight correction is $9.3\times10^{-15}$, the largest relative change
 of the objective $8.7\times10^{-19}$, and every projected point satisfies the box and the
 budget to $2.2\times10^{-16}$. The KKT certificate (Table~\ref{tab:kkt}) bounds every
@@ -39,7 +39,7 @@ singular too, since projecting its output could silently yield a suboptimal fron
 Releases up to 2.5.0 declined as soon as $\Sig_{\F\F}$ was singular, which refused the
 frontier of a sample covariance from fewer observations than assets whenever its free
 set outgrew the data rank (\target{degeneracy}). Singular constraint rows, at the first vertex or later in the
-trace, are declined in the same way (\S\ref{sec:first}, \S\ref{sec:ineq}).
+trace, are declined in the same way (Section~\ref{sec:first}, Section~\ref{sec:ineq}).
 
 \begin{figure}[t]
 \centering
@@ -77,7 +77,7 @@ where the KKT conditions only weakly determine the weights along directions of t
 variance. None of the $192$ reference solves failed.
 
 \paragraph{Event ties.}
-Ties are handled by the least-index rule of \S\ref{sec:bland}. Across four deliberately
+Ties are handled by the least-index rule of Section~\ref{sec:bland}. Across four deliberately
 degenerate families of $32$ instances each ($n$ up to $240$; \target{tie-degeneracy}),
 a trace counts only if it is optimal: every turning point must pass the KKT certificate
 of Table~\ref{tab:kkt} to $10^{-8}$, so a frontier that ends but is wrong is reported
@@ -98,7 +98,7 @@ tied-means and all $32$ exchangeable traces of 2.3.3 fail the certificate, and o
 tied-means family with $n\le120$ their objective exceeds that of an interior-point
 solve by up to a factor of $26$. Both families share
 the largest expected return between several assets, and 2.3.3 started such a frontier
-at an arbitrary vertex of the tied face (\S\ref{sec:first}). The group-cap family was
+at an arbitrary vertex of the tied face (Section~\ref{sec:first}). The group-cap family was
 right, and $30$ of the $32$ overlapping-cap traces were, the other two declined.
 
 The tied-means and group-cap families, the full-rank windows of
@@ -106,7 +106,7 @@ Figure~\ref{fig:degeneracy} and both conditioning families satisfy the hypothese
 Proposition~\ref{prop:termination} at every turning point, so for them termination is
 the theorem. The others do not. In the exchangeable family all $1751$ tied turning
 points satisfy the hypotheses. The overlapping-cap traces pass $2637$ ties, all with
-dependent constraints, so for them only the weaker guarantees of \S\ref{sec:bland} hold.
+dependent constraints, so for them only the weaker guarantees of Section~\ref{sec:bland} hold.
 The nine rank-deficient windows of Figure~\ref{fig:degeneracy} have a singular $\Sig$,
 outside $\Sig\succ0$; all nine complete, the five with $T\le 60$ by solving on the
 budget's null space. No trace used more than $1.5\%$ of the iteration cap

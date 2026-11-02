@@ -18,3 +18,6 @@ figures/
 /*/*.zip
 arxiv-src/
 arxiv-build/
+
+# the JSS submission tree that make jss builds (cla/)
+jss-submission/

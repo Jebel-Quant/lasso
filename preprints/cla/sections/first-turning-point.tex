@@ -16,7 +16,7 @@ from the outset, a case the review of \citet{markowitz2021} does not address.
 For a general equality system (weighted rows, or $m > 1$ rows such as sector or factor
 neutrality) or any $G$, the maximum-return vertex is the linear program
 $\max_w \mu\trans w$ subject to the constraints, which \pkg{cvxcla} solves with the
-HiGHS simplex through \code{scipy.optimize.linprog}; the free set is read off as the
+\pkg{HiGHS} simplex through \code{scipy.optimize.linprog}; the free set is read off as the
 assets strictly inside their bounds. Only this first step differs; the loop that
 follows is written for a general $A$ throughout.
 
@@ -39,4 +39,4 @@ row. Its partition is then read from a vertex of the linear program's optimal du
 which keeps it dual feasible and starts the first segment at the vertex itself
 (Appendix~\ref{sec:vertexdetail}). Redundant equality rows, a repeated budget say, are
 dropped before the trace starts; a vertex is refused with a \code{DegenerateProblemError}
-(\S\ref{sec:errors}) only when its optimal dual set has no vertex.
+(Section~\ref{sec:errors}) only when its optimal dual set has no vertex.

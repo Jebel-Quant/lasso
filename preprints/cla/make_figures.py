@@ -8,7 +8,6 @@
 #     "osqp==1.1.3",
 #     "pandas==3.0.3",
 #     "pyarrow==24.0.0",
-#     "pyportfolioopt==1.6.0",
 #     "scikit-learn==1.9.0",
 #     "scipy==1.17.1",
 #     "typer==0.26.7",
@@ -60,8 +59,8 @@ Targets (artefact in parentheses):
 
 Beyond ``cvxcla`` itself the steps need a few third-party packages: ``matplotlib`` (all
 figures), ``pandas``/``pyarrow`` (the S&P 500 data), ``osqp`` (the reference QP and the
-warm-started grid baseline), ``PyPortfolioOpt`` and ``casadi`` (the external baselines
-in ``scaling``; ``casadi`` ships the qpOASES parametric QP solver), ``scipy`` (sparse
+warm-started grid baseline), ``casadi`` (the qpOASES parametric QP solver, an external
+baseline in ``scaling``), ``scipy`` (sparse
 matrices), and ``scikit-learn`` (the Ledoit--Wolf estimate). All are pinned in this
 script's inline (PEP 723) metadata, so ``uv run`` provisions them automatically. A step
 whose optional dependency is missing, or which raises, is reported and skipped rather
@@ -380,8 +379,8 @@ def figure_frontier(out_dir: Path) -> None:
 # Figure: scaling (from runtime_scaling.py)  ->  scaling.pdf  (SLOW)
 # ======================================================================================
 _SCALE_SIZES = [20, 40, 80, 160, 320, 640, 1280, 2560]
-# The external baselines are timed only up to here: PyPortfolioOpt already takes
-# minutes at n=640, and both grow like n^3 or faster.
+# The OSQP grid baseline is timed only up to here: it already takes most of a minute
+# at n=640, and grows like n^3 or faster.
 _SCALE_BASELINE_MAX_N = 640
 # The second, small-problem figure (scaling_small.pdf) shows the sizes up to here.
 _SCALE_SMALL_MAX_N = 320
@@ -448,29 +447,6 @@ def _scale_median_trace_inverse(dense: np.ndarray, problem: dict) -> tuple[int, 
         cla = CLA(covariance=covariance, **problem)
         times.append(time.perf_counter() - start)
     return (len(cla), *_scale_stats(times))
-
-
-def _scale_pypfopt_trace(dense: np.ndarray, mean: np.ndarray) -> tuple[int, float, float, float] | None:
-    """Time PyPortfolioOpt's CLA (Bailey & Lopez de Prado) if installed.
-
-    Timed over REPEATS repetitions with the same protocol as the other
-    implementations (median of REPEATS), so the comparison is apples-to-apples.
-    Returns (turning points, median, min, max) seconds or None when PyPortfolioOpt
-    is absent.
-    """
-    try:
-        from pypfopt.cla import CLA as PYPFOPT_CLA
-    except ImportError:
-        return None
-    times = []
-    n_pts = 0
-    for _ in range(_SCALE_REPEATS):
-        start = time.perf_counter()
-        ppo = PYPFOPT_CLA(mean, dense, weight_bounds=(0, 1))
-        ppo._solve()  # compute the full critical line (all turning points)
-        times.append(time.perf_counter() - start)
-        n_pts = len(ppo.w)
-    return (n_pts, *_scale_stats(times))
 
 
 def _scale_qpoases_path(dense: np.ndarray, problem: dict) -> tuple[int, float, float, float, float] | None:
@@ -563,8 +539,6 @@ def _scale_measure(method: str, n: int) -> object:
         return _scale_median_trace(factor, problem)
     if method == "inverse":
         return _scale_median_trace_inverse(dense, problem)
-    if method == "pypfopt":
-        return _scale_pypfopt_trace(dense, problem["mean"])
     if method == "osqp":
         return _scale_osqp_grid(dense, problem)
     if method == "qpoases":
@@ -582,7 +556,7 @@ def _scale_measure(method: str, n: int) -> object:
 def _scale_fresh(method: str, n: int) -> object:
     """Time one method in its own freshly spawned interpreter.
 
-    Run in one process, the external baselines (PyPortfolioOpt, OSQP) leave the
+    Run in one process, the external baselines (OSQP, qpOASES) leave the
     interpreter in a state that slows the cvxcla timings taken after them: the dense
     trace at n=640 took 1.16 s inside the sweep against 0.62 s alone. A fresh process
     per (method, n) keeps every measurement independent of what ran before it.
@@ -596,8 +570,8 @@ def _scale_fresh(method: str, n: int) -> object:
 
 def figure_scaling(out_dir: Path) -> None:
     """Run the scaling sweep, print a table, and write the figure."""
-    ns, dense_times, factor_times, ppo_times, inv_times, clar_times, points = [], [], [], [], [], [], []
-    dense_band, factor_band, ppo_band, inv_band, clar_band = [], [], [], [], []
+    ns, dense_times, factor_times, inv_times, clar_times, points = [], [], [], [], [], []
+    dense_band, factor_band, inv_band, clar_band = [], [], [], []
     qpo_times, qpo_band = [], []
     memory = []
     for n in _SCALE_SIZES:
@@ -614,7 +588,6 @@ def figure_scaling(out_dir: Path) -> None:
             print(f"  [note] incremental backend disagrees at n={n}: {inv[0]} vs {n_pts}; skipping its point")
             inv = None
         baselines = n <= _SCALE_BASELINE_MAX_N
-        ppo = _scale_fresh("pypfopt", n) if baselines else None
         clar = _scale_fresh("osqp", n) if baselines else None
         qpo = _scale_fresh("qpoases", n) if n <= _SCALE_QPOASES_MAX_N else None
         free_max, free_med = _scale_fresh("free", n)
@@ -623,18 +596,15 @@ def figure_scaling(out_dir: Path) -> None:
         points.append(n_pts)
         dense_times.append(t_dense)
         factor_times.append(t_factor)
-        ppo_times.append(ppo[1] if ppo else None)
         inv_times.append(inv[1] if inv else None)
         clar_times.append(clar[1] if clar else None)
         dense_band.append((d_lo, d_hi))
         factor_band.append((f_lo, f_hi))
-        ppo_band.append((ppo[2], ppo[3]) if ppo else None)
         inv_band.append((inv[2], inv[3]) if inv else None)
         clar_band.append((clar[2], clar[3]) if clar else None)
         qpo_times.append(qpo[1] if qpo else None)
         qpo_band.append((qpo[2], qpo[3]) if qpo else None)
         inv_str = f"  inverse={inv[1] * 1e3:9.1f} ms" if inv else "  inverse=n/a"
-        ppo_str = f"  pypfopt={ppo[1] * 1e3:9.1f} ms (pts={ppo[0]})" if ppo else "  pypfopt=n/a"
         clar_str = f"  osqp={clar[1] * 1e3:9.1f} ms ({clar[0]} solves)" if clar else "  osqp=n/a"
         qpo_str = (
             f"  qpoases={qpo[1] * 1e3:9.1f} ms ({qpo[0]} working-set changes, endpoint gap {qpo[4]:.1e})"
@@ -644,14 +614,12 @@ def figure_scaling(out_dir: Path) -> None:
         print(
             f"n={n:4d}  points={n_pts:4d}  dense={t_dense * 1e3:8.1f} ms  "
             f"factor={t_factor * 1e3:8.1f} ms  speedup={t_dense / t_factor:5.2f}x  "
-            f"|F| max={free_max:4d} median={free_med:6.1f}{inv_str}{ppo_str}{clar_str}{qpo_str}"
+            f"|F| max={free_max:4d} median={free_med:6.1f}{inv_str}{clar_str}{qpo_str}"
         )
 
     # The clean comparison is the incremental-inverse baseline vs the dense
     # backend: same vectorised event logic, differing only in the linear-algebra
-    # strategy (maintained inverse vs fresh block-eliminated solve). PyPortfolioOpt
-    # differs algorithmically (per-candidate full inverse), so its ratio is an
-    # overall figure, not a clean control.
+    # strategy (maintained inverse vs fresh block-eliminated solve).
     if inv_times[-1] is not None:
         n_last = ns[-1]
         strategy = dense_times[-1] / inv_times[-1]  # solve cost / incremental-inverse cost
@@ -674,7 +642,6 @@ def figure_scaling(out_dir: Path) -> None:
         ("dense", dense_times),
         ("factor", factor_times),
         ("inverse", inv_times),
-        ("pypfopt", ppo_times),
         ("osqp", clar_times),
         ("qpoases", qpo_times),
     ]:
@@ -683,8 +650,6 @@ def figure_scaling(out_dir: Path) -> None:
             print(f"{name:7s} exponent p (time ~ n^p): {fit:.2f} over the largest four sizes, {last:.2f} last doubling")
     n_base = _SCALE_BASELINE_MAX_N
     i_base = ns.index(n_base)
-    if ppo_times[i_base] is not None:
-        print(f"at n={n_base}: pypfopt/dense = {ppo_times[i_base] / dense_times[i_base]:.0f}x")
     if clar_times[i_base] is not None:
         print(f"at n={n_base}: osqp/dense = {clar_times[i_base] / dense_times[i_base]:.0f}x")
     for n_q, t_q in zip(ns, qpo_times, strict=True):
@@ -707,7 +672,6 @@ def figure_scaling(out_dir: Path) -> None:
 
     series = [
         # (times, bands, marker, colour, label); external baselines first, cvxcla last
-        (ppo_times, ppo_band, "-^", "#7f7f7f", "PyPortfolioOpt CLA"),
         (clar_times, clar_band, "-v", "#ff7f0e", f"OSQP, {_SCALE_GRID}-point $\\lambda$-grid"),
         (qpo_times, qpo_band, "-P", "#9467bd", "qpOASES, hot-started path"),
         (inv_times, inv_band, "-D", "#2ca02c", "cvxcla, incremental dense"),
