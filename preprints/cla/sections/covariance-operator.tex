@@ -65,7 +65,7 @@ the reference backend.
 \code{IncrementalDenseCovariance} traces the same turning points but \emph{maintains}
 $\Sig_{\F\F}\inv$: because the free set changes by one asset per turning point, a
 bordered rank-one update or a symmetric deletion costs $O(n_\F^2)$ against a fresh
-$O(n_\F^3)$ factorization, which makes a trace about twice as fast at $n=320$, three times at $n=640$, and seven times at $n=2560$ (Section~\ref{sec:baseline}). A non-positive Schur pivot or a multi-asset change triggers a full refactorization. The
+$O(n_\F^3)$ factorization, which makes a trace about $1.7\times$ as fast at $n=320$, $2.7\times$ at $n=640$, and $6\times$ at $n=2560$ (Section~\ref{sec:baseline}). A non-positive Schur pivot or a multi-asset change triggers a full refactorization. The
 backend passes the same KKT certificate as the dense one (Table~\ref{tab:kkt}), but a
 maintained inverse carries round-off from step to step over the roughly $n$ updates of
 a trace, so it is opt-in.

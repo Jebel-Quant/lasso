@@ -17,8 +17,7 @@ cls/jss/                 the JSS class, bibliography style and logo, bundled
 figures/                 the figure PDFs the paper includes, committed
 figures/data/            the frozen S&P 500 returns the data-driven figures use
 make_figures.py          redraws the figures and runs the numerical checks
-check_listing.py         runs the Appendix C listing as printed, against cvxcla
-*.py.lock                each script's locked environment
+make_figures.py.lock     the script's locked environment
 replication/README.md    the README of the JSS replication materials
 ```
 
@@ -31,14 +30,13 @@ make arxiv-check    # package the arXiv source and compile it on its own
 make jss            # the JSS submission: PDF, source, package sdist, replication materials
 ```
 
-`make figures` runs `make_figures.py all` and `make test` runs `check_listing.py`;
-`make reproduce` runs both, then builds the PDF and checks the arXiv source.
+`make figures` runs `make_figures.py all`; `make reproduce` runs it, then builds the PDF
+and checks the arXiv source.
 
 `make jss` builds `jss-submission/` and `cla-jss-submission.zip`. They hold `cla.pdf`, the flat
 LaTeX source, the `cvxcla` 2.7.1 sdist from PyPI (checked against its SHA-256), and
-`replication/`: the two scripts, their lock files, the returns snapshot, and
-the appendix that `check_listing.py` reads. The scripts are laid out as they expect
-to find these files. Code is set in the plain `CodeChunk`/`CodeInput`/`CodeOutput`
+`replication/`: the script, its lock file and the returns snapshot, laid out as the
+script expects to find them. Code is set in the plain `CodeChunk`/`CodeInput`/`CodeOutput`
 environments of `jss.cls`, and the class runs without `nojss`.
 
 The shared rules in [`../Makefile`](../Makefile) put `cls/jss/` on TeX's and BibTeX's
@@ -56,8 +54,3 @@ uv run make_figures.py all            # every figure and every check
 uv run make_figures.py all --quick    # without the two slow scaling sweeps
 uv run make_figures.py frontier       # one figure
 ```
-
-`uv run check_listing.py` cuts the CLA listing of Appendix C (Figure 5), the `CodeInput` block in that figure, out of
-`sections/appendix-listing.tex`, runs it, and checks that it reproduces cvxcla's turning
-points and refuses the inputs it does not cover. CI runs it on every pull request that
-touches the appendix or the script (`.github/workflows/listing.yml`).

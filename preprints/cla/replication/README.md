@@ -1,20 +1,21 @@
 # Replication materials for "cvxcla: The Critical Line Algorithm with an Operator Interface in Python"
 
-These scripts reproduce every figure, table and number in the paper.
+This script reproduces every figure, table and number in the paper. It is the experiment
+script of cvxcla 2.7.1 (`experiments/make_figures.py` at tag `v2.7.1`), less one
+external timing baseline that the paper does not report; the steps the paper names,
+such as `make_figures.py scaling`, are the same in both.
 
 ```
-make_figures.py               every figure and every numerical check
-check_listing.py              runs the Figure 5 listing (Appendix C) as printed, against cvxcla
-*.py.lock                     the locked environment of each script
+make_figures.py                 every figure and every numerical check
+make_figures.py.lock            the script's locked environment
 data/sp500_pct_returns.parquet  the frozen S&P 500 daily returns used by the data-driven steps
-sections/appendix-listing.tex  the appendix the listing is cut from, read by check_listing.py
 ```
 
 The package source, `cvxcla-2.7.1.tar.gz`, sits one level up. It is the release on PyPI.
 
 ## Running
 
-Install [uv](https://docs.astral.sh/uv/). Each script declares its exact dependencies
+Install [uv](https://docs.astral.sh/uv/). The script declares its exact dependencies
 (PEP 723 inline metadata, pinned, including `cvxcla==2.7.1`), so `uv run` installs them
 into an isolated environment:
 
@@ -22,7 +23,6 @@ into an isolated environment:
 uv run make_figures.py all            # every figure and every check, writes figures/
 uv run make_figures.py all --quick    # the same, without the two slow scaling sweeps
 uv run make_figures.py frontier       # one figure; run with no argument for the list
-uv run check_listing.py               # exits non-zero if the listing disagrees with cvxcla
 ```
 
 Inputs are drawn from fixed seeds and the returns are committed, so after the packages
