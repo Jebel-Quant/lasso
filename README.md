@@ -12,7 +12,9 @@ path, each with its LaTeX source and the code and data behind it.
   every figure and number, a script that fetches the Fama-French returns it checks
   against, and an R check. See [`preprints/lasso/README.md`](preprints/lasso/README.md).
 - [`preprints/constrained_lasso/`](preprints/constrained_lasso) — *The Constrained LASSO
-  is a Portfolio*: the identity run the other way, computing constrained-LASSO paths with
+  is a Portfolio*, published in the *Journal of Reproducible Statistics* 1, 10 (2026)
+  ([doi:10.68365/jrepstat.2026.10](https://doi.org/10.68365/jrepstat.2026.10)): the
+  identity run the other way, computing constrained-LASSO paths with
   an unmodified CLA, and one script that reproduces every figure and number. See
   [`preprints/constrained_lasso/README.md`](preprints/constrained_lasso/README.md).
 - [`preprints/cla/`](preprints/cla) — *`cvxcla`: The Critical Line Algorithm with an
