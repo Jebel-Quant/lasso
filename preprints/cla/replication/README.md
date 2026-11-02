@@ -2,8 +2,9 @@
 
 This script reproduces every figure, table and number in the paper. It is the experiment
 script of cvxcla 2.7.1 (`experiments/make_figures.py` at tag `v2.7.1`), less one
-external timing baseline that the paper does not report; the steps the paper names,
-such as `make_figures.py scaling`, are the same in both.
+external timing baseline that the paper does not report and with one step added,
+`worked-example` (Section 6.4); the other steps the paper names, such as
+`make_figures.py scaling`, are the same in both.
 
 ```
 make_figures.py                 every figure and every numerical check

@@ -23,7 +23,8 @@ the frozen snapshot ``sp500_pct_returns.parquet`` in ``data/`` beside this scrip
 deterministically and offline.
 
 This is the experiment script of cvxcla 2.7.1 (``experiments/make_figures.py`` at tag
-v2.7.1), less one external timing baseline that the paper does not report.
+v2.7.1), less one external timing baseline that the paper does not report and with one
+step added, ``worked-example`` (the worked example of Section 6.4).
 
     uv run make_figures.py            # choose interactively
     uv run make_figures.py all         # every figure + every check
@@ -43,6 +44,8 @@ Targets (artefact in parentheses):
   * ``validate-exact``  -- Section 10.5 exactness numbers (no figure).
   * ``validate-constraints`` -- Section 10.5 general-constraint exactness (no figure).
   * ``real-frontier``   -- Figure 4: the S&P 500 empirical frontier (real_frontier.pdf).
+  * ``worked-example``  -- Section 6.4: a 130/30 book on the S&P 500 with a group cap,
+    run as printed in the paper (worked_example.pdf).
   * ``degeneracy``      -- Figure 5: the degeneracy boundary (degeneracy.pdf).
   * ``tie-degeneracy``  -- Section 10.6 tie-heavy stress envelope (no figure).
   * ``osqp``            -- S&P 500 trace vs a warm-started OSQP grid (no figure).
@@ -57,7 +60,7 @@ Targets (artefact in parentheses):
     across the singularity guard, each trace and its reference QP certified (no figure).
   * ``estimators``      -- Figure 8 + Section 11.1 estimator table (estimator_shrinkage.pdf).
   * ``michaud``         -- Figure 9 + Section 12 resampling table (michaud_frontier.pdf).
-  * ``figures``         -- all seven figures.
+  * ``figures``         -- all eight figures.
   * ``checks``          -- all nine numerical checks.
   * ``all``             -- every figure and every check.
 
@@ -915,6 +918,78 @@ def figure_real_frontier(out_dir: Path) -> None:
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     out = out_dir / "real_frontier.pdf"
+    fig.savefig(out)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
+# ======================================================================================
+# Figure: worked example (Section 6.4: a 130/30 book on the S&P 500)  ->  worked_example.pdf
+# ======================================================================================
+_WORKED_TECH = ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "AVGO", "ORCL", "ADBE", "CRM"]
+
+
+def figure_worked_example(out_dir: Path) -> None:
+    """Run the worked example of Section 6.4 as printed, and draw its two frontiers.
+
+    A 130/30 book on the S&P 500 snapshot: per-stock bounds [-3%, 5%], the budget, a 6%
+    cap on ten large technology names and a 130% gross-exposure cap, set up with the
+    ``CLA.problem`` builder. The figure sets its frontier against the long-only book with
+    the same 5% per-stock cap.
+    """
+    import pandas as pd
+
+    from cvxcla import InfeasibleProblemError
+
+    returns = pd.read_parquet(DATA)
+    mu = 252 * returns.mean().to_numpy()  # annualized moments
+    sigma = 252 * returns.cov().to_numpy()
+    in_tech = returns.columns.isin(_WORKED_TECH).astype(float)
+
+    book = (
+        CLA.problem(mu, sigma)
+        .bounds(-0.03, 0.05)
+        .budget()
+        .inequality(in_tech[None, :], 0.06)
+        .leverage(1.3)
+        .trace()
+    )
+    binds = sum(tp.active_ineq[0] for tp in book.turning_points)
+    print(len(book), "turning points; the cap binds at", binds)
+    _, w = book.frontier.max_sharpe
+    print(
+        f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
+        (w > 1e-9).sum(),
+        "long,",
+        (w < -1e-9).sum(),
+        "short",
+    )
+    fine = book.frontier.interpolate(20)
+    print(len(fine.weights), "portfolios on the exact frontier")
+    try:
+        CLA.problem(mu, sigma).bounds(0.0, 0.001).budget().trace()
+    except InfeasibleProblemError as err:
+        print(type(err).__name__ + ":", err)
+
+    long_only = CLA.problem(mu, sigma).bounds(0.0, 0.05).budget().trace()
+    print(len(long_only), "turning points for the long-only book with the same 5% cap")
+
+    fig, ax = plt.subplots(figsize=(5.0, 3.4))
+    for cla, colour, label in (
+        (long_only, "#7f7f7f", "long-only, 5% per stock"),
+        (book, "#1f4e79", "130/30, 6% cap on ten names"),
+    ):
+        curve = cla.frontier.interpolate(20)
+        ax.plot(curve.volatility, curve.returns, "-", lw=1.0, color=colour, label=label)
+    tp = book.frontier
+    active = np.array([bool(t.active_ineq[0]) for t in book.turning_points])
+    ax.plot(tp.volatility[active], tp.returns[active], "o", ms=2.2, color="#c00000", label="cap binding")
+    ax.set_xlabel("Annualized volatility")
+    ax.set_ylabel("Annualized expected return")
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8, loc="lower right")
+    fig.tight_layout()
+    out = out_dir / "worked_example.pdf"
     fig.savefig(out)
     plt.close(fig)
     print(f"wrote {out}")
@@ -2383,6 +2458,7 @@ class Target(enum.StrEnum):
     validate_projection = "validate-projection"
     validate_factor = "validate-factor"
     validate_conditioning = "validate-conditioning"
+    worked_example = "worked-example"
     estimators = "estimators"
     michaud = "michaud"
     figures = "figures"
@@ -2398,6 +2474,7 @@ STEPS: list[Step] = [
     Step(Target.validate_exact, "Section 10.5 exactness numbers", check_validate_exact, False),
     Step(Target.validate_constraints, "Section 10.5 general-constraint exactness", check_validate_constraints, False),
     Step(Target.real_frontier, "Figure 4 (real_frontier.pdf)", figure_real_frontier, False),
+    Step(Target.worked_example, "Section 6.4 worked example (worked_example.pdf)", figure_worked_example, False),
     Step(Target.degeneracy, "Figure 5 (degeneracy.pdf)", figure_degeneracy, False),
     Step(Target.tie_degeneracy, "Section 10.6 tie-heavy stress envelope", check_tie_degeneracy, False),
     Step(Target.osqp, "Section 10.4 warm-started OSQP grid on the S&P 500", check_osqp, False),
@@ -2418,6 +2495,7 @@ _FIGURE_TARGETS = [
     Target.scaling,
     Target.rank_scaling,
     Target.real_frontier,
+    Target.worked_example,
     Target.degeneracy,
     Target.estimators,
     Target.michaud,
@@ -2490,7 +2568,7 @@ _DESCRIPTIONS: dict[Target, str] = {
     Target.osqp: "Sec 10.4: S&P trace vs warm OSQP grid (check)",
     Target.estimators: "Fig 8: covariance-estimator shrinkage -> estimator_shrinkage.pdf",
     Target.michaud: "Fig 9: Michaud resampled frontier     -> michaud_frontier.pdf",
-    Target.figures: "all seven figures",
+    Target.figures: "all eight figures",
     Target.checks: "all nine numerical checks",
     Target.all: "every figure and every check",
 }

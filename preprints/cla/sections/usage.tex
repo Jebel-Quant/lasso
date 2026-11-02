@@ -68,7 +68,9 @@ Section~\ref{sec:first}.
 \label{sec:api}
 
 \code{CLA} takes the problem as keyword arguments, all \pkg{NumPy} arrays of floats, and
-traces the frontier in its constructor. Required are \code{mean} ($\mu$, length $n$),
+traces the frontier in its constructor, so an object always holds a complete, validated
+frontier of data that cannot change under it (see below); a changed $\mu$ or $\Sig$ is a
+new problem and a new object, and a trace is not warm-started from an earlier one. Required are \code{mean} ($\mu$, length $n$),
 \code{covariance} (an $n\times n$ array, which is wrapped as a \code{DenseCovariance},
 or any backend of Section~\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
 (length $n$), and \code{a}, \code{b} ($m\times n$ and length $m$; a budget is
@@ -216,4 +218,87 @@ when, with the usual remedy. ``Before the walk'' is input validation and the fir
 vertex; ``during the walk'' is a turning point of the trace.}
 \label{tab:errors}
 \end{table}
+
+\subsection{A worked example: a 130/30 book}
+\label{sec:worked}
+
+The example puts the pieces together on the S\&P 500 snapshot of
+Section~\ref{sec:empirical}, $494$ stocks over $1213$ days. The book is fully invested,
+holds at most $5\%$ and is short at most $3\%$ of any stock, keeps ten large technology
+names at $6\%$ in total, and caps gross exposure at $130\%$. The builder
+\code{CLA.problem} states the problem term by term; \code{.inequality} adds the group
+cap as one row of $G w \le h$ and \code{.leverage} the gross cap, which
+\pkg{cvxcla} lifts (Section~\ref{sec:leverage}).
+
+\begin{CodeChunk}
+\begin{CodeInput}
+import numpy as np
+import pandas as pd
+from cvxcla import CLA
+
+returns = pd.read_parquet("data/sp500_pct_returns.parquet")
+mu = 252 * returns.mean().to_numpy()            # annualized moments
+Sigma = 252 * returns.cov().to_numpy()
+
+tech = ["AAPL", "MSFT", "NVDA", "GOOGL", "META",
+        "AMZN", "AVGO", "ORCL", "ADBE", "CRM"]
+in_tech = returns.columns.isin(tech).astype(float)
+
+book = (
+    CLA.problem(mu, Sigma)
+    .bounds(-0.03, 0.05)                 # at most 3% short, 5% long a stock
+    .budget()                            # fully invested
+    .inequality(in_tech[None, :], 0.06)  # the ten names: at most 6% in all
+    .leverage(1.3)                       # gross exposure at most 130%
+    .trace()
+)
+binds = sum(tp.active_ineq[0] for tp in book.turning_points)
+print(len(book), "turning points; the cap binds at", binds)
+_, w = book.frontier.max_sharpe
+print(f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
+      (w > 1e-9).sum(), "long,", (w < -1e-9).sum(), "short")
+\end{CodeInput}
+\begin{CodeOutput}
+250 turning points; the cap binds at 95
+max Sharpe: gross 1.30, the ten names 0.044, 47 long, 9 short
+\end{CodeOutput}
+\end{CodeChunk}
+
+The group cap binds over part of the frontier and is released elsewhere, both events of
+Section~\ref{sec:ineq}; the gross cap binds throughout. Between turning points the
+frontier is exact, so \code{interpolate} fills it in without re-solving, and
+\code{book.frontier.plot()} draws it (with \pkg{plotly}, an optional dependency).
+Figure~\ref{fig:worked} sets the book against the long-only one with the same $5\%$
+limit, traced by \code{.bounds(0.0, 0.05)} in place of the last three constraints. A
+problem with no feasible point is refused before the walk starts, with the exception of
+Table~\ref{tab:errors}:
+
+\begin{CodeChunk}
+\begin{CodeInput}
+fine = book.frontier.interpolate(20)     # 20 portfolios per segment
+print(len(fine.weights), "portfolios on the exact frontier")
+
+from cvxcla import InfeasibleProblemError
+try:
+    CLA.problem(mu, Sigma).bounds(0.0, 0.001).budget().trace()
+except InfeasibleProblemError as err:
+    print(type(err).__name__ + ":", err)
+\end{CodeInput}
+\begin{CodeOutput}
+4731 portfolios on the exact frontier
+InfeasibleProblemError: Could not construct a fully invested portfolio
+\end{CodeOutput}
+\end{CodeChunk}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.6\textwidth]{worked_example.pdf}
+\caption{The frontier of the 130/30 book of Section~\ref{sec:worked} against the
+long-only book with the same $5\%$ limit per stock, both drawn with
+\code{interpolate}. Red marks the turning points at which the $6\%$ cap on the ten
+technology names binds (\code{make\_figures.py worked-example}).}
+\label{fig:worked}
+\end{figure}
+
+The whole example, the figure included, is one step of the replication script.
 
