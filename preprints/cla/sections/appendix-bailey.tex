@@ -13,18 +13,20 @@ in \pkg{cvxcla} the same decision is the sign of $\gamma_i + \lambda\delta_i$ fr
 solve (\S\ref{sec:events}). Their code then removes turning points that violate the
 bounds or the convex hull after the fact (\code{purgeNumErr}, \code{purgeExcess});
 \pkg{cvxcla} checks the same conditions with a KKT certificate (\S\ref{sec:exactness}).
-In \pkg{PyPortfolioOpt}~1.6.0 those violations are not round-off: after a weight leaves
-the free set, the next turning point is solved with that weight's previous value rather
-than its bound, so it misses the budget and is purged; \code{purgeExcess} compares
-expected returns without a tolerance. Both delete genuine turning points.
+In their code, and in \pkg{PyPortfolioOpt}~1.6.0, which ports it to \proglang{Python}~3,
+the budget violations are not round-off: after a weight leaves the free set, the next
+turning point is solved with that weight's previous value rather than its bound, so it
+misses the budget and is purged, and a genuine turning point is lost. \code{purgeExcess}
+compares expected returns without a tolerance, but along an exact trace $\mu\trans w$ is
+flat only where the weights are constant, so it deletes only copies of turning points
+that are kept: a value of $\lambda$ is lost, not a portfolio.
 Ties are broken by a strict comparison, with no anti-cycling rule. On the scaling problems of \S\ref{sec:scaling}
 \pkg{PyPortfolioOpt}'s corners are a subset of \pkg{cvxcla}'s
 ($19, 42, 81, 158, 323, 641$ against $21, 42, 81, 159, 323, 641$). The missing corners are
 genuine, so across them its frontier is wrong, by up to $7\times10^{-3}$ in a weight at
 $n=20$ and $8\times10^{-5}$ at $n=160$; at the other sizes the two frontiers agree to
 $10^{-12}$, and the minimum-variance endpoints to $\sim\!10^{-16}$ throughout. Reading the
-blocked weights from the current iterate and comparing with a tolerance removes the
-discrepancy.
+blocked weights from the current iterate removes the discrepancy.
 
 Written with the KKT conditions, the method is also the shorter one:
 Figure~\ref{fig:kktcla} is a complete CLA for the problem class of \citet{bailey2013} in
