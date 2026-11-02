@@ -1,7 +1,11 @@
 # The constrained LASSO is a portfolio: source, code and data
 
+[![Journal of Reproducible Statistics 1, 10 (2026)](https://img.shields.io/badge/Journal%20of%20Reproducible%20Statistics-1%2C%2010%20%282026%29-1a4f8b)](https://doi.org/10.68365/jrepstat.2026.10)
+
 The LaTeX source of the note *The Constrained LASSO is a Portfolio* (Schmelzer, 2026),
-and everything needed to reproduce its figures and numbers. The note computes
+and everything needed to reproduce its figures and numbers. The note is published in the
+*Journal of Reproducible Statistics*, volume 1, article 10
+([doi:10.68365/jrepstat.2026.10](https://doi.org/10.68365/jrepstat.2026.10)). It computes
 constrained-LASSO paths with a stock Critical Line Algorithm, `cvxcla.Lasso` from
 [`cvxcla`](https://github.com/cvxgrp/cvxcla) 2.7.1, using the identity between the CLA
 and the LASSO path proved by Schmelzer and Hastie
