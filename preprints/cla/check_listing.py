@@ -7,8 +7,8 @@
 # ///
 r"""Run the KKT listing of Appendix C exactly as printed, and check what the text says of it.
 
-Figure 5 (``fig:kktcla`` in ``sections/appendix-bailey.tex``) is a complete CLA for box
-bounds and one budget row. This script cuts the code out of the ``lstlisting`` block in
+Figure 5 (``fig:kktcla`` in ``sections/appendix-listing.tex``) is a complete CLA for box
+bounds and one budget row. This script cuts the code out of the ``CodeInput`` block in
 that figure, runs it, and checks the claims the appendix makes about it:
 
 1. On the scaling problems of Section 7.2 (``_scale_make_problem`` in
@@ -40,21 +40,21 @@ import numpy as np
 from cvxcla import CLA
 
 HERE = Path(__file__).resolve().parent
-APPENDIX = HERE / "sections" / "appendix-bailey.tex"
+APPENDIX = HERE / "sections" / "appendix-listing.tex"
 SIZES = [20, 40, 80, 160, 320, 640]
 TOL = 1e-12
 
 
 def listing() -> str:
-    """Return the code of the lstlisting block in the figure labelled fig:kktcla."""
+    """Return the code of the CodeInput block in the figure labelled fig:kktcla."""
     figures = re.findall(r"\\begin\{figure\}.*?\\end\{figure\}", APPENDIX.read_text(), re.DOTALL)
     blocks = [f for f in figures if r"\label{fig:kktcla}" in f]
     if len(blocks) != 1:
         sys.exit("expected exactly one figure labelled fig:kktcla")
     (block,) = blocks
-    match = re.search(r"\\begin\{lstlisting\}(?:\[[^\]]*\])?\n(.*?)\\end\{lstlisting\}", block, re.DOTALL)
+    match = re.search(r"\\begin\{CodeInput\}(?:\[[^\]]*\])?\n(.*?)\\end\{CodeInput\}", block, re.DOTALL)
     if match is None:
-        sys.exit("no lstlisting block in the figure labelled fig:kktcla")
+        sys.exit("no CodeInput block in the figure labelled fig:kktcla")
     return match.group(1)
 
 
@@ -127,7 +127,7 @@ def main() -> None:
         same = len(mine[0]) == len(theirs[0]) and dist <= TOL
         check(same, f"n={n}", f"points {len(mine[0])} vs cvxcla {len(theirs[0])}, path distance {dist:.1e}")
         counts.append(len(theirs[0]))
-    quoted = re.search(r"against \$([0-9, ]+)\$\)", APPENDIX.read_text())
+    quoted = re.search(r"turning points\s+\(\$([0-9, ]+)\$\)", APPENDIX.read_text())
     check(
         quoted is not None and [int(x) for x in quoted.group(1).split(",")] == counts,
         "counts quoted in the appendix",

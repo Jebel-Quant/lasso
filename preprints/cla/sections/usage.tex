@@ -4,10 +4,11 @@
 The package \citep{cvxcla} is installed with \code{pip install cvxcla}; it is pure
 \proglang{Python} and needs \pkg{NumPy}, \pkg{SciPy} and \pkg{cvx-linalg}
 (Computational details). The workflow goes through a single class, \code{CLA}. The user supplies $\mu$, the
-covariance (a dense array or any backend of \S\ref{sec:operators}), the bounds, and
+covariance (a dense array or any backend of Section~\ref{sec:operators}), the bounds, and
 the constraints; constructing the object traces the whole frontier. The example traces
 a small long-only, fully-invested problem and reads off the maximum-Sharpe portfolio.
 
+\begin{CodeChunk}
 \begin{CodeInput}
 import numpy as np
 from cvxcla import CLA, FactorCovariance
@@ -30,16 +31,17 @@ sr, w = cla.frontier.max_sharpe
 print("max Sharpe:", round(sr, 4))
 print("weights:", np.round(w, 3))
 \end{CodeInput}
-
 \begin{CodeOutput}
 turning points: 7
 max Sharpe: 2.4037
 weights: [0.    0.    0.704 0.296 0.    0.   ]
 \end{CodeOutput}
+\end{CodeChunk}
 
 Switching to a structured backend changes only the covariance argument; because the
 factor backend represents the \emph{same} $\Sig$, it returns the same frontier to round-off.
 
+\begin{CodeChunk}
 \begin{CodeInput}
 factor = FactorCovariance(d=d, u=U, delta=np.diag(Delta))
 cla_factor = CLA(
@@ -51,15 +53,15 @@ w_dense = np.array([t.weights for t in cla.turning_points])
 w_factor = np.array([t.weights for t in cla_factor.turning_points])
 print("identical frontier:", np.allclose(w_dense, w_factor))
 \end{CodeInput}
-
 \begin{CodeOutput}
 identical frontier: True
 \end{CodeOutput}
+\end{CodeChunk}
 
 A fluent builder, \code{CLA.problem}, assembles the same arguments step by step through
 methods such as \code{.budget}, \code{.equality} and \code{.inequality}; an extra \code{.equality} row,
 such as a fixed sector weight, makes the first turning point the linear program of
-\S\ref{sec:first}.
+Section~\ref{sec:first}.
 
 
 \subsection{The interface}
@@ -68,13 +70,13 @@ such as a fixed sector weight, makes the first turning point the linear program 
 \code{CLA} takes the problem as keyword arguments, all \pkg{NumPy} arrays of floats, and
 traces the frontier in its constructor. Required are \code{mean} ($\mu$, length $n$),
 \code{covariance} (an $n\times n$ array, which is wrapped as a \code{DenseCovariance},
-or any backend of \S\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
+or any backend of Section~\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
 (length $n$), and \code{a}, \code{b} ($m\times n$ and length $m$; a budget is
 \code{a = np.ones((1, n))}, \code{b = np.ones(1)}). Optional are \code{g}, \code{h}
 ($p\times n$ and length $p$) for $Gw \le h$, \code{leverage} for the cap
 $\lVert w\rVert_1 \le c$, and \code{tol} (default $10^{-5}$), the tolerance for deciding
 that a weight sits on a bound and for validating each turning point; the event ordering
-uses its own relative window of at most $10^{-10}$ (\S\ref{sec:events}). The arrays (and a
+uses its own relative window of at most $10^{-10}$ (Section~\ref{sec:events}). The arrays (and a
 dense covariance) are copied into read-only arrays when the object is built, so
 changing the caller's arrays afterwards cannot put the stored turning points out of step
 with the data; a backend is used as given. Non-finite data are refused at this point,
@@ -91,12 +93,12 @@ where the path leaves it; \code{len(cla)} is the number of turning points.
 \code{returns}, \code{variance}, \code{volatility} and \code{sharpe\_ratio} of the
 turning points and a \code{plot} method. Because the frontier is piecewise linear in
 weight space, \code{interpolate(num)} returns intermediate portfolios with no
-discretisation error.
+discretization error.
 
 \subsection{The frontier and the maximum-Sharpe portfolio}
 \label{sec:frontier}
 
-\code{max\_sharpe} maximises $\mu\trans w/\sqrt{w\trans\Sig w}$, the Sharpe ratio with a
+\code{max\_sharpe} maximizes $\mu\trans w/\sqrt{w\trans\Sig w}$, the Sharpe ratio with a
 zero risk-free rate (supply excess returns as $\mu$ otherwise), over the computed
 frontier. On a segment $w(t) = (1-t)\,w_0 + t\,w_1$, $t \in [0,1]$, the return is affine
 and the variance quadratic in $t$,
@@ -124,7 +126,7 @@ Points of zero variance are skipped (\code{sharpe\_ratio} reports NaN there); wi
 positive variance \code{max\_sharpe} raises a \code{ValueError}, and with no positive
 expected return it warns and returns the least negative ratio. Whether the ratio,
 computed from estimated $\mu$ and $\Sig$, predicts future performance is a statistical
-question outside the package (\S\ref{sec:estimators}).
+question outside the package (Section~\ref{sec:estimators}).
 
 \subsection{Supported inputs and errors}
 \label{sec:errors}
@@ -145,13 +147,14 @@ A sample covariance from fewer observations than assets is a case that used to b
 declined and no longer is. It is singular, and its free block becomes singular partway
 along the frontier. The budget row still holds the free assets on its null space, where
 the block stays positive definite, so the trace goes on there (Appendix~\ref{sec:degeneracy}).
-A ridged Gram backend (\S\ref{sec:gram}) traces a different, regularised frontier:
+A ridged Gram backend (Section~\ref{sec:gram}) traces a different, regularized frontier:
 
 \noindent\begin{minipage}{\textwidth}
+\begin{CodeChunk}
 \begin{CodeInput}
 from cvxcla import GramCovariance
 
-returns = 0.01 * rng.standard_normal((4, n)) + 0.001    # 4 days, 6 assets: rank 3
+returns = 0.01 * rng.standard_normal((4, n)) + 0.001  # 4 days: rank 3
 long_only = dict(lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
                  a=np.ones((1, n)), b=np.ones(1))
 cla = CLA(mean=returns.mean(axis=0),
@@ -163,6 +166,7 @@ print("turning points:", len(cla), "| with a ridge:", len(ridged))
 \begin{CodeOutput}
 turning points: 5 | with a ridge: 7
 \end{CodeOutput}
+\end{CodeChunk}
 \end{minipage}
 
 Release~2.3.3 declined the first of these. Every turning point of the trace above
@@ -188,7 +192,7 @@ equality rows that contradict the others & change the constraints \\
 \multicolumn{2}{@{}l}{\textbf{Harmless degeneracy}: traced, nothing raised} \\
 Redundant equality rows; duplicated, never-binding or locally redundant inequality
 rows; a degenerate maximum-return vertex whose optimal dual set has a vertex, and tied
-maximum returns (\S\ref{sec:first}); a singular covariance whose free blocks the active
+maximum returns (Section~\ref{sec:first}); a singular covariance whose free blocks the active
 rows keep positive definite (Appendix~\ref{sec:degeneracy}) & -- \\
 \midrule
 \multicolumn{2}{@{}l}{\textbf{Unsupported degeneracy}: \code{DegenerateProblemError}} \\
@@ -200,7 +204,7 @@ active rows dependent on the free set & a ridge or factor model; loosen a cap \\
 \midrule
 \multicolumn{2}{@{}l}{\textbf{Numerical failure}: \code{NumericalError}, during the walk} \\
 Iteration cap; projection fails; a turning point violates a constraint
-& regularise $\Sig$ or relax \code{tol}; report it \\
+& regularize $\Sig$ or relax \code{tol}; report it \\
 \bottomrule
 \end{tabular}
 \caption{Supported and unsupported inputs, grouped by the exception each raises and

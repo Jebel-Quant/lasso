@@ -11,7 +11,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - preprints/cla/sections/appendix-bailey.tex
+      - preprints/cla/sections/appendix-listing.tex
       - preprints/cla/check_listing.py
       - preprints/cla/check_listing.py.lock
       - .github/workflows/listing.yml

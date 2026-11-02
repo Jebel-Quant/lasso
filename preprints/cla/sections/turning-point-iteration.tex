@@ -11,7 +11,7 @@ $\lambda = 0$.
 \label{sec:blockelim}
 
 Write $C_\F$ for the active constraint rows restricted to the free set ($A_\F$ when
-$\Sset = \varnothing$; \S\ref{sec:ineq}) and $c$ for their right-hand side. The
+$\Sset = \varnothing$; Section~\ref{sec:ineq}) and $c$ for their right-hand side. The
 reduced system is the saddle-point problem
 \begin{equation}
 \label{eq:saddle}
@@ -60,7 +60,7 @@ To decide when a blocked asset should re-enter, the code forms the reduced gradi
 \end{equation}
 where $\nu$ stacks the equality and active-row multipliers, so that $\gamma_i + \lambda\delta_i$ is (proportional to) the bound multiplier of a
 blocked asset $i$ along the segment; the products $\Sig\alpha$, $\Sig\beta$ go through
-the covariance operator of \S\ref{sec:operators}.
+the covariance operator of Section~\ref{sec:operators}.
 
 \subsection{Event detection}
 \label{sec:events}
@@ -76,7 +76,7 @@ $\lambda_i = -\gamma_i/\delta_i$, admissible at the upper bound with $\delta_i <
 the lower bound with $\delta_i > 0$.
 \end{itemize}
 The other two are the same moves on the rows of $G w \le h$, described in
-\S\ref{sec:ineq}. The candidates form a matrix $L\in\R^{(n+p)\times 4}$, one row per
+Section~\ref{sec:ineq}. The candidates form a matrix $L\in\R^{(n+p)\times 4}$, one row per
 variable or inequality row, with $-\infty$ where an event cannot occur, under two
 numerical guards:
 \begin{itemize}
@@ -98,7 +98,7 @@ A row of $G w \le h$ is the analogue of a box bound: either \emph{active}
 an extra equality row, stacked under $A$ into $C_\F = [\,A_\F;\,G_{\Sset\F}\,]$, so each
 step is still one solve against $\Sig_{\F\F}$ (through the operator interface) feeding
 an $(m+|\Sset|)$-dimensional Schur complement. The box bounds stay a separate per-variable
-active set, so the box-only problem pays nothing for the generalisation.
+active set, so the box-only problem pays nothing for the generalization.
 
 The stacked solve \eqref{eq:schur} returns an affine multiplier
 $\eta_j(\lambda) = \eta_j^{\alpha} + \lambda\,\eta_j^{\beta}$ for each active row, and
@@ -113,11 +113,11 @@ $\lambda_j = -\eta_j^{\alpha}/\eta_j^{\beta}$, where its multiplier reaches zero
 admissible when $\eta_j^{\beta} > 0$.
 \end{itemize}
 These fill the trailing $p$ rows of $L$, so a group cap or factor-exposure band is
-traced along the whole frontier (\S\ref{sec:exactness}). Each active row adds a column
+traced along the whole frontier (Section~\ref{sec:exactness}). Each active row adds a column
 to the solve against $\Sig_{\F\F}$ and a row to the Schur complement; with many active
 rows that term, not the covariance solve, dominates a step. A row that is tight but a combination of the active rows on the
 free set is supported: at the first vertex only an independent subset of the tight rows
-is made active (\S\ref{sec:first}), and during the trace such a row has zero slope,
+is made active (Section~\ref{sec:first}), and during the trace such a row has zero slope,
 $g_j\trans\beta = 0$ (since $C_\F\beta_\F = 0$), so its activation event does not fire.
 The active rows themselves must stay linearly independent on the free set, or the Schur
 complement is singular, as when several caps bind at once in the same direction. Before
@@ -136,7 +136,7 @@ leg-to-asset map, the cap becomes the one row $\mathbf{1}\trans x \le c$ appende
 $GP$, the other constraints carry over as $AP$ and $GP$, and the mean becomes
 $P\trans\mu$. The lifted program is an instance of \eqref{eq:qp} with the same
 $\lambda$, traced by the loop above and mapped back through $P$ (validated in
-\S\ref{sec:exactness}).
+Section~\ref{sec:exactness}).
 
 The lifted covariance $P\trans\Sig P$ is singular, since raising both legs of one
 asset leaves $w$ unchanged. The loop never meets that singularity: both legs of an asset
@@ -186,18 +186,18 @@ frontier, and no trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ o
 In exact arithmetic, then, the one thing left unproved outside the hypotheses is that
 the walk leaves every tie without revisiting a partition. This concerns a degenerate maximum-return vertex,
 resolved from a vertex of its optimal dual set, or, under tied maximum returns, from the
-minimiser of the quadratic term on the tied face (\S\ref{sec:first}); a singular $\Sig$
+minimiser of the quadratic term on the tied face (Section~\ref{sec:first}); a singular $\Sig$
 that the active rows keep positive definite on their null space, outside
 $\Sig\succ0$ (Appendix~\ref{sec:degeneracy}); the lifted problem
-of \S\ref{sec:leverage}, whose singular covariance masks the competing leg events; and
+of Section~\ref{sec:leverage}, whose singular covariance masks the competing leg events; and
 ties with dependent constraints, where the matrix $M$ of Appendix~\ref{sec:proof} is
 only positive semidefinite and the least-index result no longer applies (a partition
-with dependent active rows is refused, \S\ref{sec:ineq}). Appendix~\ref{sec:degeneracy}
+with dependent active rows is refused, Section~\ref{sec:ineq}). Appendix~\ref{sec:degeneracy}
 lists which test families satisfy the hypotheses. In floating point the tie window and
 the slope floor make the computed signs agree with the exact ones, which is not proved
 either. At run time every turning point is validated against the bounds, $A w = b$ and
-$G w \le h$ before it is accepted, and the KKT certificate of \S\ref{sec:exactness}
-checks the traces of \S\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for
+$G w \le h$ before it is accepted, and the KKT certificate of Section~\ref{sec:exactness}
+checks the traces of Section~\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for
 optimality.
 
 When no admissible event has a positive ratio the walk has reached the minimum-variance
@@ -210,7 +210,7 @@ portfolio and appends a final turning point $w = \alpha$ at $\lambda = 0$.
 \smallskip
 \textit{Input:} $\mu$, $\Sig$, $\lb,\ub$, $A,b$, $G,h$, tolerance $\tau$.
 \begin{enumerate}\setlength{\itemsep}{1pt}
-\item Compute the maximum-return vertex (\S\ref{sec:first}); record its free set and
+\item Compute the maximum-return vertex (Section~\ref{sec:first}); record its free set and
       active rows $\Sset$ with $\lambda \gets \infty$.
 \item \textbf{While} $\lambda > 0$:
   \begin{enumerate}\setlength{\itemsep}{1pt}
@@ -218,10 +218,10 @@ portfolio and appends a final turning point $w = \alpha$ at $\lambda = 0$.
   \item Solve against $\Sig_{\F\F}$ for $Y$, $z^{\alpha}$, $z^{\beta}$; solve the Schur
         system \eqref{eq:schur}; back-substitute \eqref{eq:freesoln} for
         $\alpha,\beta$; form $\gamma,\delta$ \eqref{eq:gamma}.
-  \item Assemble $L$ (\S\ref{sec:events}, \S\ref{sec:ineq}) under the slope floor and
+  \item Assemble $L$ (Section~\ref{sec:events}, Section~\ref{sec:ineq}) under the slope floor and
         $\lambda$ window; $\lambda^{\star} \gets \max L$; \textbf{if}
         $\lambda^{\star} \le 0$ \textbf{break}.
-  \item Pick the event by the least-index rule (\S\ref{sec:bland}), flip that
+  \item Pick the event by the least-index rule (Section~\ref{sec:bland}), flip that
         coordinate's status, set
         $\lambda \gets \lambda^{\star}$, append $w = \alpha + \lambda^{\star}\beta$.
   \end{enumerate}

@@ -1,0 +1,63 @@
+\section{A complete CLA in 39 lines}
+\label{sec:listing}
+
+Written with the Karush--Kuhn--Tucker conditions, the CLA is short:
+Figure~\ref{fig:kktcla} is a complete CLA for box bounds and one budget row in 39 lines
+of \pkg{NumPy}. Each segment costs one bordered
+solve of \eqref{eq:saddle}, every event is read off it (Section~\ref{sec:events}), and
+events are compared with a relative tolerance. On the scaling problems of
+Section~\ref{sec:scaling} it returns all of \pkg{cvxcla}'s turning points
+($21, 42, 81, 159, 323, 641$) to $10^{-13}$, in time of the same order as the dense
+backend. It refuses rather than mis-solves infeasible bounds, a tied largest return
+(Section~\ref{sec:first}) and a singular free block (Appendix~\ref{sec:degeneracy});
+\pkg{cvxcla} handles the last two.
+
+\begin{figure}[!ht]
+\begin{CodeChunk}
+\begin{CodeInput}[fontsize=\footnotesize]
+import numpy as np
+
+def cla(mu, S, lo, up, tol=1e-9):
+    """Turning points (lam, w) of max lam mu'w - w'Sw/2, 1'w=1, lo<=w<=up."""
+    n, w, rest = len(mu), lo.astype(float), 1.0 - lo.sum()
+    for i in np.argsort(-mu, kind="stable"):   # first turning point
+        take = min(up[i] - lo[i], rest)
+        w[i], rest = w[i] + take, rest - take
+        if rest <= 0:
+            break
+    if rest > 0 or (n > 1 and np.partition(mu, -2)[-2] == mu.max()):
+        raise ValueError("infeasible bounds, or a tied largest return")
+    F, lam, last, path = np.arange(n) == i, np.inf, -1, [(np.inf, w.copy())]
+    while True:                                # one KKT solve per segment
+        B, m, one = ~F, F.sum(), np.ones(F.sum())
+        K = np.block([[S[np.ix_(F, F)], one[:, None]], [one, 0.0]])
+        rhs = np.c_[np.r_[-S[np.ix_(F, B)] @ w[B], 1 - w[B].sum()],
+                    np.r_[mu[F], 0.0]]
+        x = np.linalg.solve(K, rhs)            # w_F = a + lam b, nu likewise
+        a, b = w.copy(), np.zeros(n)
+        a[F], b[F] = x[:m, 0], x[:m, 1]
+        gam, dlt = S @ a + x[m, 0], S @ b - mu + x[m, 1]  # reduced cost
+        with np.errstate(divide="ignore", invalid="ignore"):
+            hit = np.where(F, np.where(b < 0, up - a, lo - a) / b, -gam / dlt)
+        live = np.where(F, abs(b) > tol,
+                        np.where(w <= lo, dlt > tol, dlt < -tol) & (lo < up))
+        if last >= 0:
+            live[last] = False                 # the asset that just flipped
+        hit = np.where(live & (hit <= lam * (1 + tol)), hit, -np.inf)
+        k = int(np.argmax(hit))                # ties: lowest index
+        if hit[k] <= 0:
+            return [*path, (0.0, a)]
+        lam, w = hit[k], a + hit[k] * b
+        if np.any((w < lo - 1e-8) | (w > up + 1e-8)):
+            raise np.linalg.LinAlgError("free block numerically singular")
+        if F[k]:
+            w[k] = up[k] if b[k] < 0 else lo[k]  # leaving weight on its bound
+        F[k], last = not F[k], k
+        path.append((lam, w.copy()))
+\end{CodeInput}
+\end{CodeChunk}
+\caption{A complete CLA for box bounds and one budget row, written with the KKT conditions.
+A runnable copy that checks it against \pkg{cvxcla} is at
+\url{https://gist.github.com/tschm/a622ba482795b4a9fc452c64e1024982}.}
+\label{fig:kktcla}
+\end{figure}
