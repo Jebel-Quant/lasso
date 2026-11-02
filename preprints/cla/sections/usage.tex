@@ -43,7 +43,7 @@ factor backend represents the \emph{same} $\Sig$, it returns the same frontier t
 
 \begin{CodeChunk}
 \begin{CodeInput}
-factor = FactorCovariance(d=d, u=U, delta=np.diag(Delta))
+factor = FactorCovariance(d=d, u=U, delta=Delta)
 cla_factor = CLA(
     mean=mean, covariance=factor,
     lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
@@ -87,7 +87,9 @@ The result is \code{cla.turning\_points}, a list of \code{TurningPoint} objects 
 \code{weights}, the value \code{lamb} of $\lambda$, the boolean mask \code{free} of free
 assets, and the mask \code{active\_ineq} of active rows of $G$. The maximum-return
 vertex appears twice, at $\lambda = \infty$ and again at the first finite turning point,
-where the path leaves it; \code{len(cla)} is the number of turning points.
+where the path leaves it, so that every pair of consecutive turning points bounds one
+segment of the path, the first being the constant stretch above the first finite
+$\lambda$; \code{len(cla)} is the number of turning points.
 \code{cla.frontier} wraps them as a \code{Frontier}
 (\srcfile{src/cvxcla/types.py}{types.py}), which exposes the \code{weights},
 \code{returns}, \code{variance}, \code{volatility} and \code{sharpe\_ratio} of the
@@ -143,8 +145,7 @@ handlers keep working.
 
 
 
-A sample covariance from fewer observations than assets is a case that used to be
-declined and no longer is. It is singular, and its free block becomes singular partway
+A sample covariance from fewer observations than assets is supported. It is singular, and its free block becomes singular partway
 along the frontier. The budget row still holds the free assets on its null space, where
 the block stays positive definite, so the trace goes on there (Appendix~\ref{sec:degeneracy}).
 A ridged Gram backend (Section~\ref{sec:gram}) traces a different, regularized frontier:
@@ -169,8 +170,11 @@ turning points: 5 | with a ridge: 7
 \end{CodeChunk}
 \end{minipage}
 
-Release~2.3.3 declined the first of these. Every turning point of the trace above
-matches an interior-point solve of the same quadratic program.
+Every turning point of the trace above matches an interior-point solve of the same
+quadratic program. With a singular $\Sig$ the optimal weights at a given $\lambda$ need
+not be unique, although their return and variance are: \pkg{cvxcla} returns the optimal
+portfolio its active set determines, and another solver may return a different one
+(Appendix~\ref{sec:degeneracy}).
 
 \begin{table}[tb]
 \centering

@@ -45,8 +45,10 @@ The dominant cost is the solve against $\Sig_{\F\F}$; for the plain budget $S$ i
 scalar. With $1 < m_c \le n_\F$ the rows are first replaced by an orthonormal basis of
 their span, $C_\F\trans = QR$, and the system is solved with $Q$ in place of
 $C_\F\trans$, the target $R^{-\mathsf{T}} r_2$, and the multipliers recovered by a
-triangular solve with $R$. The condition number of $C_\F \Sig_{\F\F}\inv C_\F\trans$ can
-reach $\operatorname{cond}(\Sig_{\F\F})\operatorname{cond}(C_\F)^2$, while
+triangular solve with $R$. Since $\operatorname{cond}(X\trans B X) \le \operatorname{cond}(B)\operatorname{cond}(X)^2$
+for $X$ of full column rank and $B \succ 0$, with equality possible, the condition number
+of $C_\F \Sig_{\F\F}\inv C_\F\trans$ can reach
+$\operatorname{cond}(\Sig_{\F\F})\operatorname{cond}(C_\F)^2$, while
 $Q\trans\Sig_{\F\F}\inv Q$ is no worse conditioned than $\Sig_{\F\F}$, so nearly
 dependent active rows lose accuracy in proportion to $\operatorname{cond}(C_\F)$, the
 sensitivity of the constraint data, and not to its square. Solving only for the free block keeps every step a dense solve of size
@@ -112,7 +114,8 @@ $g_j\trans\beta < 0$ (the slack rises as $\lambda$ falls).
 $\lambda_j = -\eta_j^{\alpha}/\eta_j^{\beta}$, where its multiplier reaches zero,
 admissible when $\eta_j^{\beta} > 0$.
 \end{itemize}
-These fill the trailing $p$ rows of $L$, so a group cap or factor-exposure band is
+These fill columns 0 and 1 of the trailing $p$ rows of $L$, whose columns 2 and 3 are
+$-\infty$, so a group cap or factor-exposure band is
 traced along the whole frontier (Section~\ref{sec:exactness}). Each active row adds a column
 to the solve against $\Sig_{\F\F}$ and a row to the Schur complement; with many active
 rows that term, not the covariance solve, dominates a step. A row that is tight but a combination of the active rows on the
@@ -159,7 +162,8 @@ multipliers have the right signs.
 \begin{proposition}\label{prop:termination}
 Let $\Sig \succ 0$, and suppose that at every turning point the constraints holding
 with equality (the rows of $A$, the rows of $G$ with $g_j\trans w = h_j$, and the
-bounds on which a weight sits) have linearly independent gradients. Then, in exact
+bounds on which a weight sits) have linearly independent gradients, the linear independence
+constraint qualification over all active constraints, bounds included. Then, in exact
 arithmetic, the walk never returns to a partition it has left, and it reaches
 $\lambda = 0$ after finitely many turning points.
 \end{proposition}

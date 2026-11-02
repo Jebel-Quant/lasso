@@ -6,8 +6,8 @@ quadratic form (Figure~\ref{fig:design}). The turning-point loop needs only thre
 operations on the covariance: a matrix--vector product $\Sig x$, a multi-column solve
 against the free block $\Sig_{\F\F}\inv R$, and the free-to-blocked cross product
 $\Sig_{\F\B}\,x_\B$, which is formed from the first. A backend supplies them through the
-protocol \code{QuadraticForm} (alias \code{CovarianceOperator}, the
-\code{SymmetricOperator} contract of \pkg{cvx-linalg}), whose five members are listed in
+protocol \code{QuadraticForm}, defined in the package's linear-algebra dependency
+\pkg{cvx-linalg} \citep{cvxlinalg}, whose five members are listed in
 Table~\ref{tab:protocol}; two of them serve the gross-exposure lift and the singularity
 guard. The algorithm never assumes an explicit matrix, and it assumes of a backend only
 that $\Sig$ is symmetric and that every free block it solves is positive definite on

@@ -70,13 +70,14 @@
 \Abstract{
 \pkg{cvxcla} is an open-source \proglang{Python} implementation of Markowitz's
 Critical Line Algorithm (CLA), which returns the \emph{entire} mean--variance efficient
-frontier as a finite list of turning points, with no discretization error. The turning
+frontier as a finite list of turning points, exact up to floating-point round-off. The turning
 points are Markowitz's; the package adds an interface to the covariance and a wider
 range of constraints. The algorithm reaches the covariance only through a small
 operator protocol, so a dense matrix, a diagonal-plus-low-rank risk model, a data
 matrix, or a user-written backend can be exchanged without touching the loop. With
 2560 assets and ten factors the factor backend traces the same frontier about 34
-times faster than the dense one. Box bounds, linear equalities and inequalities, and a cap on
+times faster than the dense backend, and about 6 times faster than a dense backend
+that updates its factorization incrementally. Box bounds, linear equalities and inequalities, and a cap on
 gross exposure are supported. The walk provably terminates under standard
 nondegeneracy assumptions, every trace is checked by an independent
 Karush--Kuhn--Tucker certificate, and inputs outside the supported domain stop with an

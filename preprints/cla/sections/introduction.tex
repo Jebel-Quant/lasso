@@ -1,12 +1,12 @@
 \section{Introduction}
 
-\begin{center}
-\makeatletter\def\@captype{figure}\makeatother
+\begin{figure}[t]
+\centering
 \includegraphics[width=0.65\textwidth]{frontier.pdf}
 \caption{The efficient frontier of a $20$-asset long-only problem, traced exactly by
 \pkg{cvxcla} as $20$ turning points, plotted as return against variance (\target{frontier}).}
 \label{fig:frontier}
-\end{center}
+\end{figure}
 
 The mean--variance portfolio selection problem \citep{markowitz1952} asks for the
 allocation of capital across $n$ assets that minimizes risk for a given level of
@@ -78,7 +78,9 @@ QP over a $\lambda$ grid & one portfolio per grid point & as the solver accepts 
 Section~\ref{sec:experiment}: the QP over a $\lambda$ grid is described in Section~\ref{sec:clarabel},
 \pkg{qpOASES} in Section~\ref{sec:qpoases}, \pkg{cvxcla}'s covariance operators in
 Section~\ref{sec:operators} and its lift of the gross cap in Section~\ref{sec:leverage}. ``Gross
-cap'' is $\lVert w\rVert_1 \le c$. ``Path followed, endpoint returned'' means
+cap'' is $\lVert w\rVert_1 \le c$: ``reformulated'' means the user rewrites it with
+auxiliary variables before calling the solver, ``native lift'' that \pkg{cvxcla} accepts
+$c$ and performs the rewriting itself. ``Path followed, endpoint returned'' means
 \pkg{qpOASES} passes the same turning points but does not expose them through
 \pkg{CasADi}. The termination
 guarantee (Section~\ref{sec:bland}) and the KKT certificate (Section~\ref{sec:exactness}) are

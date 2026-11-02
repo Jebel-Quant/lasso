@@ -135,11 +135,21 @@ large $K$, where the dense backend is already faster (Section~\ref{sec:rankscali
 \label{sec:rankscaling}
 
 The factor backend's advantage must fade as $K$ approaches $n$. At fixed $n = 320$ and
-$K \in \{20, \dots, 320\}$ (\target{rank-scaling}), the dense time is flat in $K$ while Woodbury grows as
+$K \in \{20, \dots, 320\}$ (Figure~\ref{fig:rankscaling}, \target{rank-scaling}), the dense time is
+roughly flat in $K$ while Woodbury grows as
 $O(n_\F K^2 + K^3)$: the factor backend is about $1.9\times$ faster at $K=20$, at parity near
 $K=160$, and $\approx 1.8\times$ slower at $K = 320$. It pays off
 in the regime real risk models inhabit, a few tens of factors over hundreds or thousands
 of assets.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.54\textwidth]{rank_scaling.pdf}
+\caption{Frontier trace time against the factor rank $K$ at $n = 320$ (log--log). The
+dense backend does not see $K$; the Woodbury solve of the factor backend costs
+$O(n_\F K^2 + K^3)$ per step.}
+\label{fig:rankscaling}
+\end{figure}
 
 \subsection[A general-solver baseline: a QP swept over lambda]{A general-solver baseline: a QP swept over $\lambda$}
 \label{sec:clarabel}
@@ -195,8 +205,7 @@ full-history sample moments (condition number $\approx 1.1\times 10^{5}$) the CL
 traces the long-only frontier, $96$ turning points, in about $25$~ms;
 a rank-$20$ factor approximation traces a
 near-identical frontier ($89$ points) in about $16$~ms. The frontier spans annualized
-returns of $0.14$--$0.89$ over volatilities of $0.10$--$0.87$, with an in-sample maximum
-Sharpe ratio near $2.7$ (\target{real-frontier}).
+returns of $0.14$--$0.89$ over volatilities of $0.10$--$0.87$ (\target{real-frontier}).
 
 \paragraph{Covariance estimators as backends.}
 \label{sec:estimators}
