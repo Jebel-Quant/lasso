@@ -1,6 +1,9 @@
 # Replication materials for "cvxcla: The Critical Line Algorithm with an Operator Interface in Python"
 
-This script reproduces every figure, table and number in the paper.
+This script reproduces every figure, table and number in the paper. It is the experiment
+script of cvxcla 2.7.1 (`experiments/make_figures.py` at tag `v2.7.1`), less one
+external timing baseline that the paper does not report; the steps the paper names,
+such as `make_figures.py scaling`, are the same in both.
 
 ```
 make_figures.py                 every figure and every numerical check

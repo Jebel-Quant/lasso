@@ -18,13 +18,17 @@ r"""Figures and numerical checks for the CLA paper.
 One self-contained, seeded entry point that reproduces every figure and every
 numerical check in the cvxcla paper. A small Typer CLI selects which
 artefact to build; with no argument it asks interactively. The S&P 500 input is
-the frozen snapshot committed at ``experiments/data/sp500_pct_returns.parquet``,
-so the data-driven steps reproduce deterministically and offline.
+the frozen snapshot ``sp500_pct_returns.parquet`` in ``data/`` beside this script
+(``figures/data/`` in the paper's repository), so the data-driven steps reproduce
+deterministically and offline.
 
-    uv run experiments/make_figures.py            # choose interactively
-    uv run experiments/make_figures.py all         # every figure + every check
-    uv run experiments/make_figures.py all --quick # skip the slow scaling sweeps
-    uv run experiments/make_figures.py frontier    # just one figure
+This is the experiment script of cvxcla 2.7.1 (``experiments/make_figures.py`` at tag
+v2.7.1), less one external timing baseline that the paper does not report.
+
+    uv run make_figures.py            # choose interactively
+    uv run make_figures.py all         # every figure + every check
+    uv run make_figures.py all --quick # skip the slow scaling sweeps
+    uv run make_figures.py frontier    # just one figure
 
 Targets (artefact in parentheses):
 
