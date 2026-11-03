@@ -42,8 +42,9 @@ uv run make_figures.py r-cla
 ## Expected runtime and output
 
 The paper's results were computed on an Apple M4 Pro (14 cores, 48 GB) under macOS 15.6.1
-with Python 3.14.6. On that machine `all` takes about 45 minutes, nearly all of it in the
-two scaling sweeps (Sections 7.2 and 7.4); `all --quick` takes a few minutes.
+with Python 3.14.6. On that machine `all` takes about 50 minutes, nearly all of it in the
+two scaling sweeps (Sections 7.2 and 7.4) and the single-thread timings (`threads`);
+`all --quick` skips those three and takes a few minutes.
 
 Turning-point counts, accuracy figures and KKT residuals should agree with the paper up
 to round-off. A run of the six correctness checks (`validate-exact`, `validate-constraints`,

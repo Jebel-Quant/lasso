@@ -4,7 +4,9 @@
 \centering
 \includegraphics[width=0.65\textwidth]{frontier.pdf}
 \caption{The efficient frontier of a $20$-asset long-only problem, traced exactly by
-\pkg{cvxcla} as $20$ turning points, plotted as return against variance (\target{frontier}).}
+\pkg{cvxcla} as $20$ turning points, plotted as return against variance, in which each
+segment between turning points is an arc of a parabola (\target{frontier}). The
+empirical figures use volatility, as is usual in practice.}
 \label{fig:frontier}
 \end{figure}
 
@@ -31,26 +33,29 @@ plus a low-rank term. The large-scale methods cited above exploit structure thro
 incremental factorizations, sparsity, or pivoting tied to an explicit matrix.
 \pkg{cvxcla} computes the same turning points as any CLA; its contribution is an
 \emph{interface} that makes the loop independent of how the covariance is stored, so
-the structure becomes a property of an exchangeable backend. The mathematics connecting the CLA to the
-constrained LASSO, and its history, are the subject of a companion paper
-\citep{schmelzer2026perspective}. \citet{schmelzer2026lasso} shows how to obtain the
-efficient frontier from a LASSO solver, and \citet{schmelzer2026constrained} goes the other
-way, computing constrained LASSO paths with \pkg{cvxcla}; this paper documents the software.
+the structure becomes a property of an exchangeable backend. The link between the CLA
+and the constrained LASSO is treated elsewhere
+\citep{schmelzer2026perspective,schmelzer2026lasso,schmelzer2026constrained}; this paper
+documents the software.
 
 \paragraph{Contributions.}
 \begin{enumerate}\setlength{\itemsep}{2pt}
 \item \textbf{An operator interface.} The turning-point loop reaches the covariance
 through a five-member protocol (Section~\ref{sec:operators}). A diagonal-plus-low-rank
 backend solves the free block through the Woodbury identity, never forms an
-$n\times n$ matrix, and traces the same turning points about $36\times$ faster than the dense
-backend at $n=2560$, in under $1$~MiB of working memory against $100$~MiB
-(Section~\ref{sec:experiment}).
+$n\times n$ matrix, and traces the same turning points about $30\times$ faster than the dense
+backend at $n=2560$, in under $1$~MiB of working memory against $100$~MiB, on a market
+whose free set grows to every asset (Section~\ref{sec:scaling}). On a rank-$20$ factor
+model of the S\&P~500, where at most $55$ of $494$ assets are free at once, it traces the
+same frontier about $1.4\times$ faster (Section~\ref{sec:empirical}).
 \item \textbf{General linear constraints.} Box bounds combine with any linear
 equalities $A w = b$ and inequalities $G w \le h$ (Section~\ref{sec:ineq}) and a
 gross-exposure cap $\lVert w\rVert_1 \le c$ (Section~\ref{sec:leverage}).
 \item \textbf{A tested implementation.} A least-index tie-break makes the trace
-deterministic and provably finite under standard assumptions (Section~\ref{sec:bland}); an
-independent KKT certificate validates every trace (Section~\ref{sec:exactness}); inputs
+deterministic and provably finite under standard assumptions (Section~\ref{sec:bland});
+every turning point is checked for feasibility as it is found, and an independent KKT
+certificate in the replication script certifies eleven traces, among them the largest
+timed one ($n = 2560$) and the worked example (Section~\ref{sec:exactness}); inputs
 outside the supported domain are declined with an error that names the cause
 (Section~\ref{sec:errors}); and one script regenerates every figure and number.
 \end{enumerate}
@@ -88,16 +93,19 @@ auxiliary variables before calling the solver, ``native lift'' that \pkg{cvxcla}
 $c$ and performs the rewriting itself. ``Path followed, endpoint returned'' means
 \pkg{qpOASES} passes the same turning points but does not expose them through
 \pkg{CasADi}. The termination
-guarantee (Section~\ref{sec:bland}) and the KKT certificate (Section~\ref{sec:exactness}) are
-properties of \pkg{cvxcla}'s trace and are not compared here.}
+guarantee (Section~\ref{sec:bland}) is a property of \pkg{cvxcla}'s trace, and the KKT
+certificate (Section~\ref{sec:exactness}) a check of the replication script; neither is
+compared here.}
 \label{tab:compare}
 \end{table}
 
 We do \emph{not} claim the fastest solve: on small problems \pkg{qpOASES} is faster
 (Section~\ref{sec:qpoases}), and large dense problems admit faster incremental
-factorizations (Section~\ref{sec:baseline}), and on a factor model an interior-point
-solver returns a grid of $100$ approximate frontier portfolios at a similar cost
-(Section~\ref{sec:clarabel}). The claim is an exact and complete frontier at that cost.
+factorizations (Section~\ref{sec:baseline}), and on a factor model whose free set grows
+to every asset an interior-point solver returns a grid of $100$ approximate frontier
+portfolios at a similar cost, and in parallel faster (Section~\ref{sec:clarabel}). The
+claim is an exact and complete frontier at no more than the cost of a grid; on the
+S\&P~500, with few assets free at once, the grid costs an order of magnitude more.
 
 The package \citep{cvxcla}\footnote{\href{\repourl}{\texttt{github.com/cvxgrp/cvxcla}}}
 is built around the class \code{CLA} in \srcfile{src/cvxcla/cla.py}{src/cvxcla/cla.py},

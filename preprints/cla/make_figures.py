@@ -24,8 +24,11 @@ the frozen snapshot ``sp500_pct_returns.parquet`` in ``data/`` beside this scrip
 deterministically and offline.
 
 This is the experiment script of cvxcla 2.7.1 (``experiments/make_figures.py`` at tag
-v2.7.1), less one external timing baseline that the paper does not report and with one
-step added, ``worked-example`` (the worked example of Section 6.4).
+v2.7.1), less the PyPortfolioOpt timing baseline, which the paper does not report, and
+extended for the paper: the worked example of Section 6.4 (``worked-example``), the
+factor-form grids, the comparison with the R package CLA (``r-cla``), the drift of the
+incremental backend (``validate-incremental``), the single-thread timings (``threads``),
+the KKT certificate of the largest traces, and the extended tolerance study.
 
     uv run make_figures.py            # choose interactively
     uv run make_figures.py all         # every figure + every check
@@ -88,6 +91,7 @@ import contextlib
 import enum
 import io
 import itertools
+import os
 import time
 from dataclasses import dataclass
 from itertools import pairwise
@@ -562,7 +566,10 @@ def _factor_form(d: np.ndarray, u: np.ndarray, delta: np.ndarray) -> tuple:
 
 
 def _osqp_factor_grid(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, lams: np.ndarray) -> tuple:
-    """The warm-started OSQP grid of _osqp_warm_grid, on the factor form. Returns (weights, seconds)."""
+    """The warm-started OSQP grid of _osqp_warm_grid, on the factor form.
+
+    Returns (weights, seconds, total iterations over the grid).
+    """
     import osqp
     from scipy import sparse
 
@@ -583,11 +590,13 @@ def _osqp_factor_grid(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.
         max_iter=40_000,
         verbose=False,
     )
-    weights = []
+    weights, iterations = [], 0
     for lam in lams:
         solver.update(q=np.r_[-lam * mean, np.zeros(k)])
-        weights.append(solver.solve(raise_error=True).x[:n])
-    return np.array(weights), time.perf_counter() - start
+        result = solver.solve(raise_error=True)
+        weights.append(result.x[:n])
+        iterations += int(result.info.iter)
+    return np.array(weights), time.perf_counter() - start, iterations
 
 
 def _clarabel_factor_grid(
@@ -597,7 +606,7 @@ def _clarabel_factor_grid(
 
     Clarabel is an interior-point solver: it has no warm start, so each lambda is a fresh
     solve, and no active-set polish, so its weights are accurate only to its tolerance.
-    Returns (weights, seconds).
+    Returns (weights, seconds, total iterations over the grid).
     """
     import clarabel
     from scipy import sparse
@@ -613,22 +622,35 @@ def _clarabel_factor_grid(
     if tol is not None:
         for name in ("tol_gap_abs", "tol_gap_rel", "tol_feas", "tol_ktratio"):
             setattr(settings, name, tol)
-    weights = []
+    weights, iterations = [], 0
     for lam in lams:
         solution = clarabel.DefaultSolver(p_mat, np.r_[-lam * mean, np.zeros(k)], a_mat, b_vec, cones, settings).solve()
         if "Solved" not in str(solution.status):
             msg = f"Clarabel did not solve the factor-form QP at lambda={lam}: {solution.status}"
             raise RuntimeError(msg)
         weights.append(np.array(solution.x)[:n])
-    return np.array(weights), time.perf_counter() - start
+        iterations += int(solution.iterations)
+    return np.array(weights), time.perf_counter() - start, iterations
 
 
-def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple[int, float, float, float, float]:
-    """Time a factor-form grid of GRID lambdas (median of REPEATS) and its error against the trace.
+def _factor_grid_run(
+    solver: str,
+    d: np.ndarray,
+    u: np.ndarray,
+    delta: np.ndarray,
+    mean: np.ndarray,
+    repeats: int,
+    tol: float | None = None,
+) -> tuple:
+    """Time a factor-form grid of GRID lambdas against the exact long-only trace of the same model.
 
-    Returns (grid points, median, min, max seconds, largest weight error at the grid points).
+    Each grid point is compared with the exact frontier at the same lambda, in its weights
+    and in what a user reads off a frontier portfolio: its expected return and its
+    variance, relative to the exact ones. Returns (grid points, median, min, max seconds,
+    largest weight error, largest relative return error, largest relative variance error,
+    iterations per grid point).
     """
-    d, u, delta, mean = _scale_raw_factors(n)
+    n = len(mean)
     cla = CLA(
         mean=mean,
         covariance=FactorCovariance(d=d, u=u, delta=delta),
@@ -640,14 +662,30 @@ def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple[i
     lam_max = max(tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb))
     lams = np.linspace(lam_max, 0.0, _SCALE_GRID)
     times = []
-    for _ in range(_scale_repeats(n)):
+    for _ in range(repeats):
         if solver == "osqp":
-            weights, seconds = _osqp_factor_grid(d, u, delta, mean, lams)
+            weights, seconds, iterations = _osqp_factor_grid(d, u, delta, mean, lams)
         else:
-            weights, seconds = _clarabel_factor_grid(d, u, delta, mean, lams, tol)
+            weights, seconds, iterations = _clarabel_factor_grid(d, u, delta, mean, lams, tol)
         times.append(seconds)
-    error = max(float(np.abs(w - _cla_weight_at(cla, lam)).max()) for w, lam in zip(weights, lams, strict=True))
-    return (len(lams), *_scale_stats(times), error)
+
+    def variance(w: np.ndarray) -> float:
+        y = u.T @ w
+        return float(w @ (d * w) + y @ (delta * y))  # delta is the diagonal of the factor covariance
+
+    err_w = err_ret = err_var = 0.0
+    for w, lam in zip(weights, lams, strict=True):
+        exact = _cla_weight_at(cla, lam)
+        err_w = max(err_w, float(np.abs(w - exact).max()))
+        err_ret = max(err_ret, abs(float(mean @ (w - exact))) / abs(float(mean @ exact)))
+        err_var = max(err_var, abs(variance(w) - variance(exact)) / variance(exact))
+    return (len(lams), *_scale_stats(times), err_w, err_ret, err_var, iterations / len(lams))
+
+
+def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple:
+    """The factor-form grid of _factor_grid_run on the seed-7 size-n factor model of the sweep."""
+    d, u, delta, mean = _scale_raw_factors(n)
+    return _factor_grid_run(solver, d, u, delta, mean, _scale_repeats(n), tol)
 
 
 def _scale_memory(covariance: object, problem: dict, cov_bytes: int) -> tuple[int, int]:
@@ -695,7 +733,11 @@ def _scale_measure(method: str, n: int) -> object:
     raise ValueError(msg)
 
 
-def _scale_fresh(method: str, n: int) -> object:
+# Environment variables that cap the BLAS thread pool (Accelerate, OpenBLAS, MKL, OpenMP).
+_THREAD_VARS = ("VECLIB_MAXIMUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "OMP_NUM_THREADS")
+
+
+def _scale_fresh(method: str, n: int, single_thread: bool = False) -> object:
     """Time one method in its own freshly spawned interpreter.
 
     Run in one process, the external baselines (OSQP, qpOASES) leave the
@@ -706,8 +748,40 @@ def _scale_fresh(method: str, n: int) -> object:
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
 
-    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as pool:
-        return pool.submit(_scale_measure, method, n).result()
+    saved = {k: os.environ.get(k) for k in _THREAD_VARS}
+    if single_thread:
+        # A spawned interpreter loads its BLAS afresh and reads these on loading.
+        os.environ.update(dict.fromkeys(_THREAD_VARS, "1"))
+    try:
+        with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as pool:
+            return pool.submit(_scale_measure, method, n).result()
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+# Sizes at which the threads check reruns cvxcla's backends on one BLAS thread.
+_THREADS_SIZES = (640, 2560)
+
+
+def check_threads(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
+    """Time cvxcla's backends with the default BLAS threads and with one, as the grids run.
+
+    OSQP and Clarabel solve on one thread; the dense backends call a multithreaded BLAS.
+    The ratios against the grids are fair to the grid only with cvxcla on one thread too.
+    """
+    print(f"{'method':<10}{'n':>6}{'default':>12}{'1 thread':>12}{'ratio':>8}")
+    for n in _THREADS_SIZES:
+        for method in ("dense", "inverse", "factor"):
+            default = _scale_fresh(method, n)
+            single = _scale_fresh(method, n, single_thread=True)
+            print(
+                f"{method:<10}{n:>6}{default[1] * 1e3:>10.1f}ms{single[1] * 1e3:>10.1f}ms"
+                f"{single[1] / default[1]:>8.2f}"
+            )
 
 
 def figure_scaling(out_dir: Path) -> None:
@@ -772,6 +846,22 @@ def figure_scaling(out_dir: Path) -> None:
             f"clarabel={clf[1] * 1e3:9.1f} ms (max |dw| {clf[4]:.1e})  "
             f"vs cvxcla factor: osqp {osf[1] / t_factor:.1f}x, clarabel {clf[1] / t_factor:.1f}x"
         )
+        print(
+            f"        factor form, relative return / variance error: osqp {osf[5]:.1e} / {osf[6]:.1e}, "
+            f"clarabel {clf[5]:.1e} / {clf[6]:.1e};  iterations per grid point: "
+            f"osqp {osf[7]:.0f}, clarabel {clf[7]:.0f}"
+        )
+
+        def spread(lo_hi: tuple[float, float] | None, mid: float | None) -> str:
+            return "n/a" if lo_hi is None or mid is None else f"{(lo_hi[1] - lo_hi[0]) / mid:.0%}"
+
+        print(
+            f"        spread (max-min)/median: dense {spread((d_lo, d_hi), t_dense)}, "
+            f"factor {spread((f_lo, f_hi), t_factor)}, "
+            f"inverse {spread(inv[2:4] if inv else None, inv[1] if inv else None)}, "
+            f"qpoases {spread(qpo[2:4] if qpo else None, qpo[1] if qpo else None)}, "
+            f"osqp-f {spread(osf[2:4], osf[1])}, clarabel-f {spread(clf[2:4], clf[1])}"
+        )
 
     # The clean comparison is the incremental-inverse baseline vs the dense
     # backend: same vectorised event logic, differing only in the linear-algebra
@@ -819,12 +909,17 @@ def figure_scaling(out_dir: Path) -> None:
             )
 
     # Clarabel's weights are accurate only to its tolerance: the cost of tightening it.
-    print("\nClarabel factor-form grid against its tolerance (time, largest weight error):")
+    print("\nClarabel factor-form grid against its tolerance (time; largest weight, return, variance error):")
     for n_t in (640, 2560):
         cells = []
-        for tol in (None, 1e-10, 1e-12):
-            _, t_med, _, _, err = _scale_factor_grid("clarabel", n_t, tol)
-            cells.append(f"{'default' if tol is None else f'{tol:g}'}: {t_med * 1e3:7.1f} ms, {err:.1e}")
+        for tol in (None, 1e-10, 1e-12, 1e-14):
+            name = "default" if tol is None else f"{tol:g}"
+            try:
+                _, t_med, _, _, err, err_r, err_v, _ = _scale_factor_grid("clarabel", n_t, tol)
+            except RuntimeError as exc:
+                cells.append(f"{name}: {str(exc).rsplit(': ', 1)[-1]}")
+                continue
+            cells.append(f"{name}: {t_med * 1e3:7.1f} ms, {err:.1e}, {err_r:.1e}, {err_v:.1e}")
         print(f"n={n_t:4d}  " + "   ".join(cells))
 
     mib = 2.0**20
@@ -863,7 +958,6 @@ def figure_scaling(out_dir: Path) -> None:
             ax.loglog(xs, [times[i] for i in keep], marker, ms=4, color=colour, label=label)
         ax.set_xlabel("Number of assets $n$")
         ax.set_ylabel("Frontier trace time [s]")
-        ax.set_title(title, fontsize=9)
         # Label the x-axis at the actual problem sizes as plain integers, not the
         # default powers of ten (which never coincide with 20, 40, ..., 640 and
         # leave cluttered minor-tick labels on a log axis).
@@ -964,7 +1058,6 @@ def figure_rank_scaling(out_dir: Path) -> None:
     ax.loglog(ks, factor_times, "-s", ms=4, color="#1f4e79", label="cvxcla, factor backend (Woodbury)")
     ax.set_xlabel(f"Number of factors $K$ (fixed $n={_RANK_N_ASSETS}$)")
     ax.set_ylabel("Frontier trace time [s]")
-    ax.set_title(f"CLA runtime vs factor rank ($n={_RANK_N_ASSETS}$)", fontsize=9)
     ax.set_xticks(ks)
     ax.xaxis.set_major_formatter(ScalarFormatter())
     ax.xaxis.set_minor_formatter(NullFormatter())
@@ -1008,13 +1101,19 @@ def _real_median_trace(mean: np.ndarray, covariance: object, n: int) -> tuple[ob
     return cla, float(np.median(times))
 
 
-def _real_factor_estimate(cov: np.ndarray, k: int) -> FactorCovariance:
-    """Diagonal-plus-low-rank estimate from the top-k eigenpairs of ``cov``."""
+def _real_factor_parts(cov: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(d, U, delta) of the diagonal-plus-low-rank estimate from the top-k eigenpairs of ``cov``."""
     evals, evecs = np.linalg.eigh(cov)
     top = np.argsort(evals)[::-1][:k]
     u = evecs[:, top]
     delta = np.clip(evals[top], 1e-12, None)
     d = np.clip(np.diag(cov) - np.einsum("ij,j,ij->i", u, delta, u), 1e-10, None)
+    return d, u, delta
+
+
+def _real_factor_estimate(cov: np.ndarray, k: int) -> FactorCovariance:
+    """Diagonal-plus-low-rank estimate from the top-k eigenpairs of ``cov``."""
+    d, u, delta = _real_factor_parts(cov, k)
     return FactorCovariance(d=d, u=u, delta=delta)
 
 
@@ -1039,6 +1138,16 @@ def figure_real_frontier(out_dir: Path) -> None:
     print(
         f"factor (K={_REAL_N_FACTORS}) approx    : {len(factor_cla)} turning points in "
         f"{factor_time * 1e3:.1f} ms (median)"
+    )
+    # The backend comparison on one matrix: the rank-20 model, traced densely and by Woodbury.
+    d20, u20, delta20 = _real_factor_parts(sample_cov, _REAL_N_FACTORS)
+    dense20_cla, dense20_time = _real_median_trace(mean, np.diag(d20) + (u20 * delta20) @ u20.T, n)
+    if len(dense20_cla) != len(factor_cla):
+        msg = f"rank-{_REAL_N_FACTORS} backends disagree: {len(dense20_cla)} vs {len(factor_cla)}"
+        raise RuntimeError(msg)
+    print(
+        f"same rank-{_REAL_N_FACTORS} matrix, dense: {len(dense20_cla)} turning points in "
+        f"{dense20_time * 1e3:.1f} ms (median); factor backend {dense20_time / factor_time:.2f}x faster"
     )
 
     frontier = cla.frontier
@@ -1117,7 +1226,8 @@ def figure_worked_example(out_dir: Path) -> None:
         .trace()
     )
     binds = sum(tp.active_ineq[0] for tp in book.turning_points)
-    print(len(book), "turning points; the cap binds at", binds)
+    gross = sum(abs(tp.weights).sum() > 1.3 - 1e-9 for tp in book.turning_points)
+    print(len(book), "turning points; the cap binds at", binds, "and the gross cap at", gross)
     _, w = book.frontier.max_sharpe
     print(
         f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
@@ -1145,7 +1255,7 @@ def figure_worked_example(out_dir: Path) -> None:
         ax.plot(curve.volatility, curve.returns, "-", lw=1.0, color=colour, label=label)
     tp = book.frontier
     active = np.array([bool(t.active_ineq[0]) for t in book.turning_points])
-    ax.plot(tp.volatility[active], tp.returns[active], "o", ms=2.2, color="#c00000", label="cap binding")
+    ax.plot(tp.volatility[active], tp.returns[active], "x", ms=3.5, mew=0.9, color="#c00000", label="cap binding")
     ax.set_xlabel("Annualized volatility")
     ax.set_ylabel("Annualized expected return")
     ax.grid(True, alpha=0.3)
@@ -1468,7 +1578,6 @@ def figure_degeneracy(out_dir: Path) -> None:
     ax.set_yscale("log")
     ax.set_xlabel("Observations $T$ (sample covariance rank $\\approx \\min(T-1, n)$)")
     ax.set_ylabel("Worst free-block cond. number")
-    ax.set_title(f"The guard reads the free block on the budget's null space ($n={_DEGEN_N_ASSETS}$)", fontsize=8.5)
 
     legend = [
         Line2D(
@@ -1933,6 +2042,63 @@ def check_osqp(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signa
             f"{t_osqp / t_cla:.1f}x the exact trace, max|w - w*| = {gap:.1e}"
         )
 
+    # Free-set sizes set the cost of a dense step: on real data they stay far below n.
+    def free_sizes(trace: CLA) -> str:
+        sizes = [int(np.sum(tp.free)) for tp in trace.turning_points]
+        return f"|F| max {max(sizes)}, median {np.median(sizes):.0f}"
+
+    d, u, delta = _real_factor_parts(sigma, _REAL_N_FACTORS)
+    factor_cla, t_factor = _real_median_trace(mean, FactorCovariance(d=d, u=u, delta=delta), n)
+    print(f"free sets, sample covariance  : {free_sizes(cla)} of n = {n}")
+    print(
+        f"rank-{_REAL_N_FACTORS} factor model (Section 7.7): {len(factor_cla)} turning points in "
+        f"{t_factor * 1e3:.1f} ms (median), {free_sizes(factor_cla)}"
+    )
+    dense20_cla, t_dense20 = _real_median_trace(mean, np.diag(d) + (u * delta) @ u.T, n)
+    print(
+        f"same rank-{_REAL_N_FACTORS} matrix, dense backend: {len(dense20_cla)} turning points in "
+        f"{t_dense20 * 1e3:.1f} ms (median); factor backend {t_dense20 / t_factor:.2f}x faster"
+    )
+    # The worked example of Section 6.4 (5% caps, shorts, a group cap and a gross cap) on
+    # the same universe: its free sets, and dense against factor on its rank-20 model.
+    returns = pd.read_parquet(DATA)
+    mu_w, sigma_w = 252 * returns.mean().to_numpy(), 252 * returns.cov().to_numpy()
+    worked = {
+        "lower_bounds": np.full(n, -0.03),
+        "upper_bounds": np.full(n, 0.05),
+        "a": np.ones((1, n)),
+        "b": np.ones(1),
+        "g": returns.columns.isin(_WORKED_TECH).astype(float)[None, :],
+        "h": np.array([0.06]),
+        "leverage": 1.3,
+    }
+    print(f"130/30 book, sample covariance: {free_sizes(CLA(mean=mu_w, covariance=sigma_w, **worked))} of n = {n}")
+    dw, uw, deltaw = _real_factor_parts(sigma_w, _REAL_N_FACTORS)
+    for label, covariance in (
+        ("dense ", np.diag(dw) + (uw * deltaw) @ uw.T),
+        ("factor", FactorCovariance(d=dw, u=uw, delta=deltaw)),
+    ):
+        CLA(mean=mu_w, covariance=covariance, **worked)
+        times = []
+        for _ in range(_REAL_REPEATS):
+            start = time.perf_counter()
+            book = CLA(mean=mu_w, covariance=covariance, **worked)
+            times.append(time.perf_counter() - start)
+        print(
+            f"130/30 book, rank-{_REAL_N_FACTORS} model, {label}: {len(book)} turning points in "
+            f"{np.median(times) * 1e3:.1f} ms (median), {free_sizes(book)}"
+        )
+    # The grids of the scaling sweep on that factor model: the solver gets the factor form.
+    for solver in ("osqp", "clarabel"):
+        pts, t_med, t_lo, t_hi, err_w, err_r, err_v, iters = _factor_grid_run(
+            solver, d, u, delta, mean, _REAL_REPEATS
+        )
+        print(
+            f"{solver:8s} grid, factor form : {pts} solves in {t_med * 1e3:.1f} ms (median), "
+            f"{t_med / t_factor:.1f}x the factor trace; max|w - w*| = {err_w:.1e}, "
+            f"relative return / variance error {err_r:.1e} / {err_v:.1e}, {iters:.0f} iterations per point"
+        )
+
 
 # ======================================================================================
 # Check: validate-kkt  (Section 8.6 KKT residuals)
@@ -2001,9 +2167,9 @@ def _kkt_point(
     free coordinates by least squares and the bound multipliers are the remaining
     gradient on the blocked ones, so dual feasibility is tested on its own. At a
     vertex they are not unique (on the maximum-return vertex no weight is free), and
-    the test asks instead whether sign-feasible multipliers exist: a bounded least
-    squares fit of stationarity over all coordinates with eta, and the bound
-    multipliers, >= 0, whose residual is the distance to a KKT point.
+    the test asks instead whether sign-feasible multipliers exist: stationarity on the
+    free coordinates fixes them up to a small null space, over which a linear program
+    picks the choice with the largest sign margin on the blocked coordinates and rows.
 
     Returns (primal infeasibility, stationarity, dual infeasibility, complementarity,
     vertex); the middle three are relative to the scale max(1, |S w|, lam |mu|).
@@ -2027,30 +2193,43 @@ def _kkt_point(
         eta = mult[m:]  # multipliers of the active inequality rows: >= 0
         stationarity = float(np.max(np.abs(full[free]), initial=0.0)) / scale
     else:
-        from scipy.optimize import lsq_linear
+        # The free coordinates leave some multipliers undetermined. Stationarity on them
+        # fixes the multipliers up to the null space of rows[:, free]^T; over that small
+        # space a linear program picks the multipliers with the largest sign margin on the
+        # blocked coordinates and the active rows, so dual feasibility is tested for the
+        # best choice and a failure means no sign-feasible multipliers exist.
+        from scipy.linalg import null_space
+        from scipy.optimize import linprog
 
-        eye = np.eye(len(w))
-        system = np.hstack([rows.T, -eye[:, at_lower], eye[:, at_upper]])
-        lower_b = np.concatenate([np.full(m, -np.inf), np.zeros(system.shape[1] - m)])
-        # BVLS is an exact active-set method; the default trust-region solver stops
-        # at its tolerance, ~1e-8 here, well above the residuals being measured.
-        try:
-            x = lsq_linear(
-                system, -grad, bounds=(lower_b, np.full(system.shape[1], np.inf)), method="bvls", tol=1e-15
-            ).x
-        except np.linalg.LinAlgError:
-            # BVLS solves its subproblems with NumPy's SVD, which occasionally fails to
-            # converge on hundreds of nearly dependent active rows. Lawson--Hanson NNLS
-            # solves the same fit with the m free multipliers split into two signs.
-            from scipy.optimize import nnls
-
-            split = np.hstack([system[:, :m], -system[:, :m], system[:, m:]])
-            y = nnls(split, -grad, maxiter=50 * split.shape[1])[0]
-            x = np.concatenate([y[:m] - y[m : 2 * m], y[2 * m :]])
-        eta = x[m : rows.shape[0]]
-        nu_lower = x[rows.shape[0] : rows.shape[0] + int(at_lower.sum())]
-        nu_upper = x[rows.shape[0] + int(at_lower.sum()) :]
-        stationarity = float(np.max(np.abs(grad + system @ x))) / scale
+        k = rows.shape[0]
+        if free.any():
+            base_mult = _lstsq(rows[:, free].T, -grad[free])
+            basis = null_space(rows[:, free].T)
+        else:
+            base_mult, basis = np.zeros(k), np.eye(k)
+        blocked = at_lower | at_upper
+        sign = np.where(at_lower, 1.0, -1.0)[blocked]  # the sign the bound multiplier needs
+        offset = np.concatenate([sign * (grad + rows.T @ base_mult)[blocked], base_mult[m:]])
+        slope = np.vstack([sign[:, None] * (rows[:, blocked].T @ basis), basis[m:]])
+        q = basis.shape[1]
+        z = np.zeros(q)
+        if q and len(offset):
+            # maximise t subject to offset + slope z >= t, with t at most the scale
+            lp = linprog(
+                c=np.r_[np.zeros(q), -1.0],
+                A_ub=np.hstack([-slope, np.ones((len(offset), 1))]),
+                b_ub=offset,
+                bounds=[(None, None)] * q + [(None, scale)],
+                method="highs",
+            )
+            if lp.status == 0:
+                z = lp.x[:q]
+        mult = base_mult + basis @ z
+        full = grad + rows.T @ mult
+        nu_lower = full[at_lower]
+        nu_upper = -full[at_upper]
+        eta = mult[m:]
+        stationarity = float(np.max(np.abs(full[free]), initial=0.0)) / scale
 
     primal = max(
         float(np.max(np.maximum(lower - w, 0.0), initial=0.0)),
@@ -2128,17 +2307,19 @@ def _kkt_check_leverage(cla: CLA, mean: np.ndarray, cov: np.ndarray, kwargs: dic
     for j, (i, sign) in enumerate(legs):
         lift[i, j] = sign
     leg_upper = np.array([upper[i] if sign > 0 else -lower[i] for i, sign in legs])
+    leg_asset = np.array([i for i, _ in legs])
+    leg_sign = np.array([sign for _, sign in legs])
     a_l = kwargs["a"] @ lift
-    g_l = np.ones((1, len(legs)))
-    h_l = np.array([cap])
+    # The problem's own rows of G w <= h carry over as G P x <= h; the cap is one more row.
+    g = np.zeros((0, n)) if kwargs.get("g") is None else np.atleast_2d(kwargs["g"])
+    h = np.zeros(0) if kwargs.get("h") is None else np.asarray(kwargs["h"], dtype=float)
+    g_l = np.vstack([g @ lift, np.ones((1, len(legs)))])
+    h_l = np.concatenate([h, [cap]])
+    mean_l, cov_l = lift.T @ mean, lift.T @ cov @ lift
     res = _KKTResiduals()
     for lam, w in _kkt_trace_points(cla):
-        x = np.array([max(sign * w[i], 0.0) for i, sign in legs])
-        res.update(
-            _kkt_point(
-                x, lam, lift.T @ mean, lift.T @ cov @ lift, np.zeros(len(legs)), leg_upper, a_l, kwargs["b"], g_l, h_l
-            )
-        )
+        x = np.maximum(leg_sign * w[leg_asset], 0.0)
+        res.update(_kkt_point(x, lam, mean_l, cov_l, np.zeros(len(legs)), leg_upper, a_l, kwargs["b"], g_l, h_l))
     return res
 
 
@@ -2207,6 +2388,30 @@ def check_validate_kkt(out_dir: Path) -> None:  # noqa: ARG001 - the shared runn
     }
     cases.append(("30 assets, 130/30 gross-exposure cap", mean30, cov30, cov30, book, _VCON_LEVERAGE))
 
+    # The largest traces of the paper: the n = 2560 market of the scaling sweep, traced by
+    # both backends, and the 130/30 worked example of Section 6.4 on the S&P 500.
+    dense_big, factor_big, problem_big = _scale_make_problem(
+        np.random.default_rng(_SCALE_SEED), _SCALE_SIZES[-1], _SCALE_N_FACTORS
+    )
+    big_kwargs = {k: v for k, v in problem_big.items() if k != "mean"}
+    n_big = len(problem_big["mean"])
+    cases.append(
+        (f"factor market, {n_big} assets, factor backend", problem_big["mean"], dense_big, factor_big, big_kwargs, None)
+    )
+    cases.append(
+        (f"factor market, {n_big} assets, dense backend", problem_big["mean"], dense_big, dense_big, big_kwargs, None)
+    )
+    mu_w, sigma_w = 252 * returns.mean().to_numpy(), 252 * returns.cov().to_numpy()
+    worked = {
+        "lower_bounds": np.full(n_full, -0.03),
+        "upper_bounds": np.full(n_full, 0.05),
+        "a": np.ones((1, n_full)),
+        "b": np.ones(1),
+        "g": returns.columns.isin(_WORKED_TECH).astype(float)[None, :],
+        "h": np.array([0.06]),
+    }
+    cases.append(("S&P 500 130/30 book (Section 6.4)", mu_w, sigma_w, sigma_w, worked, 1.3))
+
     print(
         f"{'problem':<42}{'cond':>9}{'points':>8}{'vertex':>7}{'primal':>10}{'station.':>10}{'dual':>10}{'compl.':>10}"
     )
@@ -2237,9 +2442,9 @@ def check_validate_kkt(out_dir: Path) -> None:  # noqa: ARG001 - the shared runn
         print(f"  {name:<28}{max(_kkt_point(w_x, lam_x, mean, cov, *bounds)[:4]):.1e}")
     print(
         f"\nprimal: absolute; stationarity, dual and complementarity: relative to max(1, |Sw|, lam|mu|)."
-        f"\nvertex: points whose free set does not determine the multipliers; there stationarity is"
-        f"\nthe distance to a KKT point under sign-feasible multipliers, so dual feasibility holds by"
-        f"\nconstruction and a violation would show up as stationarity."
+        f"\nvertex: points whose free set does not determine the multipliers; there the undetermined"
+        f"\npart is chosen by a linear program for the largest sign margin, so a dual violation means"
+        f"\nthat no sign-feasible multipliers exist."
         f"\nworst residual {worst:.1e}  ->  {'PASS' if worst < _KKT_PASS else 'FAIL'} (threshold {_KKT_PASS:.0e})"
     )
 
@@ -2353,9 +2558,55 @@ def check_validate_scaling(out_dir: Path) -> None:  # noqa: ARG001 - the shared 
 
     # The user tolerance ``tol`` (default 1e-5) decides that a weight sits on a bound and
     # validates each turning point; it plays no part in ordering events.
+    # tol also classifies the linear-programming first vertex (scenario 1), starts a trace on
+    # a face of tied maximum returns, and validates the lifted gross-exposure cap; these
+    # problems exercise those paths.
+    rng = np.random.default_rng(_VCON_SEED)
+    vcov, vmean, sector = _vcon_make_market(rng)
+    ones = np.ones((1, _VCON_N_ASSETS))
+    char = rng.standard_normal(_VCON_N_ASSETS)
+    box = {"lower_bounds": np.zeros(_VCON_N_ASSETS), "upper_bounds": np.ones(_VCON_N_ASSETS)}
+    tol_cases = [
+        *cases,
+        (
+            "30 assets, budget + neutrality row",
+            vmean,
+            vcov,
+            {**box, "a": np.vstack([ones, char[None, :]]), "b": np.array([1.0, float(char.mean())])},
+        ),
+        (
+            "30 assets, budget + sector caps",
+            vmean,
+            vcov,
+            {
+                **box,
+                "a": ones,
+                "b": np.ones(1),
+                "g": np.array([(sector == k).astype(float) for k in range(_VCON_N_SECTORS)]),
+                "h": np.full(_VCON_N_SECTORS, _VCON_SECTOR_CAP),
+            },
+        ),
+        (
+            "30 assets, 130/30 gross-exposure cap",
+            vmean,
+            vcov,
+            {
+                "lower_bounds": np.full(_VCON_N_ASSETS, -_VCON_SHORT),
+                "upper_bounds": np.ones(_VCON_N_ASSETS),
+                "a": ones,
+                "b": np.ones(1),
+                "leverage": _VCON_LEVERAGE,
+            },
+        ),
+    ]
+    for size in (20, 60, 120):
+        tied = _tie_tied_means(np.random.default_rng(0), size)
+        tied_mean, tied_cov = tied.pop("mean"), tied.pop("covariance")
+        tol_cases.append((f"tied means, {size} assets", tied_mean, tied_cov, tied))
+
     print("\nuser tolerance tol: max |w - w(tol=1e-5)|, or the changed turning-point count")
     print(f"{'problem':<42}" + "".join(f"{t:>9.0e}" for t in _VSCALE_TOLS))
-    for label, mean, cov, kwargs in cases:
+    for label, mean, cov, kwargs in tol_cases:
         ref = _vscale_weights(CLA(mean=mean, covariance=cov, **kwargs))
         cells = []
         for tol in _VSCALE_TOLS:
@@ -2744,6 +2995,7 @@ class Target(enum.StrEnum):
     validate_conditioning = "validate-conditioning"
     r_cla = "r-cla"
     validate_incremental = "validate-incremental"
+    threads = "threads"
     worked_example = "worked-example"
     estimators = "estimators"
     michaud = "michaud"
@@ -2771,6 +3023,7 @@ STEPS: list[Step] = [
     Step(Target.validate_conditioning, "Appendix A conditioning study", check_validate_conditioning, False),
     Step(Target.r_cla, "Section 1: cvxcla against the R package CLA", check_r_cla, False),
     Step(Target.validate_incremental, "Section 5: drift of the incremental backend", check_validate_incremental, False),
+    Step(Target.threads, "Section 7: cvxcla's backends on one BLAS thread", check_threads, True),
     Step(Target.estimators, "Figure 8 (estimator_shrinkage.pdf) + estimator table", figure_estimators, False),
     Step(Target.michaud, "Figure 9 (michaud_frontier.pdf) + Section 12 resampling table", figure_michaud, False),
 ]
@@ -2800,6 +3053,7 @@ _CHECK_TARGETS = [
     Target.validate_conditioning,
     Target.r_cla,
     Target.validate_incremental,
+    Target.threads,
 ]
 
 

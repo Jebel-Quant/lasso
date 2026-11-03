@@ -74,13 +74,16 @@ frontier as a finite list of turning points, exact up to floating-point round-of
 points are Markowitz's; the package adds an interface to the covariance and a wider
 range of constraints. The algorithm reaches the covariance only through a small
 operator protocol, so a dense matrix, a diagonal-plus-low-rank risk model, a data
-matrix, or a user-written backend can be exchanged without touching the loop. With
-2560 assets and ten factors the factor backend traces the same frontier about 36
-times faster than the dense backend, and about 6 times faster than a dense backend
-that maintains the inverse of the free block by rank-one updates. Box bounds, linear equalities and inequalities, and a cap on
+matrix, or a user-written backend can be exchanged without touching the loop. On a
+synthetic market of 2560 assets and ten factors, where every asset is free at some
+point of the frontier, the factor backend traces the same frontier about 30
+times faster than the dense backend, and 5 to 6 times faster than a dense backend
+that maintains the inverse of the free block by rank-one updates; on a factor model of
+the S\&P~500, where few assets are free at once, it is about 1.4 times faster. Box bounds, linear equalities and inequalities, and a cap on
 gross exposure are supported. The walk provably terminates under standard
-nondegeneracy assumptions, every trace is checked by an independent
-Karush--Kuhn--Tucker certificate, and inputs outside the supported domain stop with an
+nondegeneracy assumptions, every turning point is checked for feasibility as it is
+found, an independent Karush--Kuhn--Tucker certificate passes on eleven traces of up
+to 2560 assets, the largest timed trace among them, and inputs outside the supported domain stop with an
 error that names the cause.
 }
 

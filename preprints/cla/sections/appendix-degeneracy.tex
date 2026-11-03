@@ -69,7 +69,7 @@ up to $\kappa = 10^{12}$ complete and are certified (residuals up to
 $5.5\times10^{-12}$), and from $3\times10^{12}$ to $10^{14}$ every trace is declined at
 the guard, so here its value decides the outcome. At $\kappa = 10^{16}$ the smallest
 eigenvalues are zero to working precision; the trace completes again, in $10$ turning
-points, and is certified ($3.9\times10^{-15}$). It and \pkg{OSQP} reach different weights,
+points, and is certified ($1.1\times10^{-15}$). It and \pkg{OSQP} reach different weights,
 up to $0.94$ apart, yet both meet the optimality conditions, so there the optimum is not
 unique.
 
@@ -92,7 +92,7 @@ over-constrained family of $p=n$ overlapping caps, whose maximum-return vertex i
 degenerate, gives $32$, with up to $240$ rows active at once. No trace is off the
 frontier.
 
-Counting completed traces is not enough. An earlier release of \pkg{cvxcla}, which
+Counting completed traces is not enough. \pkg{cvxcla}~2.3.3, which
 started a tied problem at an arbitrary vertex of the tied face (Section~\ref{sec:first}),
 completed all $64$ tied-means and exchangeable traces, and none of them passes the
 certificate.
