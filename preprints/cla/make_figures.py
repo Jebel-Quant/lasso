@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "casadi==3.8.1",
+#     "clarabel==0.11.1",
 #     "cvxcla==2.7.1",
 #     "matplotlib==3.11.0",
 #     "numpy==2.4.6",
@@ -23,7 +24,8 @@ the frozen snapshot ``sp500_pct_returns.parquet`` in ``data/`` beside this scrip
 deterministically and offline.
 
 This is the experiment script of cvxcla 2.7.1 (``experiments/make_figures.py`` at tag
-v2.7.1), less one external timing baseline that the paper does not report.
+v2.7.1), less one external timing baseline that the paper does not report and with one
+step added, ``worked-example`` (the worked example of Section 6.4).
 
     uv run make_figures.py            # choose interactively
     uv run make_figures.py all         # every figure + every check
@@ -43,6 +45,8 @@ Targets (artefact in parentheses):
   * ``validate-exact``  -- Section 10.5 exactness numbers (no figure).
   * ``validate-constraints`` -- Section 10.5 general-constraint exactness (no figure).
   * ``real-frontier``   -- Figure 4: the S&P 500 empirical frontier (real_frontier.pdf).
+  * ``worked-example``  -- Section 6.4: a 130/30 book on the S&P 500 with a group cap,
+    run as printed in the paper (worked_example.pdf).
   * ``degeneracy``      -- Figure 5: the degeneracy boundary (degeneracy.pdf).
   * ``tie-degeneracy``  -- Section 10.6 tie-heavy stress envelope (no figure).
   * ``osqp``            -- S&P 500 trace vs a warm-started OSQP grid (no figure).
@@ -55,10 +59,14 @@ Targets (artefact in parentheses):
     ill-conditioned and degenerate factor models (no figure).
   * ``validate-conditioning`` -- Appendix A: problems of prescribed condition number
     across the singularity guard, each trace and its reference QP certified (no figure).
+  * ``validate-incremental`` -- Section 5: round-off drift of the incremental backend
+    against the dense one on the scaling problems (no figure).
+  * ``r-cla``           -- Section 1: cvxcla against the R package CLA on the scaling
+    problems; needs R and the CRAN package CLA, and is skipped without them (no figure).
   * ``estimators``      -- Figure 8 + Section 11.1 estimator table (estimator_shrinkage.pdf).
   * ``michaud``         -- Figure 9 + Section 12 resampling table (michaud_frontier.pdf).
-  * ``figures``         -- all seven figures.
-  * ``checks``          -- all nine numerical checks.
+  * ``figures``         -- all eight figures.
+  * ``checks``          -- all eleven numerical checks.
   * ``all``             -- every figure and every check.
 
 Beyond ``cvxcla`` itself the steps need a few third-party packages: ``matplotlib`` (all
@@ -394,6 +402,15 @@ _SCALE_QPOASES_MAX_N = 2560
 _SCALE_N_FACTORS = 10
 _SCALE_SEED = 7
 _SCALE_REPEATS = 3
+# Short traces are noisy (up to 40% between runs below 10 ms) and cheap, so the small
+# sizes are timed more often.
+_SCALE_REPEATS_SMALL = 11
+_SCALE_SMALL_REPEAT_MAX_N = 160
+
+
+def _scale_repeats(n: int) -> int:
+    """How many times to time a method at size n."""
+    return _SCALE_REPEATS_SMALL if n <= _SCALE_SMALL_REPEAT_MAX_N else _SCALE_REPEATS
 _SCALE_GRID = 100  # fixed lambda-grid size for the OSQP baseline, the same at every n
 
 
@@ -427,7 +444,7 @@ def _scale_median_trace(covariance: object, problem: dict) -> tuple[int, float, 
     """Return (turning points, median, min, max) trace seconds over REPEATS repetitions."""
     cla = CLA(covariance=covariance, **problem)
     times = []
-    for _ in range(_SCALE_REPEATS):
+    for _ in range(_scale_repeats(len(problem["mean"]))):
         start = time.perf_counter()
         cla = CLA(covariance=covariance, **problem)
         times.append(time.perf_counter() - start)
@@ -445,7 +462,7 @@ def _scale_median_trace_inverse(dense: np.ndarray, problem: dict) -> tuple[int, 
     """
     cla = CLA(covariance=IncrementalDenseCovariance(dense), **problem)
     times = []
-    for _ in range(_SCALE_REPEATS):
+    for _ in range(_scale_repeats(len(problem["mean"]))):
         covariance = IncrementalDenseCovariance(dense)
         start = time.perf_counter()
         cla = CLA(covariance=covariance, **problem)
@@ -480,7 +497,7 @@ def _scale_qpoases_path(dense: np.ndarray, problem: dict) -> tuple[int, float, f
     # qpOASES prints its licence banner through CasADi, which writes to Python's
     # sys.stdout; keep it out of the sweep's log.
     with contextlib.redirect_stdout(io.StringIO()):
-        for _ in range(_SCALE_REPEATS):
+        for _ in range(_scale_repeats(len(problem["mean"]))):
             solver = ca.conic("S", "qpoases", {"h": h.sparsity(), "a": a.sparsity()}, {"printLevel": "none"})
             start = time.perf_counter()
             solver(h=h, g=-lam_top * problem["mean"], a=a, **bounds)
@@ -512,8 +529,125 @@ def _scale_osqp_grid(dense: np.ndarray, problem: dict) -> tuple[int, float, floa
     cla = CLA(covariance=dense, **problem)
     lam_max = max(tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb))
     lams = np.linspace(lam_max, 0.0, _SCALE_GRID)
-    times = [_osqp_warm_grid(problem["mean"], dense, lams, _OSQP_EPS)[1] for _ in range(_SCALE_REPEATS)]
+    times = [
+        _osqp_warm_grid(problem["mean"], dense, lams, _OSQP_EPS)[1] for _ in range(_scale_repeats(len(problem["mean"])))
+    ]
     return (len(lams), *_scale_stats(times))
+
+
+def _scale_raw_factors(n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The seed-7 size-n factor model as raw (d, U, delta, mean), drawn as in _scale_make_problem."""
+    rng = np.random.default_rng(_SCALE_SEED)
+    u = rng.standard_normal((n, _SCALE_N_FACTORS)) / np.sqrt(n)
+    delta = rng.uniform(0.5, 2.0, _SCALE_N_FACTORS) * n
+    d = rng.uniform(0.5, 2.0, n)
+    return d, u, delta, rng.uniform(0.0, 1.0, n)
+
+
+def _factor_form(d: np.ndarray, u: np.ndarray, delta: np.ndarray) -> tuple:
+    """The factor form of the long-only budget QP in x = [w; y], y = U'w.
+
+    The risk w'(D + U diag(delta) U')w becomes w'Dw + y'diag(delta)y, so the Hessian is
+    diagonal and the constraint matrix sparse: what a general QP solver needs to exploit
+    the factor structure. Returns (P, budget row, bounds block, factor rows), all sparse.
+    """
+    from scipy import sparse
+
+    n, k = u.shape
+    p_mat = sparse.diags(np.r_[d, delta], format="csc")
+    budget = sparse.hstack([sparse.csc_matrix(np.ones((1, n))), sparse.csc_matrix((1, k))])
+    box = sparse.hstack([sparse.eye(n), sparse.csc_matrix((n, k))])
+    link = sparse.hstack([sparse.csc_matrix(u.T), -sparse.eye(k)])
+    return p_mat, budget, box, link
+
+
+def _osqp_factor_grid(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, lams: np.ndarray) -> tuple:
+    """The warm-started OSQP grid of _osqp_warm_grid, on the factor form. Returns (weights, seconds)."""
+    import osqp
+    from scipy import sparse
+
+    n, k = u.shape
+    start = time.perf_counter()
+    p_mat, budget, box, link = _factor_form(d, u, delta)
+    solver = osqp.OSQP()
+    solver.setup(
+        P=p_mat,
+        q=np.r_[-lams[0] * mean, np.zeros(k)],
+        A=sparse.vstack([budget, box, link], format="csc"),
+        l=np.r_[1.0, np.zeros(n), np.zeros(k)],
+        u=np.r_[1.0, np.ones(n), np.zeros(k)],
+        eps_abs=_OSQP_EPS,
+        eps_rel=_OSQP_EPS,
+        polishing=True,
+        warm_starting=True,
+        max_iter=40_000,
+        verbose=False,
+    )
+    weights = []
+    for lam in lams:
+        solver.update(q=np.r_[-lam * mean, np.zeros(k)])
+        weights.append(solver.solve(raise_error=True).x[:n])
+    return np.array(weights), time.perf_counter() - start
+
+
+def _clarabel_factor_grid(
+    d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, lams: np.ndarray, tol: float | None = None
+) -> tuple:
+    """A Clarabel grid on the factor form, at its default tolerances unless ``tol`` is given.
+
+    Clarabel is an interior-point solver: it has no warm start, so each lambda is a fresh
+    solve, and no active-set polish, so its weights are accurate only to its tolerance.
+    Returns (weights, seconds).
+    """
+    import clarabel
+    from scipy import sparse
+
+    n, k = u.shape
+    start = time.perf_counter()
+    p_mat, budget, box, link = _factor_form(d, u, delta)
+    a_mat = sparse.vstack([budget, link, -box, box], format="csc")
+    b_vec = np.r_[1.0, np.zeros(k), np.zeros(n), np.ones(n)]
+    cones = [clarabel.ZeroConeT(1 + k), clarabel.NonnegativeConeT(2 * n)]
+    settings = clarabel.DefaultSettings()
+    settings.verbose = False
+    if tol is not None:
+        for name in ("tol_gap_abs", "tol_gap_rel", "tol_feas", "tol_ktratio"):
+            setattr(settings, name, tol)
+    weights = []
+    for lam in lams:
+        solution = clarabel.DefaultSolver(p_mat, np.r_[-lam * mean, np.zeros(k)], a_mat, b_vec, cones, settings).solve()
+        if "Solved" not in str(solution.status):
+            msg = f"Clarabel did not solve the factor-form QP at lambda={lam}: {solution.status}"
+            raise RuntimeError(msg)
+        weights.append(np.array(solution.x)[:n])
+    return np.array(weights), time.perf_counter() - start
+
+
+def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple[int, float, float, float, float]:
+    """Time a factor-form grid of GRID lambdas (median of REPEATS) and its error against the trace.
+
+    Returns (grid points, median, min, max seconds, largest weight error at the grid points).
+    """
+    d, u, delta, mean = _scale_raw_factors(n)
+    cla = CLA(
+        mean=mean,
+        covariance=FactorCovariance(d=d, u=u, delta=delta),
+        lower_bounds=np.zeros(n),
+        upper_bounds=np.ones(n),
+        a=np.ones((1, n)),
+        b=np.ones(1),
+    )
+    lam_max = max(tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb))
+    lams = np.linspace(lam_max, 0.0, _SCALE_GRID)
+    times = []
+    for _ in range(_scale_repeats(n)):
+        if solver == "osqp":
+            weights, seconds = _osqp_factor_grid(d, u, delta, mean, lams)
+        else:
+            weights, seconds = _clarabel_factor_grid(d, u, delta, mean, lams, tol)
+        times.append(seconds)
+    error = max(float(np.abs(w - _cla_weight_at(cla, lam)).max()) for w, lam in zip(weights, lams, strict=True))
+    return (len(lams), *_scale_stats(times), error)
 
 
 def _scale_memory(covariance: object, problem: dict, cov_bytes: int) -> tuple[int, int]:
@@ -547,6 +681,10 @@ def _scale_measure(method: str, n: int) -> object:
         return _scale_osqp_grid(dense, problem)
     if method == "qpoases":
         return _scale_qpoases_path(dense, problem)
+    if method == "osqp-factor":
+        return _scale_factor_grid("osqp", n)
+    if method == "clarabel-factor":
+        return _scale_factor_grid("clarabel", n)
     if method == "free":
         return _scale_free_sizes(factor, problem)
     if method == "memory-dense":
@@ -577,6 +715,7 @@ def figure_scaling(out_dir: Path) -> None:
     ns, dense_times, factor_times, inv_times, clar_times, points = [], [], [], [], [], []
     dense_band, factor_band, inv_band, clar_band = [], [], [], []
     qpo_times, qpo_band = [], []
+    osf_times, osf_band, clf_times, clf_band = [], [], [], []
     memory = []
     for n in _SCALE_SIZES:
         n_pts, t_dense, d_lo, d_hi = _scale_fresh("dense", n)
@@ -594,6 +733,10 @@ def figure_scaling(out_dir: Path) -> None:
         baselines = n <= _SCALE_BASELINE_MAX_N
         clar = _scale_fresh("osqp", n) if baselines else None
         qpo = _scale_fresh("qpoases", n) if n <= _SCALE_QPOASES_MAX_N else None
+        # The factor-form grids exploit the same structure as the factor backend and are
+        # cheap enough to time at every size.
+        osf = _scale_fresh("osqp-factor", n)
+        clf = _scale_fresh("clarabel-factor", n)
         free_max, free_med = _scale_fresh("free", n)
         memory.append((n, *_scale_fresh("memory-dense", n), *_scale_fresh("memory-factor", n)))
         ns.append(n)
@@ -608,6 +751,10 @@ def figure_scaling(out_dir: Path) -> None:
         clar_band.append((clar[2], clar[3]) if clar else None)
         qpo_times.append(qpo[1] if qpo else None)
         qpo_band.append((qpo[2], qpo[3]) if qpo else None)
+        osf_times.append(osf[1])
+        osf_band.append((osf[2], osf[3]))
+        clf_times.append(clf[1])
+        clf_band.append((clf[2], clf[3]))
         inv_str = f"  inverse={inv[1] * 1e3:9.1f} ms" if inv else "  inverse=n/a"
         clar_str = f"  osqp={clar[1] * 1e3:9.1f} ms ({clar[0]} solves)" if clar else "  osqp=n/a"
         qpo_str = (
@@ -619,6 +766,11 @@ def figure_scaling(out_dir: Path) -> None:
             f"n={n:4d}  points={n_pts:4d}  dense={t_dense * 1e3:8.1f} ms  "
             f"factor={t_factor * 1e3:8.1f} ms  speedup={t_dense / t_factor:5.2f}x  "
             f"|F| max={free_max:4d} median={free_med:6.1f}{inv_str}{clar_str}{qpo_str}"
+        )
+        print(
+            f"        factor form: osqp={osf[1] * 1e3:9.1f} ms (max |dw| {osf[4]:.1e})  "
+            f"clarabel={clf[1] * 1e3:9.1f} ms (max |dw| {clf[4]:.1e})  "
+            f"vs cvxcla factor: osqp {osf[1] / t_factor:.1f}x, clarabel {clf[1] / t_factor:.1f}x"
         )
 
     # The clean comparison is the incremental-inverse baseline vs the dense
@@ -648,6 +800,8 @@ def figure_scaling(out_dir: Path) -> None:
         ("inverse", inv_times),
         ("osqp", clar_times),
         ("qpoases", qpo_times),
+        ("osqp-f", osf_times),
+        ("clar-f", clf_times),
     ]:
         if sum(t is not None for t in series) >= 4:
             fit, last = slope(series)
@@ -664,6 +818,15 @@ def figure_scaling(out_dir: Path) -> None:
                 f"qpoases/factor = {t_q / factor_times[i_q]:.1f}x"
             )
 
+    # Clarabel's weights are accurate only to its tolerance: the cost of tightening it.
+    print("\nClarabel factor-form grid against its tolerance (time, largest weight error):")
+    for n_t in (640, 2560):
+        cells = []
+        for tol in (None, 1e-10, 1e-12):
+            _, t_med, _, _, err = _scale_factor_grid("clarabel", n_t, tol)
+            cells.append(f"{'default' if tol is None else f'{tol:g}'}: {t_med * 1e3:7.1f} ms, {err:.1e}")
+        print(f"n={n_t:4d}  " + "   ".join(cells))
+
     mib = 2.0**20
     print("\nmemory: covariance storage and trace working memory (beyond the stored frontier), MiB")
     for n, d_cov, d_work, f_cov, f_work in memory:
@@ -678,6 +841,8 @@ def figure_scaling(out_dir: Path) -> None:
         # (times, bands, marker, colour, label); external baselines first, cvxcla last
         (clar_times, clar_band, "-v", "#ff7f0e", f"OSQP, {_SCALE_GRID}-point $\\lambda$-grid"),
         (qpo_times, qpo_band, "-P", "#9467bd", "qpOASES, hot-started path"),
+        (osf_times, osf_band, "--v", "#ff7f0e", "OSQP grid, factor form"),
+        (clf_times, clf_band, "--^", "#8c564b", "Clarabel grid, factor form"),
         (inv_times, inv_band, "-D", "#2ca02c", "cvxcla, incremental dense"),
         (dense_times, dense_band, "-o", "#c00000", "cvxcla, dense"),
         (factor_times, factor_band, "-s", "#1f4e79", f"cvxcla, factor ($K={_SCALE_N_FACTORS}$)"),
@@ -915,6 +1080,78 @@ def figure_real_frontier(out_dir: Path) -> None:
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     out = out_dir / "real_frontier.pdf"
+    fig.savefig(out)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
+# ======================================================================================
+# Figure: worked example (Section 6.4: a 130/30 book on the S&P 500)  ->  worked_example.pdf
+# ======================================================================================
+_WORKED_TECH = ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "AVGO", "ORCL", "ADBE", "CRM"]
+
+
+def figure_worked_example(out_dir: Path) -> None:
+    """Run the worked example of Section 6.4 as printed, and draw its two frontiers.
+
+    A 130/30 book on the S&P 500 snapshot: per-stock bounds [-3%, 5%], the budget, a 6%
+    cap on ten large technology names and a 130% gross-exposure cap, set up with the
+    ``CLA.problem`` builder. The figure sets its frontier against the long-only book with
+    the same 5% per-stock cap.
+    """
+    import pandas as pd
+
+    from cvxcla import InfeasibleProblemError
+
+    returns = pd.read_parquet(DATA)
+    mu = 252 * returns.mean().to_numpy()  # annualized moments
+    sigma = 252 * returns.cov().to_numpy()
+    in_tech = returns.columns.isin(_WORKED_TECH).astype(float)
+
+    book = (
+        CLA.problem(mu, sigma)
+        .bounds(-0.03, 0.05)
+        .budget()
+        .inequality(in_tech[None, :], 0.06)
+        .leverage(1.3)
+        .trace()
+    )
+    binds = sum(tp.active_ineq[0] for tp in book.turning_points)
+    print(len(book), "turning points; the cap binds at", binds)
+    _, w = book.frontier.max_sharpe
+    print(
+        f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
+        (w > 1e-9).sum(),
+        "long,",
+        (w < -1e-9).sum(),
+        "short",
+    )
+    fine = book.frontier.interpolate(20)
+    print(len(fine.weights), "portfolios on the exact frontier")
+    try:
+        CLA.problem(mu, sigma).bounds(0.0, 0.001).budget().trace()
+    except InfeasibleProblemError as err:
+        print(type(err).__name__ + ":", err)
+
+    long_only = CLA.problem(mu, sigma).bounds(0.0, 0.05).budget().trace()
+    print(len(long_only), "turning points for the long-only book with the same 5% cap")
+
+    fig, ax = plt.subplots(figsize=(5.0, 3.4))
+    for cla, colour, label in (
+        (long_only, "#7f7f7f", "long-only, 5% per stock"),
+        (book, "#1f4e79", "130/30, 6% cap on ten names"),
+    ):
+        curve = cla.frontier.interpolate(20)
+        ax.plot(curve.volatility, curve.returns, "-", lw=1.0, color=colour, label=label)
+    tp = book.frontier
+    active = np.array([bool(t.active_ineq[0]) for t in book.turning_points])
+    ax.plot(tp.volatility[active], tp.returns[active], "o", ms=2.2, color="#c00000", label="cap binding")
+    ax.set_xlabel("Annualized volatility")
+    ax.set_ylabel("Annualized expected return")
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8, loc="lower right")
+    fig.tight_layout()
+    out = out_dir / "worked_example.pdf"
     fig.savefig(out)
     plt.close(fig)
     print(f"wrote {out}")
@@ -2012,6 +2249,7 @@ def check_validate_kkt(out_dir: Path) -> None:  # noqa: ARG001 - the shared runn
 # ======================================================================================
 _VSCALE_FACTORS = (1e-6, 1e-3, 1.0, 1e3, 1e6)  # rescalings of mu and of Sigma
 _VSCALE_FLOORS = (1e-6, 1e-4, 1e-2, 1.0, 1e2, 1e4, 1e6)  # multiples of the slope floors
+_VSCALE_TOLS = (1e-3, 1e-4, 1e-5, 1e-6, 1e-8, 1e-10)  # values of the user tolerance
 
 
 def _vscale_weights(cla: CLA) -> np.ndarray:
@@ -2112,6 +2350,127 @@ def check_validate_scaling(out_dir: Path) -> None:  # noqa: ARG001 - the shared 
             else:
                 cells.append(f"{np.max(np.abs(w - ref)):.0e}")
         print(f"{label + f' ({len(ref)})':<42}" + "".join(f"{c:>9}" for c in cells))
+
+    # The user tolerance ``tol`` (default 1e-5) decides that a weight sits on a bound and
+    # validates each turning point; it plays no part in ordering events.
+    print("\nuser tolerance tol: max |w - w(tol=1e-5)|, or the changed turning-point count")
+    print(f"{'problem':<42}" + "".join(f"{t:>9.0e}" for t in _VSCALE_TOLS))
+    for label, mean, cov, kwargs in cases:
+        ref = _vscale_weights(CLA(mean=mean, covariance=cov, **kwargs))
+        cells = []
+        for tol in _VSCALE_TOLS:
+            try:
+                w = _vscale_weights(CLA(mean=mean, covariance=cov, tol=tol, **kwargs))
+            except Exception as exc:  # noqa: BLE001 - report a declined trace in the table
+                cells.append(type(exc).__name__[:8])
+                continue
+            cells.append(f"{len(w)} pts" if w.shape != ref.shape else f"{np.max(np.abs(w - ref)):.0e}")
+        print(f"{label + f' ({len(ref)})':<42}" + "".join(f"{c:>9}" for c in cells))
+
+
+# ======================================================================================
+# Check: validate-incremental  (Section 5: round-off drift of the maintained inverse)
+# ======================================================================================
+def check_validate_incremental(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
+    """How far the incremental backend drifts from the dense one over the scaling problems.
+
+    IncrementalDenseCovariance maintains the inverse of the free block by rank-one updates,
+    so round-off carries from step to step. On the seed-7 factor models of the scaling
+    sweep, both backends trace the same dense covariance; reported are the turning-point
+    counts, the largest weight difference between the two traces, and the largest KKT
+    residual of each (any condition, as in Table 4).
+    """
+    from cvxcla import IncrementalDenseCovariance
+
+    print(f"{'n':>5} {'points':>7} {'max |w_inc - w_dense|':>22} {'KKT dense':>10} {'KKT incr.':>10}")
+    for n in [80, 160, 320, 640, 1280, 2560]:
+        dense, _, problem = _scale_make_problem(np.random.default_rng(_SCALE_SEED), n, _SCALE_N_FACTORS)
+        kwargs = {k: v for k, v in problem.items() if k != "mean"}
+        ref = CLA(covariance=dense, **problem)
+        inc = CLA(covariance=IncrementalDenseCovariance(dense), **problem)
+        if len(inc) != len(ref):
+            print(f"{n:5d} {len(ref):4d}/{len(inc):<4d} counts differ")
+            continue
+        gap = max(float(np.abs(a.weights - b.weights).max()) for a, b in zip(ref.turning_points, inc.turning_points, strict=True))
+        worst = []
+        for cla in (ref, inc):
+            r = _kkt_check(cla, problem["mean"], dense, kwargs)
+            worst.append(max(r.primal, r.stationarity, r.dual, r.complementarity))
+        print(f"{n:5d} {len(ref):7d} {gap:22.1e} {worst[0]:10.1e} {worst[1]:10.1e}")
+
+
+# ======================================================================================
+# Check: r-cla  (Section 1: cvxcla against the R package CLA on the scaling problems)
+# ======================================================================================
+_RCLA_SCRIPT = r"""
+suppressPackageStartupMessages(library(CLA))
+args <- commandArgs(trailingOnly = TRUE)
+mu <- scan(args[1], quiet = TRUE)
+S <- as.matrix(read.csv(args[2], header = FALSE))
+n <- length(mu)
+start <- proc.time()[["elapsed"]]
+r <- CLA(mu, S, rep(0, n), rep(1, n))
+cat(proc.time()[["elapsed"]] - start, "\n", file = args[4])
+write.table(t(r$weights_set), args[3], sep = ",", row.names = FALSE, col.names = FALSE)
+cat(as.character(packageVersion("CLA")), "\n", file = args[4], append = TRUE)
+"""
+
+
+def _rcla_turning_points(mean: np.ndarray, cov: np.ndarray) -> tuple[np.ndarray, float, str]:
+    """Run R's CLA on (mean, cov) long-only with a budget; return (weights, seconds, version)."""
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        script = tmp_path / "run.R"
+        script.write_text(_RCLA_SCRIPT)
+        np.savetxt(tmp_path / "mu.txt", mean, fmt="%.17g")
+        np.savetxt(tmp_path / "cov.csv", cov, fmt="%.17g", delimiter=",")
+        subprocess.run(
+            ["Rscript", str(script), str(tmp_path / "mu.txt"), str(tmp_path / "cov.csv"),
+             str(tmp_path / "w.csv"), str(tmp_path / "meta.txt")],
+            check=True,
+            capture_output=True,
+        )
+        weights = np.loadtxt(tmp_path / "w.csv", delimiter=",", ndmin=2)
+        seconds, version = (tmp_path / "meta.txt").read_text().split()
+    return weights, float(seconds), version
+
+
+def _set_distance(a: np.ndarray, b: np.ndarray) -> float:
+    """The largest distance from a point of one set of portfolios to the nearest of the other."""
+    gaps = np.abs(a[:, None, :] - b[None, :, :]).max(axis=2)
+    return float(max(gaps.min(axis=1).max(), gaps.min(axis=0).max()))
+
+
+def check_r_cla(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
+    """Compare cvxcla's turning points with those of the R package CLA on the scaling problems.
+
+    Both trace the long-only, fully-invested frontier of the seed-7 factor models of the
+    scaling sweep, given the dense covariance. The turning points are compared in weight
+    space (the two packages scale lambda differently): their number, and the largest
+    distance from a turning point of either to the nearest of the other. cvxcla lists the
+    maximum-return vertex twice (Section 6.1), so it is counted once here.
+    """
+    import shutil
+
+    if shutil.which("Rscript") is None:
+        print("Rscript not found; skipped")
+        return
+    print(f"{'n':>5} {'cvxcla':>7} {'R CLA':>7} {'max distance':>13} {'R seconds':>10}")
+    version = "?"
+    for n in [20, 40, 80, 160, 320, 640]:
+        dense, _, problem = _scale_make_problem(np.random.default_rng(_SCALE_SEED), n, _SCALE_N_FACTORS)
+        cla = CLA(covariance=dense, **problem)
+        mine = np.array([tp.weights for tp in cla.turning_points[1:]])  # the vertex once
+        try:
+            theirs, seconds, version = _rcla_turning_points(problem["mean"], dense)
+        except Exception as exc:  # noqa: BLE001 - R or its CLA package missing
+            print(f"R CLA failed ({type(exc).__name__}); is the CRAN package CLA installed? skipped")
+            return
+        print(f"{n:5d} {len(mine):7d} {len(theirs):7d} {_set_distance(mine, theirs):13.1e} {seconds:10.2f}")
+    print(f"R package CLA {version}")
 
 
 # ======================================================================================
@@ -2383,6 +2742,9 @@ class Target(enum.StrEnum):
     validate_projection = "validate-projection"
     validate_factor = "validate-factor"
     validate_conditioning = "validate-conditioning"
+    r_cla = "r-cla"
+    validate_incremental = "validate-incremental"
+    worked_example = "worked-example"
     estimators = "estimators"
     michaud = "michaud"
     figures = "figures"
@@ -2398,6 +2760,7 @@ STEPS: list[Step] = [
     Step(Target.validate_exact, "Section 10.5 exactness numbers", check_validate_exact, False),
     Step(Target.validate_constraints, "Section 10.5 general-constraint exactness", check_validate_constraints, False),
     Step(Target.real_frontier, "Figure 4 (real_frontier.pdf)", figure_real_frontier, False),
+    Step(Target.worked_example, "Section 6.4 worked example (worked_example.pdf)", figure_worked_example, False),
     Step(Target.degeneracy, "Figure 5 (degeneracy.pdf)", figure_degeneracy, False),
     Step(Target.tie_degeneracy, "Section 10.6 tie-heavy stress envelope", check_tie_degeneracy, False),
     Step(Target.osqp, "Section 10.4 warm-started OSQP grid on the S&P 500", check_osqp, False),
@@ -2406,6 +2769,8 @@ STEPS: list[Step] = [
     Step(Target.validate_projection, "Appendix A feasibility corrections", check_validate_projection, False),
     Step(Target.validate_factor, "Section 5 factor-model conditioning", check_validate_factor, False),
     Step(Target.validate_conditioning, "Appendix A conditioning study", check_validate_conditioning, False),
+    Step(Target.r_cla, "Section 1: cvxcla against the R package CLA", check_r_cla, False),
+    Step(Target.validate_incremental, "Section 5: drift of the incremental backend", check_validate_incremental, False),
     Step(Target.estimators, "Figure 8 (estimator_shrinkage.pdf) + estimator table", figure_estimators, False),
     Step(Target.michaud, "Figure 9 (michaud_frontier.pdf) + Section 12 resampling table", figure_michaud, False),
 ]
@@ -2418,6 +2783,7 @@ _FIGURE_TARGETS = [
     Target.scaling,
     Target.rank_scaling,
     Target.real_frontier,
+    Target.worked_example,
     Target.degeneracy,
     Target.estimators,
     Target.michaud,
@@ -2432,6 +2798,8 @@ _CHECK_TARGETS = [
     Target.validate_projection,
     Target.validate_factor,
     Target.validate_conditioning,
+    Target.r_cla,
+    Target.validate_incremental,
 ]
 
 
@@ -2490,8 +2858,8 @@ _DESCRIPTIONS: dict[Target, str] = {
     Target.osqp: "Sec 10.4: S&P trace vs warm OSQP grid (check)",
     Target.estimators: "Fig 8: covariance-estimator shrinkage -> estimator_shrinkage.pdf",
     Target.michaud: "Fig 9: Michaud resampled frontier     -> michaud_frontier.pdf",
-    Target.figures: "all seven figures",
-    Target.checks: "all nine numerical checks",
+    Target.figures: "all eight figures",
+    Target.checks: "all eleven numerical checks",
     Target.all: "every figure and every check",
 }
 

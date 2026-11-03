@@ -5,14 +5,16 @@
 A candidate turning point can be optimal to solver precision but not exactly feasible:
 round-off accumulated over hundreds of turning points can leave a free weight a hair
 outside its box. \code{CLA.\_emit} projects such a point back onto the feasible set
-before it validates it. The projection is a numerical repair: it keeps the point
-optimal to working accuracy only when the correction is small and lies in near-flat
-directions of the objective, where round-off usually sits, so we measure it below. For the plain budget with no active inequality row the projection
-onto the capped simplex is closed-form (a single shift, found by bisection, then a
-clip). Under a general $A$ or an active row of $G$
-the code alternates a box clip with the affine projection onto $\{w : C w = c\}$,
-$C = [\,A;\,G_{\Sset}\,]$, written in orthonormal rows so that its Gram matrix is the
-identity rather than $CC\trans$. It usually converges in one iteration, stops once the box is violated by at most
+before it validates it. The projection is a numerical repair. It keeps the point optimal
+to working accuracy only when the correction is small and lies in near-flat directions
+of the objective, where round-off usually sits, so we measure it below.
+
+For the plain budget with no active inequality row the projection onto the capped
+simplex is a single shift of the weights, found by bisection, followed by a clip.
+Under a general $A$ or an active row of $G$ the code alternates a box clip with the
+affine projection onto $\{w : C w = c\}$, $C = [\,A;\,G_{\Sset}\,]$, written in
+orthonormal rows so that its Gram matrix is the identity rather than $CC\trans$. It
+usually converges in one iteration. It stops once the box is violated by at most
 $10^{-12}$, and raises a \code{ProjectionError} if $100$ iterations do not get there.
 
 The measurements of \target{validate-projection} support this for the problems tested.
@@ -36,9 +38,9 @@ unlike the size of a violation, is stable across BLAS builds. When it falls belo
 $10^{-12}$ the guard reads that of $Z\trans\Sig_{\F\F}Z$ instead, the segment is solved
 on the null space, and the trace is declined with a diagnosis only when that block is
 singular too, since projecting its output could silently yield a suboptimal frontier.
-Releases up to 2.5.0 declined as soon as $\Sig_{\F\F}$ was singular, which refused the
-frontier of a sample covariance from fewer observations than assets whenever its free
-set outgrew the data rank (\target{degeneracy}). Singular constraint rows, at the first vertex or later in the
+A guard on $\Sig_{\F\F}$ alone would refuse the frontier of a sample covariance from
+fewer observations than assets as soon as its free set outgrows the data rank
+(\target{degeneracy}). Singular constraint rows, at the first vertex or later in the
 trace, are declined in the same way (Section~\ref{sec:first}, Section~\ref{sec:ineq}).
 
 \begin{figure}[t]
@@ -50,8 +52,8 @@ $\Sig_{\F\F}$ over a trace; blue circles that of $Z\trans\Sig_{\F\F}Z$, the bloc
 budget's null space, which is what the guard (dashed, $10^{12}$) reads. Below $T = 75$
 the raw block is singular ($\sim\!10^{17}$) while the reduced block stays below
 $6\times10^{4}$, so every trace completes, and every completed frontier matches a
-reference QP to $3\times10^{-13}$. Release~2.3.3 declined the five windows with
-$T \le 60$.}
+reference QP to $3\times10^{-13}$. A guard on the raw block would decline the five
+windows with $T \le 60$.}
 \label{fig:degeneracy}
 \end{figure}
 
@@ -90,16 +92,10 @@ over-constrained family of $p=n$ overlapping caps, whose maximum-return vertex i
 degenerate, gives $32$, with up to $240$ rows active at once. No trace is off the
 frontier.
 
-\paragraph{A correction.}
-The first version of this paper, run with release~2.3.3, counted completions without
-certifying them, and reported that the tied-means and exchangeable families all
-complete. They did complete, but none is on the efficient frontier: certified, all $32$
-tied-means and all $32$ exchangeable traces of 2.3.3 fail the certificate, and on the
-tied-means family with $n\le120$ their objective exceeds that of an interior-point
-solve by up to a factor of $26$. Both families share
-the largest expected return between several assets, and 2.3.3 started such a frontier
-at an arbitrary vertex of the tied face (Section~\ref{sec:first}). The group-cap family was
-right, and $30$ of the $32$ overlapping-cap traces were, the other two declined.
+Counting completed traces is not enough. An earlier release of \pkg{cvxcla}, which
+started a tied problem at an arbitrary vertex of the tied face (Section~\ref{sec:first}),
+completed all $64$ tied-means and exchangeable traces, and none of them passes the
+certificate.
 
 The tied-means and group-cap families, the full-rank windows of
 Figure~\ref{fig:degeneracy} and both conditioning families satisfy the hypotheses of

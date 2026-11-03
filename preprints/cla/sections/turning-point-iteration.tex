@@ -45,8 +45,10 @@ The dominant cost is the solve against $\Sig_{\F\F}$; for the plain budget $S$ i
 scalar. With $1 < m_c \le n_\F$ the rows are first replaced by an orthonormal basis of
 their span, $C_\F\trans = QR$, and the system is solved with $Q$ in place of
 $C_\F\trans$, the target $R^{-\mathsf{T}} r_2$, and the multipliers recovered by a
-triangular solve with $R$. The condition number of $C_\F \Sig_{\F\F}\inv C_\F\trans$ can
-reach $\operatorname{cond}(\Sig_{\F\F})\operatorname{cond}(C_\F)^2$, while
+triangular solve with $R$. Since $\operatorname{cond}(X\trans B X) \le \operatorname{cond}(B)\operatorname{cond}(X)^2$
+for $X$ of full column rank and $B \succ 0$, with equality possible, the condition number
+of $C_\F \Sig_{\F\F}\inv C_\F\trans$ can reach
+$\operatorname{cond}(\Sig_{\F\F})\operatorname{cond}(C_\F)^2$, while
 $Q\trans\Sig_{\F\F}\inv Q$ is no worse conditioned than $\Sig_{\F\F}$, so nearly
 dependent active rows lose accuracy in proportion to $\operatorname{cond}(C_\F)$, the
 sensitivity of the constraint data, and not to its square. Solving only for the free block keeps every step a dense solve of size
@@ -112,7 +114,8 @@ $g_j\trans\beta < 0$ (the slack rises as $\lambda$ falls).
 $\lambda_j = -\eta_j^{\alpha}/\eta_j^{\beta}$, where its multiplier reaches zero,
 admissible when $\eta_j^{\beta} > 0$.
 \end{itemize}
-These fill the trailing $p$ rows of $L$, so a group cap or factor-exposure band is
+These fill columns 0 and 1 of the trailing $p$ rows of $L$, whose columns 2 and 3 are
+$-\infty$, so a group cap or factor-exposure band is
 traced along the whole frontier (Section~\ref{sec:exactness}). Each active row adds a column
 to the solve against $\Sig_{\F\F}$ and a row to the Schur complement; with many active
 rows that term, not the covariance solve, dominates a step. A row that is tight but a combination of the active rows on the
@@ -159,7 +162,8 @@ multipliers have the right signs.
 \begin{proposition}\label{prop:termination}
 Let $\Sig \succ 0$, and suppose that at every turning point the constraints holding
 with equality (the rows of $A$, the rows of $G$ with $g_j\trans w = h_j$, and the
-bounds on which a weight sits) have linearly independent gradients. Then, in exact
+bounds on which a weight sits) have linearly independent gradients, the linear independence
+constraint qualification over all active constraints, bounds included. Then, in exact
 arithmetic, the walk never returns to a partition it has left, and it reaches
 $\lambda = 0$ after finitely many turning points.
 \end{proposition}
@@ -175,30 +179,56 @@ Appendix~\ref{sec:proof} gives the full argument, including the correspondence b
 the event types of the code and the complementary pairs of the problem.
 \end{proof}
 
-The proposition holds in exact arithmetic and under its hypotheses; what it adds is that
-the walk never revisits a partition. Two weaker statements hold without them. Because
-$\Sig \succ 0$ the optimiser $w(\lambda)$ is unique, and for a fixed set of active
-constraints it is affine in $\lambda$ on the interval where that set is optimal; there
-are finitely many such sets, so the frontier itself has finitely many turning points
-whether or not the constraints are independent. And an iteration cap of $100(n+p+1)$
-stops every trace: a trace that reaches it raises an error and never returns a partial
-frontier, and no trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
-In exact arithmetic, then, the one thing left unproved outside the hypotheses is that
-the walk leaves every tie without revisiting a partition. This concerns a degenerate maximum-return vertex,
-resolved from a vertex of its optimal dual set, or, under tied maximum returns, from the
-minimiser of the quadratic term on the tied face (Section~\ref{sec:first}); a singular $\Sig$
-that the active rows keep positive definite on their null space, outside
-$\Sig\succ0$ (Appendix~\ref{sec:degeneracy}); the lifted problem
-of Section~\ref{sec:leverage}, whose singular covariance masks the competing leg events; and
-ties with dependent constraints, where the matrix $M$ of Appendix~\ref{sec:proof} is
-only positive semidefinite and the least-index result no longer applies (a partition
-with dependent active rows is refused, Section~\ref{sec:ineq}). Appendix~\ref{sec:degeneracy}
-lists which test families satisfy the hypotheses. In floating point the tie window and
-the slope floor make the computed signs agree with the exact ones, which is not proved
-either. At run time every turning point is validated against the bounds, $A w = b$ and
-$G w \le h$ before it is accepted, and the KKT certificate of Section~\ref{sec:exactness}
-checks the traces of Section~\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for
-optimality.
+The proposition holds in exact arithmetic and under its hypotheses.
+Table~\ref{tab:coverage} sorts the features of the package by what is proved for them.
+Two weaker statements hold more widely. Because $\Sig \succ 0$ the optimiser
+$w(\lambda)$ is unique, and for a fixed set of active constraints it is affine in
+$\lambda$ on the interval where that set is optimal; there are finitely many such sets,
+so the frontier has finitely many turning points whether or not the constraints are
+independent. And an iteration cap of $100(n+p+1)$ stops every trace. A walk in which
+every coordinate changes status once takes $n+p+1$ steps, and the cap allows a hundred
+times that; a trace that reaches it raises an error and never returns a partial
+frontier. No trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
+Outside the hypotheses, then, what is left unproved is only that the walk leaves every
+tie without revisiting a partition.
+
+\begin{table}[t]
+\centering
+\small
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\begin{tabular}{@{}L{0.34\textwidth}L{0.36\textwidth}L{0.24\textwidth}@{}}
+\toprule
+Feature & Outside the hypotheses because & What holds \\
+\midrule
+Box bounds, $Aw = b$, $Gw \le h$, $\Sig \succ 0$ & -- (if the active constraints are
+independent at every turning point) & Proposition~\ref{prop:termination} \\
+Degenerate maximum-return vertex (Section~\ref{sec:first}) & only the start, which has
+dependent active constraints & Proposition~\ref{prop:termination} from the first turning
+point, if its hypotheses hold there \\
+Tied maximum returns (Section~\ref{sec:first}) & only the start, resolved on a face of
+optima & as above \\
+Dependent constraints at a later tie & $M$ of Appendix~\ref{sec:proof} only positive
+semidefinite & finite frontier; cap \\
+Singular $\Sig$, solved on the null space (Appendix~\ref{sec:degeneracy}) & $\Sig \not\succ 0$ & cap \\
+Gross-exposure cap (Section~\ref{sec:leverage}) & the lifted covariance is singular & finite frontier in $w$; cap \\
+\bottomrule
+\end{tabular}
+\caption{What is proved for each feature. The start, at $\lambda = \infty$, is not a
+turning point: Proposition~\ref{prop:termination} covers the walk that follows it.
+``Finite frontier'' is the finite number of
+turning points; ``cap'' is the iteration cap, which stops every trace with an error
+rather than a partial frontier. A partition with dependent active rows is refused
+(Section~\ref{sec:ineq}).}
+\label{tab:coverage}
+\end{table}
+
+In floating point the tie window and the slope floor make the computed signs agree with
+the exact ones; that is not proved either. At run time every turning point is validated
+against the bounds, $A w = b$ and $G w \le h$ before it is accepted, and the KKT
+certificate of Section~\ref{sec:exactness} checks the traces of
+Section~\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for optimality.
+Appendix~\ref{sec:degeneracy} lists which test families satisfy the hypotheses.
 
 When no admissible event has a positive ratio the walk has reached the minimum-variance
 portfolio and appends a final turning point $w = \alpha$ at $\lambda = 0$.

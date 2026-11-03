@@ -15,7 +15,9 @@ program
 \min_{w\in\R^n}\; \tfrac12\, w\trans \Sig\, w - \lambda\,\mu\trans w
 \quad\text{subject to}\quad A w = b,\;\; G w \le h,\;\; \lb \le w \le \ub,
 \end{equation}
-where $\lambda \ge 0$ weights expected return against variance. The canonical instance
+where $\lambda \ge 0$ weights expected return against variance. It multiplies the
+return, not the risk, so it is the reciprocal of the usual risk-aversion parameter:
+large $\lambda$ means a risk-tolerant investor. The canonical instance
 has the single budget row $\mathbf{1}\trans w = 1$; general $A$ and $G$ (group or sector
 caps, a $\ge$ row negated) are handled in Section~\ref{sec:first} and Section~\ref{sec:ineq}. As $\lambda$ decreases from $+\infty$ to $0$, the optimiser moves from the
 maximum-return portfolio to the global minimum-variance portfolio, and its locus is the

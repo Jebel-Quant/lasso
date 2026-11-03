@@ -43,7 +43,7 @@ factor backend represents the \emph{same} $\Sig$, it returns the same frontier t
 
 \begin{CodeChunk}
 \begin{CodeInput}
-factor = FactorCovariance(d=d, u=U, delta=np.diag(Delta))
+factor = FactorCovariance(d=d, u=U, delta=Delta)
 cla_factor = CLA(
     mean=mean, covariance=factor,
     lower_bounds=np.zeros(n), upper_bounds=np.ones(n),
@@ -68,7 +68,9 @@ Section~\ref{sec:first}.
 \label{sec:api}
 
 \code{CLA} takes the problem as keyword arguments, all \pkg{NumPy} arrays of floats, and
-traces the frontier in its constructor. Required are \code{mean} ($\mu$, length $n$),
+traces the frontier in its constructor, so every \code{CLA} object holds a complete,
+validated frontier. Its input arrays are copied read-only (see below), a changed $\mu$
+or $\Sig$ needs a new object, and a trace is not warm-started from an earlier one. Required are \code{mean} ($\mu$, length $n$),
 \code{covariance} (an $n\times n$ array, which is wrapped as a \code{DenseCovariance},
 or any backend of Section~\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
 (length $n$), and \code{a}, \code{b} ($m\times n$ and length $m$; a budget is
@@ -87,7 +89,9 @@ The result is \code{cla.turning\_points}, a list of \code{TurningPoint} objects 
 \code{weights}, the value \code{lamb} of $\lambda$, the boolean mask \code{free} of free
 assets, and the mask \code{active\_ineq} of active rows of $G$. The maximum-return
 vertex appears twice, at $\lambda = \infty$ and again at the first finite turning point,
-where the path leaves it; \code{len(cla)} is the number of turning points.
+where the path leaves it, so that every pair of consecutive turning points bounds one
+segment of the path, the first being the constant stretch above the first finite
+$\lambda$; \code{len(cla)} is the number of turning points.
 \code{cla.frontier} wraps them as a \code{Frontier}
 (\srcfile{src/cvxcla/types.py}{types.py}), which exposes the \code{weights},
 \code{returns}, \code{variance}, \code{volatility} and \code{sharpe\_ratio} of the
@@ -101,26 +105,16 @@ discretization error.
 \code{max\_sharpe} maximizes $\mu\trans w/\sqrt{w\trans\Sig w}$, the Sharpe ratio with a
 zero risk-free rate (supply excess returns as $\mu$ otherwise), over the computed
 frontier. On a segment $w(t) = (1-t)\,w_0 + t\,w_1$, $t \in [0,1]$, the return is affine
-and the variance quadratic in $t$,
-\begin{equation}
-S(t) = \frac{a_0 + a_1 t}{\sqrt{c_0 + c_1 t + c_2 t^2}}, \qquad
-\begin{aligned}
-a_0 &= \mu\trans w_0, & c_0 &= w_0\trans\Sig w_0, & c_2 &= \Delta\trans\Sig\Delta,\\
-a_1 &= \mu\trans\Delta, & c_1 &= 2\,w_0\trans\Sig\Delta, & \Delta &= w_1 - w_0,
-\end{aligned}
-\end{equation}
-and the numerator of $S'(t)$ is affine in $t$ (its $t^2$ terms cancel), so $S$ has at
-most one stationary point,
+and the variance quadratic in $t$, so the Sharpe ratio $S(t)$ has at most one stationary
+point,
 \begin{equation}\label{eq:tstar}
-t^\star = \frac{a_0 c_1 - 2 a_1 c_0}{a_1 c_1 - 2 a_0 c_2}.
+t^\star = \frac{a_0 c_1 - 2 a_1 c_0}{a_1 c_1 - 2 a_0 c_2},
 \end{equation}
-The maximum on the segment is the largest of $S(0)$, $S(1)$ and, when
-$0 < t^\star < 1$, $S(t^\star)$; a stationary point outside the segment is ignored, an
-optimum at a turning point is found as an end point, and when $a_1 c_1 = 2 a_0 c_2$ there
-is no stationary point and only the end points are compared. The code applies this
-rule to every segment of the frontier and returns the best candidate, so the result is
-the exact maximum over the computed frontier, without relying on the ratio being
-unimodal, at the cost of one matrix--vector product with $\Sig$ per segment.
+with $a_0 = \mu\trans w_0$, $a_1 = \mu\trans(w_1 - w_0)$ and $c_0 + c_1 t + c_2 t^2$ the
+variance along the segment. The code compares $S(0)$, $S(1)$ and, when
+$0 < t^\star < 1$, $S(t^\star)$ on every segment and returns the best, the exact maximum
+over the computed frontier, without assuming the ratio is unimodal, at the cost of one
+matrix--vector product with $\Sig$ per segment.
 
 Points of zero variance are skipped (\code{sharpe\_ratio} reports NaN there); with no
 positive variance \code{max\_sharpe} raises a \code{ValueError}, and with no positive
@@ -143,8 +137,7 @@ handlers keep working.
 
 
 
-A sample covariance from fewer observations than assets is a case that used to be
-declined and no longer is. It is singular, and its free block becomes singular partway
+A sample covariance from fewer observations than assets is supported. It is singular, and its free block becomes singular partway
 along the frontier. The budget row still holds the free assets on its null space, where
 the block stays positive definite, so the trace goes on there (Appendix~\ref{sec:degeneracy}).
 A ridged Gram backend (Section~\ref{sec:gram}) traces a different, regularized frontier:
@@ -169,8 +162,11 @@ turning points: 5 | with a ridge: 7
 \end{CodeChunk}
 \end{minipage}
 
-Release~2.3.3 declined the first of these. Every turning point of the trace above
-matches an interior-point solve of the same quadratic program.
+Every turning point of the trace above matches an interior-point solve of the same
+quadratic program. With a singular $\Sig$ the optimal weights at a given $\lambda$ need
+not be unique, although their return and variance are: \pkg{cvxcla} returns the optimal
+portfolio its active set determines, and another solver may return a different one
+(Appendix~\ref{sec:degeneracy}).
 
 \begin{table}[tb]
 \centering
@@ -212,4 +208,94 @@ when, with the usual remedy. ``Before the walk'' is input validation and the fir
 vertex; ``during the walk'' is a turning point of the trace.}
 \label{tab:errors}
 \end{table}
+
+\subsection{A worked example: a 130/30 book}
+\label{sec:worked}
+
+The example puts the pieces together on the S\&P 500 snapshot of
+Section~\ref{sec:empirical}, $494$ stocks over $1213$ days; the path to the data is
+relative to the replication materials. The book is fully invested,
+holds at most $5\%$ and is short at most $3\%$ of any stock, keeps ten large technology
+names at $6\%$ in total, and caps gross exposure at $130\%$. The builder
+\code{CLA.problem} states the problem term by term; \code{.inequality} adds the group
+cap as one row of $G w \le h$ and \code{.leverage} the gross cap, which
+\pkg{cvxcla} lifts (Section~\ref{sec:leverage}).
+
+\begin{CodeChunk}
+\begin{CodeInput}
+import numpy as np
+import pandas as pd
+from cvxcla import CLA
+
+returns = pd.read_parquet("data/sp500_pct_returns.parquet")
+mu = 252 * returns.mean().to_numpy()            # annualized moments
+Sigma = 252 * returns.cov().to_numpy()
+
+tech = ["AAPL", "MSFT", "NVDA", "GOOGL", "META",
+        "AMZN", "AVGO", "ORCL", "ADBE", "CRM"]
+in_tech = returns.columns.isin(tech).astype(float)
+\end{CodeInput}
+\end{CodeChunk}
+
+The book is then stated and traced in one expression:
+
+\begin{CodeChunk}
+\begin{CodeInput}
+book = (
+    CLA.problem(mu, Sigma)
+    .bounds(-0.03, 0.05)                 # at most 3% short, 5% long a stock
+    .budget()                            # fully invested
+    .inequality(in_tech[None, :], 0.06)  # the ten names: at most 6% in all
+    .leverage(1.3)                       # gross exposure at most 130%
+    .trace()
+)
+binds = sum(tp.active_ineq[0] for tp in book.turning_points)
+print(len(book), "turning points; the cap binds at", binds)
+_, w = book.frontier.max_sharpe
+print(f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
+      (w > 1e-9).sum(), "long,", (w < -1e-9).sum(), "short")
+\end{CodeInput}
+\begin{CodeOutput}
+250 turning points; the cap binds at 95
+max Sharpe: gross 1.30, the ten names 0.044, 47 long, 9 short
+\end{CodeOutput}
+\end{CodeChunk}
+
+The group cap binds over part of the frontier and is released elsewhere, both events of
+Section~\ref{sec:ineq}; the gross cap binds throughout. Between turning points the
+frontier is exact, so \code{interpolate} fills it in without re-solving, and
+\code{book.frontier.plot()} draws it (with \pkg{plotly}, an optional dependency).
+Figure~\ref{fig:worked} sets the book against the long-only one with the same $5\%$
+limit, traced by \code{.bounds(0.0, 0.05)} in place of the last three constraints. A
+problem with no feasible point is refused before the walk starts, with the exception of
+Table~\ref{tab:errors}:
+
+\begin{CodeChunk}
+\begin{CodeInput}
+fine = book.frontier.interpolate(20)     # 20 portfolios per segment
+print(len(fine.weights), "portfolios on the exact frontier")
+
+from cvxcla import InfeasibleProblemError
+try:
+    CLA.problem(mu, Sigma).bounds(0.0, 0.001).budget().trace()
+except InfeasibleProblemError as err:
+    print(type(err).__name__ + ":", err)
+\end{CodeInput}
+\begin{CodeOutput}
+4731 portfolios on the exact frontier
+InfeasibleProblemError: Could not construct a fully invested portfolio
+\end{CodeOutput}
+\end{CodeChunk}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.6\textwidth]{worked_example.pdf}
+\caption{The frontier of the 130/30 book of Section~\ref{sec:worked} against the
+long-only book with the same $5\%$ limit per stock, both drawn with
+\code{interpolate}. Red marks the turning points at which the $6\%$ cap on the ten
+technology names binds (\code{make\_figures.py worked-example}).}
+\label{fig:worked}
+\end{figure}
+
+The whole example, the figure included, is one step of the replication script.
 
