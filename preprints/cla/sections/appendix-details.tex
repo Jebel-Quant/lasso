@@ -26,7 +26,10 @@ for bit unchanged. Only at $10^{6}$ does the floor start to swallow genuine slop
 $40$-asset trace is still unchanged, the $600$-day window's weights move by
 $7\times10^{-2}$, and the trace of the $494$-asset problem and of the factor market is
 declined. So on these inputs genuine slopes and round-off are about ten orders of
-magnitude apart. A turning point
+magnitude apart. The user tolerance \code{tol} has no influence on the trace either: from $10^{-3}$ to
+$10^{-10}$ it leaves all four traces bit for bit unchanged, because it only validates
+the turning points and decides which weights sit on a bound, which the events already
+place exactly. A turning point
 lost to the floor would leave the later ones feasible but not optimal, which the KKT
 certificate reports as a stationarity or dual-feasibility residual.
 

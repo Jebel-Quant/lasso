@@ -6,8 +6,9 @@ All results in this paper were computed with \pkg{cvxcla}~2.7.1 \citep{cvxcla} a
 macOS~15.6.1. \pkg{NumPy}~2.4.6 and \pkg{SciPy}~1.17.1 were linked against Apple's
 Accelerate BLAS, and the first turning point under a general equality system is found
 with the \pkg{HiGHS} solver through \code{scipy.optimize.linprog}. The comparisons use
-\pkg{OSQP}~1.1.3 and the \pkg{qpOASES} bundled with
-\pkg{CasADi}~3.8.1. The estimators of Section~\ref{sec:estimators} use
+\pkg{OSQP}~1.1.3, \pkg{Clarabel}~0.11.1, the \pkg{qpOASES} bundled with
+\pkg{CasADi}~3.8.1, and \proglang{R}~4.6.1 with the \proglang{R} package
+\pkg{CLA}~0.96-3. The estimators of Section~\ref{sec:estimators} use
 \pkg{scikit-learn}~1.9.0, the figures \pkg{matplotlib}~3.11.0, and the return data are
 read with \pkg{pandas}~3.0.3 and \pkg{pyarrow}~24.0.0.
 
@@ -37,8 +38,14 @@ uv run make_figures.py all
 \end{CodeChunk}
 installs them into an isolated environment and rebuilds everything. A target name in
 place of \code{all} rebuilds one artifact, and \code{all -{}-quick} skips the two scaling
-sweeps (Sections~\ref{sec:scaling} and~\ref{sec:rankscaling}), which take about $40$ minutes
+sweeps (Sections~\ref{sec:scaling} and~\ref{sec:rankscaling}), which take about $45$ minutes
 on the machine above. Random inputs are drawn from fixed seeds and the S\&P 500 returns
 are a committed snapshot (Section~\ref{sec:empirical}), so the run needs no network access
 once the packages are installed. Timings and memory were measured on this machine only and will differ elsewhere; the
-turning-point counts and accuracy figures should agree up to round-off.
+turning-point counts and accuracy figures should agree up to round-off. On \proglang{Linux}
+(Debian, \proglang{Python}~3.12, \pkg{NumPy}'s bundled OpenBLAS, in a container on the same
+machine) the six correctness checks of Section~\ref{sec:exactness} and
+Appendix~\ref{sec:details} find the same turning points; the worst KKT residual is
+$7.2\times10^{-13}$ against $1.7\times10^{-13}$, and only round-off-level counts move,
+such as which zero-length segments of the $130/30$ trace occur and how often the
+projection of Appendix~\ref{sec:degeneracy} fires.

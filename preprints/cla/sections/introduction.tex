@@ -42,7 +42,7 @@ way, computing constrained LASSO paths with \pkg{cvxcla}; this paper documents t
 \item \textbf{An operator interface.} The turning-point loop reaches the covariance
 through a five-member protocol (Section~\ref{sec:operators}). A diagonal-plus-low-rank
 backend solves the free block through the Woodbury identity, never forms an
-$n\times n$ matrix, and traces the same turning points about $34\times$ faster than the dense
+$n\times n$ matrix, and traces the same turning points about $36\times$ faster than the dense
 backend at $n=2560$, in under $1$~MiB of working memory against $100$~MiB
 (Section~\ref{sec:experiment}).
 \item \textbf{General linear constraints.} Box bounds combine with any linear
@@ -57,7 +57,8 @@ outside the supported domain are declined with an error that names the cause
 Table~\ref{tab:compare} sets these capabilities against the software a user would
 otherwise reach for. Two open implementations of the CLA itself, the \proglang{R}
 package \pkg{CLA} \citep{rcla} and the \code{CLA} of \pkg{PyPortfolioOpt}
-\citep{pyportfolioopt}, cover box bounds and one budget row on a dense covariance;
+\citep{pyportfolioopt}, cover box bounds and one budget row on a dense covariance.
+\pkg{cvxcla} reproduces the turning points of the first (Section~\ref{sec:exactness}), and
 \pkg{PyPortfolioOpt} is compared with \pkg{cvxcla} in a separate note
 \citep{schmelzer2026comparison}.
 
@@ -78,8 +79,8 @@ QP over a $\lambda$ grid & one portfolio per grid point & as the solver accepts 
 \pkg{cvxcla} & every turning point & any operator & box bounds, $Aw=b$, $Gw\le h$ & native lift \\
 \hline
 \end{tabular}
-\caption{What each route to the mean--variance frontier delivers. The last three rows
-are used in Section~\ref{sec:experiment}: the QP over a $\lambda$ grid is described in Section~\ref{sec:clarabel},
+\caption{What each route to the mean--variance frontier delivers. All rows but
+\pkg{PyPortfolioOpt} are used in Section~\ref{sec:experiment}: the QP over a $\lambda$ grid is described in Section~\ref{sec:clarabel},
 \pkg{qpOASES} in Section~\ref{sec:qpoases}, \pkg{cvxcla}'s covariance operators in
 Section~\ref{sec:operators} and its lift of the gross cap in Section~\ref{sec:leverage}. ``Gross
 cap'' is $\lVert w\rVert_1 \le c$: ``reformulated'' means the user rewrites it with
@@ -94,7 +95,9 @@ properties of \pkg{cvxcla}'s trace and are not compared here.}
 
 We do \emph{not} claim the fastest solve: on small problems \pkg{qpOASES} is faster
 (Section~\ref{sec:qpoases}), and large dense problems admit faster incremental
-factorizations (Section~\ref{sec:baseline}).
+factorizations (Section~\ref{sec:baseline}), and on a factor model an interior-point
+solver returns a grid of $100$ approximate frontier portfolios at a similar cost
+(Section~\ref{sec:clarabel}). The claim is an exact and complete frontier at that cost.
 
 The package \citep{cvxcla}\footnote{\href{\repourl}{\texttt{github.com/cvxgrp/cvxcla}}}
 is built around the class \code{CLA} in \srcfile{src/cvxcla/cla.py}{src/cvxcla/cla.py},

@@ -203,17 +203,20 @@ Feature & Outside the hypotheses because & What holds \\
 \midrule
 Box bounds, $Aw = b$, $Gw \le h$, $\Sig \succ 0$ & -- (if the active constraints are
 independent at every turning point) & Proposition~\ref{prop:termination} \\
-Degenerate maximum-return vertex (Section~\ref{sec:first}) & dependent active constraints
-at the start & finite frontier; cap \\
-Tied maximum returns (Section~\ref{sec:first}) & the start is resolved on a face of
-optima & finite frontier; cap \\
+Degenerate maximum-return vertex (Section~\ref{sec:first}) & only the start, which has
+dependent active constraints & Proposition~\ref{prop:termination} from the first turning
+point, if its hypotheses hold there \\
+Tied maximum returns (Section~\ref{sec:first}) & only the start, resolved on a face of
+optima & as above \\
 Dependent constraints at a later tie & $M$ of Appendix~\ref{sec:proof} only positive
 semidefinite & finite frontier; cap \\
 Singular $\Sig$, solved on the null space (Appendix~\ref{sec:degeneracy}) & $\Sig \not\succ 0$ & cap \\
 Gross-exposure cap (Section~\ref{sec:leverage}) & the lifted covariance is singular & finite frontier in $w$; cap \\
 \bottomrule
 \end{tabular}
-\caption{What is proved for each feature. ``Finite frontier'' is the finite number of
+\caption{What is proved for each feature. The start, at $\lambda = \infty$, is not a
+turning point: Proposition~\ref{prop:termination} covers the walk that follows it.
+``Finite frontier'' is the finite number of
 turning points; ``cap'' is the iteration cap, which stops every trace with an error
 rather than a partial frontier. A partition with dependent active rows is refused
 (Section~\ref{sec:ineq}).}

@@ -31,13 +31,24 @@ uv run custom_backend.py              # the backend of Section 5.2 against the d
 Inputs are drawn from fixed seeds and the returns are committed, so after the packages
 are installed nothing is downloaded.
 
+One step, `r-cla`, compares the turning points with the R package `CLA`. It needs R
+(4.6.1 was used) and that package from CRAN, and is skipped without them:
+
+```sh
+Rscript -e 'install.packages("CLA", repos = "https://cloud.r-project.org")'
+uv run make_figures.py r-cla
+```
+
 ## Expected runtime and output
 
 The paper's results were computed on an Apple M4 Pro (14 cores, 48 GB) under macOS 15.6.1
-with Python 3.14.6. On that machine `all` takes about 40 minutes, nearly all of it in the
+with Python 3.14.6. On that machine `all` takes about 45 minutes, nearly all of it in the
 two scaling sweeps (Sections 7.2 and 7.4); `all --quick` takes a few minutes.
 
 Turning-point counts, accuracy figures and KKT residuals should agree with the paper up
-to round-off. Wall-clock times and memory in the scaling figures and tables depend on
+to round-off. A run of the six correctness checks (`validate-exact`, `validate-constraints`,
+`validate-kkt`, `validate-scaling`, `validate-factor`, `validate-projection`) on Linux
+(Debian, Python 3.12, OpenBLAS, in Docker) found the same turning points as macOS;
+only round-off-level counts, such as zero-length segments and projections, moved. Wall-clock times and memory in the scaling figures and tables depend on
 the machine and the BLAS. Elsewhere the absolute numbers will differ, but the ratios
 between backends should be similar.

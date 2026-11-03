@@ -68,9 +68,9 @@ Section~\ref{sec:first}.
 \label{sec:api}
 
 \code{CLA} takes the problem as keyword arguments, all \pkg{NumPy} arrays of floats, and
-traces the frontier in its constructor, so an object always holds a complete, validated
-frontier of data that cannot change under it (see below); a changed $\mu$ or $\Sig$ is a
-new problem and a new object, and a trace is not warm-started from an earlier one. Required are \code{mean} ($\mu$, length $n$),
+traces the frontier in its constructor, so every \code{CLA} object holds a complete,
+validated frontier. Its input arrays are copied read-only (see below), a changed $\mu$
+or $\Sig$ needs a new object, and a trace is not warm-started from an earlier one. Required are \code{mean} ($\mu$, length $n$),
 \code{covariance} (an $n\times n$ array, which is wrapped as a \code{DenseCovariance},
 or any backend of Section~\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
 (length $n$), and \code{a}, \code{b} ($m\times n$ and length $m$; a budget is
@@ -213,7 +213,8 @@ vertex; ``during the walk'' is a turning point of the trace.}
 \label{sec:worked}
 
 The example puts the pieces together on the S\&P 500 snapshot of
-Section~\ref{sec:empirical}, $494$ stocks over $1213$ days. The book is fully invested,
+Section~\ref{sec:empirical}, $494$ stocks over $1213$ days; the path to the data is
+relative to the replication materials. The book is fully invested,
 holds at most $5\%$ and is short at most $3\%$ of any stock, keeps ten large technology
 names at $6\%$ in total, and caps gross exposure at $130\%$. The builder
 \code{CLA.problem} states the problem term by term; \code{.inequality} adds the group
@@ -233,7 +234,13 @@ Sigma = 252 * returns.cov().to_numpy()
 tech = ["AAPL", "MSFT", "NVDA", "GOOGL", "META",
         "AMZN", "AVGO", "ORCL", "ADBE", "CRM"]
 in_tech = returns.columns.isin(tech).astype(float)
+\end{CodeInput}
+\end{CodeChunk}
 
+The book is then stated and traced in one expression:
+
+\begin{CodeChunk}
+\begin{CodeInput}
 book = (
     CLA.problem(mu, Sigma)
     .bounds(-0.03, 0.05)                 # at most 3% short, 5% long a stock

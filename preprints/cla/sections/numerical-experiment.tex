@@ -7,7 +7,8 @@ solve rather than from bookkeeping (Sections~\ref{sec:scaling}--\ref{sec:ranksca
 how it compares with the alternatives, a QP swept over a grid and a parametric QP solver
 (Sections~\ref{sec:clarabel} and~\ref{sec:qpoases}). A real S\&P 500 frontier closes the section
 (Section~\ref{sec:empirical}); further checks are in Appendices~\ref{sec:details} and~\ref{sec:degeneracy}. Timings are
-the median of three repetitions (bands span their range), each method and size in a
+the median of eleven repetitions up to $n = 160$, where traces are short, and of three
+above (bands span their range), each method and size in a
 freshly spawned interpreter, on the machine of Computational details. Two complete runs
 of the scaling sweep agree to within $10\%$ (median $3\%$) for traces of $10$~ms or more
 and to within $40\%$ below that, so ratios are rounded accordingly and those at small
@@ -30,6 +31,12 @@ frontier is a $130/30$ book: the budget, shorts down to $-30\%$ per asset, and t
 gross-exposure cap $\lVert w\rVert_1 \le 1.3$ of Section~\ref{sec:leverage}, which binds at
 $32$ of $49$ turning points; it matches to $1.4\times 10^{-12}$. The reference QP models
 the cap with auxiliary variables $t \ge \lvert w\rvert$, independently of the lift.
+An independent implementation of the CLA agrees as well: on the long-only problems of
+Section~\ref{sec:scaling} up to $n = 640$, the \proglang{R} package \pkg{CLA}
+\citep{rcla} returns the same turning points as \pkg{cvxcla}, with the
+maximum-return vertex counted once, each within $5\times10^{-13}$ of its counterpart
+(\code{make\_figures.py r-cla}). It takes $26$~s at $n = 320$ and $12$ minutes at
+$n = 640$, so it is not part of the timing comparison of Section~\ref{sec:scaling}.
 
 A reference solver only shows that two codes agree; a KKT certificate tests the trace
 itself (\target{validate-kkt}). At three interior points of every segment, and at two
@@ -88,13 +95,13 @@ the trace. With the roughly $n$ steps observed here, a dense trace is about $n$ 
 of $O(n_\F^3)$ each, $O(n^4)$ operations, while the per-step cost of the factor backend is $O(n_\F K^2 + nK)$, so
 $O(n^2 K)$ in total. At small $n$ a step's fixed overhead hides both rates, and the two backends are at
 parity up to $n\approx 80$. Over the largest four sizes ($320$ to $2560$) the fitted
-exponents are $\approx 2.9$ for the dense backend and $\approx 1.4$ for the factor
+exponents are $\approx 3.0$ for the dense backend and $\approx 1.5$ for the factor
 backend (Figure~\ref{fig:scaling}), below the operation counts. These sizes are not
 yet asymptotic: per-step \proglang{Python} overhead weighs on the small traces, and the
-dense factorizations reach the BLAS's peak rate only on large free blocks, so the local
-exponent of the dense backend still rises, to about $3.2$ over the last doubling. The factor backend is about $3.5\times$
-faster at $n=640$, $10\times$ at $1280$ and $34\times$ at $n=2560$, where it traces the
-$2561$ turning points in about $1.2$~s against $40$~s
+dense factorizations reach the BLAS's peak rate only on large free blocks, so even over
+the last doubling the dense exponent is about $3.0$, not the $4$ of the operation count. The factor backend is about $3.6\times$
+faster at $n=640$, $14\times$ at $1280$ and $36\times$ at $n=2560$, where it traces the
+$2561$ turning points in about $1.2$~s against $44$~s
 (Figure~\ref{fig:scaling}).
 
 The factor backend also never holds an $n\times n$ matrix. At $n=2560$ its covariance
@@ -108,12 +115,12 @@ point, is $O(n^2)$, $50$~MiB at $n=2560$, for either backend.
 \includegraphics[width=0.54\textwidth]{scaling.pdf}
 \caption{Frontier trace time against $n$ (log--log). Exponents $p$ of time $\approx n^p$,
 fitted over the last four sizes each method was timed at with no overhead removed:
-$2.9$ dense, $2.2$ incremental dense and $1.4$ factor ($n = 320$--$2560$), $3.2$
-\pkg{OSQP} ($80$--$640$), $3.7$ \pkg{qpOASES}
+$3.0$ dense, $2.3$ incremental dense and $1.5$ factor ($n = 320$--$2560$), $3.2$
+\pkg{OSQP} ($80$--$640$), $1.4$ \pkg{OSQP} and $1.3$ \pkg{Clarabel} on the factor form, and $3.8$ \pkg{qpOASES}
 ($320$--$2560$); they describe these sizes on this machine, not asymptotic complexity. A warm-started \pkg{OSQP} grid of
-$100$ values of $\lambda$ (Section~\ref{sec:clarabel}) is timed up to $n=640$, and
+$100$ values of $\lambda$ (Section~\ref{sec:clarabel}) is timed up to $n=640$ on the dense $\Sig$, the \pkg{OSQP} and \pkg{Clarabel} grids on the factor form up to $n=2560$, and
 \pkg{qpOASES} hot-started along the whole path (Section~\ref{sec:qpoases}) up to $n=2560$.
-The methods deliver different outputs: \pkg{cvxcla} returns every turning point, the \pkg{OSQP} grid $100$ portfolios, and \pkg{qpOASES} only the
+The methods deliver different outputs: \pkg{cvxcla} returns every turning point, the grids $100$ portfolios each, and \pkg{qpOASES} only the
 minimum-variance endpoint, so its time covers the path following alone.}
 \label{fig:scaling}
 \end{figure}
@@ -124,10 +131,10 @@ minimum-variance endpoint, so its time covers the path following alone.}
 To separate the structured solve from the dense linear algebra, we set
 \pkg{cvxcla}'s own dense backend against its opt-in incremental one, \code{IncrementalDenseCovariance} (Section~\ref{sec:incremental}), which runs the same loop
 but maintains $\Sig_{\F\F}\inv$ by rank-one updates and reports the same turning points.
-A trace is then $O(n^3)$, the measured exponent $\approx 2.2$, and the incremental
+A trace is then $O(n^3)$, the measured exponent $\approx 2.3$, and the incremental
 backend is about $2.7\times$ faster than the dense one at $n=640$ and $6\times$ at
 $n=2560$: block elimination is not the fastest dense strategy. The factor backend is
-still about $1.3\times$ faster than the incremental one at $n=640$ and $5.7\times$ at
+still about $1.4\times$ faster than the incremental one at $n=640$ and $6.2\times$ at
 $n=2560$, so the speed comes from the structured solve. Updating the Woodbury
 capacitance $W$ incrementally would add little at $K=10$, where the $O(n)$ work of each
 step (event scan, products with $\Sig$, bookkeeping) dominates, and matters only at
@@ -139,7 +146,7 @@ large $K$, where the dense backend is already faster (Section~\ref{sec:rankscali
 The factor backend's advantage must fade as $K$ approaches $n$. At fixed $n = 320$ and
 $K \in \{20, \dots, 320\}$ (Figure~\ref{fig:rankscaling}, \target{rank-scaling}), the dense time is
 roughly flat in $K$ while Woodbury grows as
-$O(n_\F K^2 + K^3)$: the factor backend is about $1.9\times$ faster at $K=20$, at parity near
+$O(n_\F K^2 + K^3)$: the factor backend is about $1.7\times$ faster at $K=20$, at parity near
 $K=160$, and $\approx 1.8\times$ slower at $K = 320$. It pays off
 in the regime real risk models inhabit, a few tens of factors over hundreds or thousands
 of assets.
@@ -159,15 +166,35 @@ $O(n_\F K^2 + K^3)$ per step.}
 General toolkits (\pkg{Riskfolio-Lib} \citep{riskfolio}, \pkg{skfolio}
 \citep{skfolio}, \pkg{fPortfolio} \citep{fportfolio}, \pkg{CVXR} \citep{cvxr}) hand a
 single risk target to a general solver, so a frontier means re-solving \eqref{eq:qp} on
-a grid. We make the grid as favorable as we can: \pkg{OSQP} \citep{stellato2020} is
-set up once, each $\lambda$ changes only the linear term, and each solve warm-starts
-from the last, over a fixed grid of $100$ values (\target{scaling}). The sweep grows
-like $\approx n^{3.2}$ and is slower at every size, from about $1.5\times$ the dense
-trace at $n=20$ to about $91\times$ at $n=640$ ($48$~s against $0.5$~s). On the
-real frontier of Section~\ref{sec:empirical} it is about $190\times$ slower at tolerance $10^{-6}$, and
-at $10^{-5}$ it misses points by $10^{-3}$ (\target{osqp}). For a
-single risk target a general solver is the natural choice; for the whole frontier on a
-structured covariance, the trace is what separates \pkg{cvxcla} from these toolkits.
+a grid. We make the grid as favorable as we can: the solver is set up once, each
+$\lambda$ changes only the linear term, and the grid has $100$ values of $\lambda$
+(\target{scaling}). On the dense $\Sig$, an \pkg{OSQP} \citep{stellato2020} grid that
+warm-starts each solve from the last grows like $\approx n^{3.2}$ and is slower than
+the dense trace at every size, from about $1.5\times$ at $n=20$ to about $99\times$ at
+$n=640$ ($52$~s against $0.5$~s). On the real frontier of
+Section~\ref{sec:empirical} it is about $190\times$ slower at tolerance $10^{-6}$, and
+at $10^{-5}$ it misses points by $10^{-3}$ (\target{osqp}).
+
+A fair comparison hands the solver the factor model as well. With $y = U\trans w$ as
+$K$ extra variables, the risk $w\trans \Sig w$ of \eqref{eq:factor} becomes
+$w\trans D w + y\trans \Delta y$ under the $K$ extra equalities $y = U\trans w$: a QP
+with a diagonal Hessian and a sparse constraint matrix in $n + K$ variables. In this
+form the warm-started \pkg{OSQP} grid costs $1.7\times$ to $2.4\times$ the factor trace
+up to $n=160$ and $11\times$ to $30\times$ beyond, $24$~s against $1.2$~s at $n=2560$,
+with weights within $4\times10^{-8}$ of the trace. The interior-point solver
+\pkg{Clarabel} \citep{goulart2024}, which cannot warm-start, is faster: its grid costs
+$2.4\times$ to $4.1\times$ the factor trace at every size, $3.0$~s at $n=2560$. Its
+weights, however, are accurate only to its tolerance, within $2\times10^{-3}$ of the trace
+at the default settings. Tightening all its tolerances to $10^{-12}$ brings that to
+$10^{-5}$ at up to $1.4\times$ the time; we did not obtain more.
+
+On a factor model, then, an interior-point grid of $100$ portfolios costs about as much
+as the trace of all $2561$ turning points: the trace is faster, but only by a factor of
+two to four. What it adds is the answer itself: every turning point, hence every
+efficient portfolio by interpolation, exact up to round-off and with a certificate. For
+a single risk target a general solver is the natural choice; for the whole frontier,
+that complete and exact answer at the cost of a grid is what separates \pkg{cvxcla}
+from these toolkits.
 
 \subsection{A parametric QP solver}
 \label{sec:qpoases}
@@ -179,16 +206,20 @@ strategy: a hot start from one QP to the next follows the homotopy between them 
 changes the working set at every breakpoint on the way. Hot-started from the
 maximum-return end to $\lambda = 0$, it walks the same path as the CLA. We run it
 through \pkg{CasADi} \citep{andersson2019}, solving once above the first finite turning
-point and hot-starting once to $\lambda = 0$ (\target{scaling}).
+point and hot-starting once to $\lambda = 0$ (\target{scaling}). Its time therefore
+includes CasADi's interface, which we did not separate. Called directly, \pkg{qpOASES}
+can report the working-set changes it passes, and its Schur-complement variant can
+exploit a sparse Hessian such as the factor form of Section~\ref{sec:clarabel}; neither
+was tried.
 
 The two codes follow the same path: \pkg{qpOASES} makes exactly as many working-set
 changes as \pkg{cvxcla} reports turning points ($21, 42, \dots, 2561$), and its endpoint
 matches the minimum-variance portfolio to $\sim\!2\times10^{-16}$. On small problems it
 is faster, by a factor of several up to
 $n=80$, where \pkg{cvxcla}'s \proglang{Python} per-step overhead dominates; the two meet
-near $n=200$. Beyond that \pkg{qpOASES} grows like $\approx n^{3.7}$ and takes about $1.6$~s at
-$n=640$ and $370$~s at $n=2560$: about $3\times$ and $9\times$ the dense backend, $11\times$
-and $320\times$ the factor backend. It also returns only the endpoint, since the
+near $n=200$. Beyond that \pkg{qpOASES} grows like $\approx n^{3.8}$ and takes about $1.6$~s at
+$n=640$ and $550$~s at $n=2560$: about $3\times$ and $12\times$ the dense backend, $11\times$
+and $440\times$ the factor backend. It also returns only the endpoint, since the
 turning points it passes are not exposed through the \pkg{CasADi} interface.
 
 \subsection[Empirical example: the SP 500 frontier]{Empirical example: the S\&P 500 frontier}
