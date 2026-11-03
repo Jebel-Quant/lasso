@@ -188,7 +188,8 @@ so the frontier has finitely many turning points whether or not the constraints 
 independent. And an iteration cap of $100(n+p+1)$ stops every trace. A walk in which
 every coordinate changes status once takes $n+p+1$ steps, and the cap allows a hundred
 times that; a trace that reaches it raises an error and never returns a partial
-frontier. No trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
+frontier. Under the gross-exposure lift $n$ counts the legs and $p$ includes the cap
+row. No trace in Appendix~\ref{sec:degeneracy} used more than $1.5\%$ of it.
 Outside the hypotheses, then, what is left unproved is only that the walk leaves every
 tie without revisiting a partition.
 
@@ -226,8 +227,8 @@ rather than a partial frontier. A partition with dependent active rows is refuse
 In floating point the tie window and the slope floor make the computed signs agree with
 the exact ones; that is not proved either. At run time every turning point is validated
 against the bounds, $A w = b$ and $G w \le h$ before it is accepted, and the KKT
-certificate of Section~\ref{sec:exactness} checks the traces of
-Section~\ref{sec:experiment} and Appendix~\ref{sec:degeneracy} for optimality.
+certificate of Section~\ref{sec:exactness} checks the traces of Table~\ref{tab:kkt}
+and Appendix~\ref{sec:degeneracy} for optimality.
 Appendix~\ref{sec:degeneracy} lists which test families satisfy the hypotheses.
 
 When no admissible event has a positive ratio the walk has reached the minimum-variance

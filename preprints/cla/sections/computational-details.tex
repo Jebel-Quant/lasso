@@ -26,12 +26,12 @@ the library.
 Every figure, table, and number is produced by one script, \code{make\_figures.py},
 which the replication materials of this article hold together with the returns
 snapshot. It is the experiment script of release~2.7.1
-(\srcfile{experiments/make_figures.py}{make\_figures.py} in the \pkg{cvxcla} repository), less one external
-timing baseline that this paper does not report, and extended for this article: by the
+(\srcfile{experiments/make_figures.py}{make\_figures.py} in the \pkg{cvxcla} repository), less the timing of the \pkg{PyPortfolioOpt} CLA, which this paper does not
+report and the separate note \citep{schmelzer2026comparison} takes up, and extended for this article: by the
 worked example of Section~\ref{sec:worked}, the factor-form grids of
 Section~\ref{sec:clarabel}, the comparison with the \proglang{R} package \pkg{CLA},
-the drift of the incremental backend, and the tolerance study of
-Appendix~\ref{sec:guards}. Every step named in the text is run by this script against
+the drift of the incremental backend, the single-thread timings, the KKT certificate
+of the largest traces, and the tolerance study of Appendix~\ref{sec:guards}. Every step named in the text is run by this script against
 the released package, unchanged; the links on step names point to the release's
 script, which lacks these extensions. The script declares the versions above as
 inline (PEP~723) metadata, so with \pkg{uv} installed
@@ -42,7 +42,7 @@ uv run make_figures.py all
 \end{CodeChunk}
 installs them into an isolated environment and rebuilds everything. A target name in
 place of \code{all} rebuilds one artifact, and \code{all -{}-quick} skips the two scaling
-sweeps (Sections~\ref{sec:scaling} and~\ref{sec:rankscaling}), which take about $40$ minutes
+sweeps (Sections~\ref{sec:scaling} and~\ref{sec:rankscaling}) and the single-thread timings, which take about $50$ minutes
 on the machine above. Random inputs are drawn from fixed seeds and the S\&P 500 returns
 are a committed snapshot (Section~\ref{sec:empirical}), so the run needs no network access
 once the packages are installed. Timings and memory were measured on this machine only and will differ elsewhere; the
@@ -50,6 +50,6 @@ turning-point counts and accuracy figures should agree up to round-off. On \prog
 (Debian, \proglang{Python}~3.12, \pkg{NumPy}'s bundled OpenBLAS, in a container on the same
 machine) the six correctness checks of Section~\ref{sec:exactness} and
 Appendix~\ref{sec:details} find the same turning points; the worst KKT residual is
-$7.2\times10^{-13}$ against $1.7\times10^{-13}$, and only round-off-level counts move,
+$3.5\times10^{-13}$ against $1.1\times10^{-13}$, and only round-off-level counts move,
 such as which zero-length segments of the $130/30$ trace occur and how often the
 projection of Appendix~\ref{sec:degeneracy} fires.

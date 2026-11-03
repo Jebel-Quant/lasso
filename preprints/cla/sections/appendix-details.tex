@@ -30,12 +30,15 @@ magnitude apart. The user tolerance \code{tol} enters the trace in three places:
 weights sit on a bound at the linear-programming first vertex and at the start on a face
 of tied maximum returns (Section~\ref{sec:first}), and it bounds the violation of a
 bound, a row of $G$ or the gross cap that validation accepts after the projection.
+The equality rows are validated against a fixed $10^{-7}$, independent of \code{tol}.
 Along the walk the events place blocked weights exactly on their bounds, so it plays no
 part there. From $10^{-3}$ to $10^{-10}$ it leaves bit for bit unchanged the four traces
 above, the three constrained frontiers of Section~\ref{sec:exactness} (whose first
 vertex is a linear program for the neutrality row, and whose $130/30$ book is
-validated through the lift), and tied-means problems with $20$ and $60$ assets. The
-tied-means problem with $120$ assets is the exception: at $10^{-3}$ its start on the
+validated through the lift), and three tied-means problems with $20$, $60$ and $120$
+assets, drawn from one seed and not members of the family of
+Appendix~\ref{sec:degeneracy}, whose $60$-asset instance is a different problem. The
+$120$-asset one is the exception: at $10^{-3}$ its start on the
 tied face is declined with a \code{DegenerateProblemError}, and from $10^{-4}$ down it is
 unchanged. A loose \code{tol} therefore weakens validation and can misread the start of
 a tied problem; on these problems it never changed a trace that completed. A turning point

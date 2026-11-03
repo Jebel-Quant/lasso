@@ -109,7 +109,7 @@ $\Sig_{\F\F}$.
 The factor backend was tested against the dense trace of the same $\Sig$ on
 ill-conditioned models: $\Delta$ with condition numbers up to $10^{14}$, loadings
 collinear to within $10^{-10}$, and the full rank $K = n = 120$
-(\target{validate-factor}). It finds the same turning points, with weights equal to
+(\target{validate-factor}). It finds the same turning points, with weights equal to within
 $1.0\times10^{-12}$ and KKT residuals of at most $1.0\times10^{-13}$. A low-rank
 \emph{approximation} of a sample covariance is a different matter: it traces the
 frontier of the approximation, which is a different frontier
@@ -182,7 +182,9 @@ turning points as the dense matrix. The package's test suite,
 with general constraints and with a gross-exposure cap, which goes through
 \code{block\_matvec}.
 The frontier is exact to the accuracy of \code{solve\_free}; an approximate solver
-traces the frontier of the matrix it effectively applies, and the KKT certificate of
-Section~\ref{sec:exactness} checks the result. A sparse matrix
+traces the frontier of the matrix it effectively applies. The package checks each
+turning point for feasibility only; optimality against the intended $\Sig$ is what the
+KKT certificate of Section~\ref{sec:exactness} tests, a function of the replication
+script that applies to any trace and its dense $\Sig$. A sparse matrix
 with a sparse Cholesky factor, a Kronecker product, or a matrix-free operator with an
 iterative \code{solve\_free} fit the same five members.

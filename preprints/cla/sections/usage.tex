@@ -80,7 +80,9 @@ $\lVert w\rVert_1 \le c$, and \code{tol} (default $10^{-5}$), the tolerance for 
 that a weight sits on a bound at the first vertex and for validating each turning point:
 a point that violates a bound, a row of $G$ or the cap by up to \code{tol} after the
 projection of Appendix~\ref{sec:degeneracy} is accepted, while $Aw = b$ is checked to
-$10^{-7}$ regardless (Appendix~\ref{sec:guards}); the event ordering
+$10^{-7}$ regardless (Appendix~\ref{sec:guards}). The tolerance is a ceiling: the
+projection itself stops at $10^{-12}$, and on the traces of Table~\ref{tab:kkt} no
+tested point violates a constraint by more than $1.1\times10^{-13}$. The event ordering
 uses its own relative window of at most $10^{-10}$ (Section~\ref{sec:events}). The arrays (and a
 dense covariance) are copied into read-only arrays when the object is built, so
 changing the caller's arrays afterwards cannot put the stored turning points out of step
