@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/preprints/lasso/**)",
+      "Edit(/preprints/constrained_lasso/**)"
+    ]
+  }
+}
