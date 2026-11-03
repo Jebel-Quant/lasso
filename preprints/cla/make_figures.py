@@ -562,7 +562,10 @@ def _factor_form(d: np.ndarray, u: np.ndarray, delta: np.ndarray) -> tuple:
 
 
 def _osqp_factor_grid(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, lams: np.ndarray) -> tuple:
-    """The warm-started OSQP grid of _osqp_warm_grid, on the factor form. Returns (weights, seconds)."""
+    """The warm-started OSQP grid of _osqp_warm_grid, on the factor form.
+
+    Returns (weights, seconds, total iterations over the grid).
+    """
     import osqp
     from scipy import sparse
 
@@ -583,11 +586,13 @@ def _osqp_factor_grid(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.
         max_iter=40_000,
         verbose=False,
     )
-    weights = []
+    weights, iterations = [], 0
     for lam in lams:
         solver.update(q=np.r_[-lam * mean, np.zeros(k)])
-        weights.append(solver.solve(raise_error=True).x[:n])
-    return np.array(weights), time.perf_counter() - start
+        result = solver.solve(raise_error=True)
+        weights.append(result.x[:n])
+        iterations += int(result.info.iter)
+    return np.array(weights), time.perf_counter() - start, iterations
 
 
 def _clarabel_factor_grid(
@@ -597,7 +602,7 @@ def _clarabel_factor_grid(
 
     Clarabel is an interior-point solver: it has no warm start, so each lambda is a fresh
     solve, and no active-set polish, so its weights are accurate only to its tolerance.
-    Returns (weights, seconds).
+    Returns (weights, seconds, total iterations over the grid).
     """
     import clarabel
     from scipy import sparse
@@ -613,22 +618,35 @@ def _clarabel_factor_grid(
     if tol is not None:
         for name in ("tol_gap_abs", "tol_gap_rel", "tol_feas", "tol_ktratio"):
             setattr(settings, name, tol)
-    weights = []
+    weights, iterations = [], 0
     for lam in lams:
         solution = clarabel.DefaultSolver(p_mat, np.r_[-lam * mean, np.zeros(k)], a_mat, b_vec, cones, settings).solve()
         if "Solved" not in str(solution.status):
             msg = f"Clarabel did not solve the factor-form QP at lambda={lam}: {solution.status}"
             raise RuntimeError(msg)
         weights.append(np.array(solution.x)[:n])
-    return np.array(weights), time.perf_counter() - start
+        iterations += int(solution.iterations)
+    return np.array(weights), time.perf_counter() - start, iterations
 
 
-def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple[int, float, float, float, float]:
-    """Time a factor-form grid of GRID lambdas (median of REPEATS) and its error against the trace.
+def _factor_grid_run(
+    solver: str,
+    d: np.ndarray,
+    u: np.ndarray,
+    delta: np.ndarray,
+    mean: np.ndarray,
+    repeats: int,
+    tol: float | None = None,
+) -> tuple:
+    """Time a factor-form grid of GRID lambdas against the exact long-only trace of the same model.
 
-    Returns (grid points, median, min, max seconds, largest weight error at the grid points).
+    Each grid point is compared with the exact frontier at the same lambda, in its weights
+    and in what a user reads off a frontier portfolio: its expected return and its
+    variance, relative to the exact ones. Returns (grid points, median, min, max seconds,
+    largest weight error, largest relative return error, largest relative variance error,
+    iterations per grid point).
     """
-    d, u, delta, mean = _scale_raw_factors(n)
+    n = len(mean)
     cla = CLA(
         mean=mean,
         covariance=FactorCovariance(d=d, u=u, delta=delta),
@@ -640,14 +658,30 @@ def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple[i
     lam_max = max(tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb))
     lams = np.linspace(lam_max, 0.0, _SCALE_GRID)
     times = []
-    for _ in range(_scale_repeats(n)):
+    for _ in range(repeats):
         if solver == "osqp":
-            weights, seconds = _osqp_factor_grid(d, u, delta, mean, lams)
+            weights, seconds, iterations = _osqp_factor_grid(d, u, delta, mean, lams)
         else:
-            weights, seconds = _clarabel_factor_grid(d, u, delta, mean, lams, tol)
+            weights, seconds, iterations = _clarabel_factor_grid(d, u, delta, mean, lams, tol)
         times.append(seconds)
-    error = max(float(np.abs(w - _cla_weight_at(cla, lam)).max()) for w, lam in zip(weights, lams, strict=True))
-    return (len(lams), *_scale_stats(times), error)
+
+    def variance(w: np.ndarray) -> float:
+        y = u.T @ w
+        return float(w @ (d * w) + y @ (delta * y))  # delta is the diagonal of the factor covariance
+
+    err_w = err_ret = err_var = 0.0
+    for w, lam in zip(weights, lams, strict=True):
+        exact = _cla_weight_at(cla, lam)
+        err_w = max(err_w, float(np.abs(w - exact).max()))
+        err_ret = max(err_ret, abs(float(mean @ (w - exact))) / abs(float(mean @ exact)))
+        err_var = max(err_var, abs(variance(w) - variance(exact)) / variance(exact))
+    return (len(lams), *_scale_stats(times), err_w, err_ret, err_var, iterations / len(lams))
+
+
+def _scale_factor_grid(solver: str, n: int, tol: float | None = None) -> tuple:
+    """The factor-form grid of _factor_grid_run on the seed-7 size-n factor model of the sweep."""
+    d, u, delta, mean = _scale_raw_factors(n)
+    return _factor_grid_run(solver, d, u, delta, mean, _scale_repeats(n), tol)
 
 
 def _scale_memory(covariance: object, problem: dict, cov_bytes: int) -> tuple[int, int]:
@@ -772,6 +806,22 @@ def figure_scaling(out_dir: Path) -> None:
             f"clarabel={clf[1] * 1e3:9.1f} ms (max |dw| {clf[4]:.1e})  "
             f"vs cvxcla factor: osqp {osf[1] / t_factor:.1f}x, clarabel {clf[1] / t_factor:.1f}x"
         )
+        print(
+            f"        factor form, relative return / variance error: osqp {osf[5]:.1e} / {osf[6]:.1e}, "
+            f"clarabel {clf[5]:.1e} / {clf[6]:.1e};  iterations per grid point: "
+            f"osqp {osf[7]:.0f}, clarabel {clf[7]:.0f}"
+        )
+
+        def spread(lo_hi: tuple[float, float] | None, mid: float | None) -> str:
+            return "n/a" if lo_hi is None or mid is None else f"{(lo_hi[1] - lo_hi[0]) / mid:.0%}"
+
+        print(
+            f"        spread (max-min)/median: dense {spread((d_lo, d_hi), t_dense)}, "
+            f"factor {spread((f_lo, f_hi), t_factor)}, "
+            f"inverse {spread(inv[2:4] if inv else None, inv[1] if inv else None)}, "
+            f"qpoases {spread(qpo[2:4] if qpo else None, qpo[1] if qpo else None)}, "
+            f"osqp-f {spread(osf[2:4], osf[1])}, clarabel-f {spread(clf[2:4], clf[1])}"
+        )
 
     # The clean comparison is the incremental-inverse baseline vs the dense
     # backend: same vectorised event logic, differing only in the linear-algebra
@@ -819,12 +869,17 @@ def figure_scaling(out_dir: Path) -> None:
             )
 
     # Clarabel's weights are accurate only to its tolerance: the cost of tightening it.
-    print("\nClarabel factor-form grid against its tolerance (time, largest weight error):")
+    print("\nClarabel factor-form grid against its tolerance (time; largest weight, return, variance error):")
     for n_t in (640, 2560):
         cells = []
-        for tol in (None, 1e-10, 1e-12):
-            _, t_med, _, _, err = _scale_factor_grid("clarabel", n_t, tol)
-            cells.append(f"{'default' if tol is None else f'{tol:g}'}: {t_med * 1e3:7.1f} ms, {err:.1e}")
+        for tol in (None, 1e-10, 1e-12, 1e-14):
+            name = "default" if tol is None else f"{tol:g}"
+            try:
+                _, t_med, _, _, err, err_r, err_v, _ = _scale_factor_grid("clarabel", n_t, tol)
+            except RuntimeError as exc:
+                cells.append(f"{name}: {str(exc).rsplit(': ', 1)[-1]}")
+                continue
+            cells.append(f"{name}: {t_med * 1e3:7.1f} ms, {err:.1e}, {err_r:.1e}, {err_v:.1e}")
         print(f"n={n_t:4d}  " + "   ".join(cells))
 
     mib = 2.0**20
@@ -863,7 +918,6 @@ def figure_scaling(out_dir: Path) -> None:
             ax.loglog(xs, [times[i] for i in keep], marker, ms=4, color=colour, label=label)
         ax.set_xlabel("Number of assets $n$")
         ax.set_ylabel("Frontier trace time [s]")
-        ax.set_title(title, fontsize=9)
         # Label the x-axis at the actual problem sizes as plain integers, not the
         # default powers of ten (which never coincide with 20, 40, ..., 640 and
         # leave cluttered minor-tick labels on a log axis).
@@ -964,7 +1018,6 @@ def figure_rank_scaling(out_dir: Path) -> None:
     ax.loglog(ks, factor_times, "-s", ms=4, color="#1f4e79", label="cvxcla, factor backend (Woodbury)")
     ax.set_xlabel(f"Number of factors $K$ (fixed $n={_RANK_N_ASSETS}$)")
     ax.set_ylabel("Frontier trace time [s]")
-    ax.set_title(f"CLA runtime vs factor rank ($n={_RANK_N_ASSETS}$)", fontsize=9)
     ax.set_xticks(ks)
     ax.xaxis.set_major_formatter(ScalarFormatter())
     ax.xaxis.set_minor_formatter(NullFormatter())
@@ -1008,13 +1061,19 @@ def _real_median_trace(mean: np.ndarray, covariance: object, n: int) -> tuple[ob
     return cla, float(np.median(times))
 
 
-def _real_factor_estimate(cov: np.ndarray, k: int) -> FactorCovariance:
-    """Diagonal-plus-low-rank estimate from the top-k eigenpairs of ``cov``."""
+def _real_factor_parts(cov: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(d, U, delta) of the diagonal-plus-low-rank estimate from the top-k eigenpairs of ``cov``."""
     evals, evecs = np.linalg.eigh(cov)
     top = np.argsort(evals)[::-1][:k]
     u = evecs[:, top]
     delta = np.clip(evals[top], 1e-12, None)
     d = np.clip(np.diag(cov) - np.einsum("ij,j,ij->i", u, delta, u), 1e-10, None)
+    return d, u, delta
+
+
+def _real_factor_estimate(cov: np.ndarray, k: int) -> FactorCovariance:
+    """Diagonal-plus-low-rank estimate from the top-k eigenpairs of ``cov``."""
+    d, u, delta = _real_factor_parts(cov, k)
     return FactorCovariance(d=d, u=u, delta=delta)
 
 
@@ -1117,7 +1176,8 @@ def figure_worked_example(out_dir: Path) -> None:
         .trace()
     )
     binds = sum(tp.active_ineq[0] for tp in book.turning_points)
-    print(len(book), "turning points; the cap binds at", binds)
+    gross = sum(abs(tp.weights).sum() > 1.3 - 1e-9 for tp in book.turning_points)
+    print(len(book), "turning points; the cap binds at", binds, "and the gross cap at", gross)
     _, w = book.frontier.max_sharpe
     print(
         f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
@@ -1145,7 +1205,7 @@ def figure_worked_example(out_dir: Path) -> None:
         ax.plot(curve.volatility, curve.returns, "-", lw=1.0, color=colour, label=label)
     tp = book.frontier
     active = np.array([bool(t.active_ineq[0]) for t in book.turning_points])
-    ax.plot(tp.volatility[active], tp.returns[active], "o", ms=2.2, color="#c00000", label="cap binding")
+    ax.plot(tp.volatility[active], tp.returns[active], "x", ms=3.5, mew=0.9, color="#c00000", label="cap binding")
     ax.set_xlabel("Annualized volatility")
     ax.set_ylabel("Annualized expected return")
     ax.grid(True, alpha=0.3)
@@ -1468,7 +1528,6 @@ def figure_degeneracy(out_dir: Path) -> None:
     ax.set_yscale("log")
     ax.set_xlabel("Observations $T$ (sample covariance rank $\\approx \\min(T-1, n)$)")
     ax.set_ylabel("Worst free-block cond. number")
-    ax.set_title(f"The guard reads the free block on the budget's null space ($n={_DEGEN_N_ASSETS}$)", fontsize=8.5)
 
     legend = [
         Line2D(
@@ -1933,6 +1992,29 @@ def check_osqp(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signa
             f"{t_osqp / t_cla:.1f}x the exact trace, max|w - w*| = {gap:.1e}"
         )
 
+    # Free-set sizes set the cost of a dense step: on real data they stay far below n.
+    def free_sizes(trace: CLA) -> str:
+        sizes = [int(np.sum(tp.free)) for tp in trace.turning_points]
+        return f"|F| max {max(sizes)}, median {np.median(sizes):.0f}"
+
+    d, u, delta = _real_factor_parts(sigma, _REAL_N_FACTORS)
+    factor_cla, t_factor = _real_median_trace(mean, FactorCovariance(d=d, u=u, delta=delta), n)
+    print(f"free sets, sample covariance  : {free_sizes(cla)} of n = {n}")
+    print(
+        f"rank-{_REAL_N_FACTORS} factor model (Section 7.7): {len(factor_cla)} turning points in "
+        f"{t_factor * 1e3:.1f} ms (median), {free_sizes(factor_cla)}"
+    )
+    # The grids of the scaling sweep on that factor model: the solver gets the factor form.
+    for solver in ("osqp", "clarabel"):
+        pts, t_med, t_lo, t_hi, err_w, err_r, err_v, iters = _factor_grid_run(
+            solver, d, u, delta, mean, _REAL_REPEATS
+        )
+        print(
+            f"{solver:8s} grid, factor form : {pts} solves in {t_med * 1e3:.1f} ms (median), "
+            f"{t_med / t_factor:.1f}x the factor trace; max|w - w*| = {err_w:.1e}, "
+            f"relative return / variance error {err_r:.1e} / {err_v:.1e}, {iters:.0f} iterations per point"
+        )
+
 
 # ======================================================================================
 # Check: validate-kkt  (Section 8.6 KKT residuals)
@@ -2353,9 +2435,55 @@ def check_validate_scaling(out_dir: Path) -> None:  # noqa: ARG001 - the shared 
 
     # The user tolerance ``tol`` (default 1e-5) decides that a weight sits on a bound and
     # validates each turning point; it plays no part in ordering events.
+    # tol also classifies the linear-programming first vertex (scenario 1), starts a trace on
+    # a face of tied maximum returns, and validates the lifted gross-exposure cap; these
+    # problems exercise those paths.
+    rng = np.random.default_rng(_VCON_SEED)
+    vcov, vmean, sector = _vcon_make_market(rng)
+    ones = np.ones((1, _VCON_N_ASSETS))
+    char = rng.standard_normal(_VCON_N_ASSETS)
+    box = {"lower_bounds": np.zeros(_VCON_N_ASSETS), "upper_bounds": np.ones(_VCON_N_ASSETS)}
+    tol_cases = [
+        *cases,
+        (
+            "30 assets, budget + neutrality row",
+            vmean,
+            vcov,
+            {**box, "a": np.vstack([ones, char[None, :]]), "b": np.array([1.0, float(char.mean())])},
+        ),
+        (
+            "30 assets, budget + sector caps",
+            vmean,
+            vcov,
+            {
+                **box,
+                "a": ones,
+                "b": np.ones(1),
+                "g": np.array([(sector == k).astype(float) for k in range(_VCON_N_SECTORS)]),
+                "h": np.full(_VCON_N_SECTORS, _VCON_SECTOR_CAP),
+            },
+        ),
+        (
+            "30 assets, 130/30 gross-exposure cap",
+            vmean,
+            vcov,
+            {
+                "lower_bounds": np.full(_VCON_N_ASSETS, -_VCON_SHORT),
+                "upper_bounds": np.ones(_VCON_N_ASSETS),
+                "a": ones,
+                "b": np.ones(1),
+                "leverage": _VCON_LEVERAGE,
+            },
+        ),
+    ]
+    for size in (20, 60, 120):
+        tied = _tie_tied_means(np.random.default_rng(0), size)
+        tied_mean, tied_cov = tied.pop("mean"), tied.pop("covariance")
+        tol_cases.append((f"tied means, {size} assets", tied_mean, tied_cov, tied))
+
     print("\nuser tolerance tol: max |w - w(tol=1e-5)|, or the changed turning-point count")
     print(f"{'problem':<42}" + "".join(f"{t:>9.0e}" for t in _VSCALE_TOLS))
-    for label, mean, cov, kwargs in cases:
+    for label, mean, cov, kwargs in tol_cases:
         ref = _vscale_weights(CLA(mean=mean, covariance=cov, **kwargs))
         cells = []
         for tol in _VSCALE_TOLS:

@@ -26,10 +26,19 @@ for bit unchanged. Only at $10^{6}$ does the floor start to swallow genuine slop
 $40$-asset trace is still unchanged, the $600$-day window's weights move by
 $7\times10^{-2}$, and the trace of the $494$-asset problem and of the factor market is
 declined. So on these inputs genuine slopes and round-off are about ten orders of
-magnitude apart. The user tolerance \code{tol} has no influence on the trace either: from $10^{-3}$ to
-$10^{-10}$ it leaves all four traces bit for bit unchanged, because it only validates
-the turning points and decides which weights sit on a bound, which the events already
-place exactly. A turning point
+magnitude apart. The user tolerance \code{tol} enters the trace in three places: it decides which
+weights sit on a bound at the linear-programming first vertex and at the start on a face
+of tied maximum returns (Section~\ref{sec:first}), and it bounds the violation of a
+bound, a row of $G$ or the gross cap that validation accepts after the projection.
+Along the walk the events place blocked weights exactly on their bounds, so it plays no
+part there. From $10^{-3}$ to $10^{-10}$ it leaves bit for bit unchanged the four traces
+above, the three constrained frontiers of Section~\ref{sec:exactness} (whose first
+vertex is a linear program for the neutrality row, and whose $130/30$ book is
+validated through the lift), and tied-means problems with $20$ and $60$ assets. The
+tied-means problem with $120$ assets is the exception: at $10^{-3}$ its start on the
+tied face is declined with a \code{DegenerateProblemError}, and from $10^{-4}$ down it is
+unchanged. A loose \code{tol} therefore weakens validation and can misread the start of
+a tied problem; on these problems it never changed a trace that completed. A turning point
 lost to the floor would leave the later ones feasible but not optimal, which the KKT
 certificate reports as a stationarity or dual-feasibility residual.
 
