@@ -89,9 +89,7 @@ free-block solve never forms $\Sig_{\F\F}$; it uses the Woodbury identity
 W = \Delta\inv + U_\F\trans D_\F\inv U_\F \in\R^{K\times K},
 \end{equation}
 so a solve costs $O(n_\F K^2 + K^3)$ rather than $O(n_\F^3)$, storage is $O(nK)$, and
-the cross product is $U_\F\,\Delta\,(U_\B\trans x_\B)$. The same free-block algebra serves a
-single constrained solve as well: \citet{schmelzer2026nncg} reach the free block of a
-non-negative QP through the same Woodbury inverse and factored products.
+the cross product is $U_\F\,\Delta\,(U_\B\trans x_\B)$.
 
 The admissible model is $d > 0$ and $\Delta$ symmetric positive semidefinite.
 \code{FactorCovariance} folds $\Delta$ into the loadings when it is built: with
@@ -113,7 +111,7 @@ collinear to within $10^{-10}$, and the full rank $K = n = 120$
 $1.0\times10^{-12}$ and KKT residuals of at most $1.0\times10^{-13}$. A low-rank
 \emph{approximation} of a sample covariance is a different matter: it traces the
 frontier of the approximation, which is a different frontier
-(Section~\ref{sec:estimators}).
+(Section~\ref{sec:empirical}).
 
 \paragraph{Data matrix (Gram).}
 \label{sec:gram}
@@ -140,11 +138,8 @@ form is supplied as the covariance, a bundled or a user-written \code{QuadraticF
 (Section~\ref{sec:custom}). \code{GramCovariance} with $\theta>0$ and \code{FactorCovariance}
 already are such forms. A rank-deficient sample covariance needs neither: its frontier
 is traced as it is, as long as the active rows keep the free block positive definite on
-their null space (Appendix~\ref{sec:degeneracy}). A small ridge or a factor model is the
-fix when they do not, and a choice of estimator otherwise (Section~\ref{sec:estimators}). A penalty centred on a nonzero portfolio $w_0$ (tracking
-error, quadratic turnover) adds the linear term $-\theta\, w\trans M w_0$, which the
-interface does not expose; nonquadratic penalties such as linear transaction costs lie
-outside the method.
+their null space (Appendix~\ref{sec:degeneracy}); a small ridge or a factor model is the
+fix when they do not.
 
 \subsection{Writing a backend}
 \label{sec:custom}

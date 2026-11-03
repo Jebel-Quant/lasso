@@ -2,9 +2,12 @@
 
 This script reproduces every figure, table and number in the paper. It is the experiment
 script of cvxcla 2.7.1 (`experiments/make_figures.py` at tag `v2.7.1`), less one
-external timing baseline that the paper does not report and with one step added,
-`worked-example` (Section 6.4); the other steps the paper names, such as
-`make_figures.py scaling`, are the same in both.
+external timing baseline and two steps (covariance estimators, resampled frontiers) whose
+results the paper does not use, and extended with the steps and checks listed under
+Computational details in the paper (among them `worked-example`, `threads` and the KKT
+certificate of the largest traces). The steps the paper links to the release, such as
+`make_figures.py scaling`, compute the same results in both; `real-frontier` no longer
+draws a figure, since the paper uses only its numbers.
 
 ```
 make_figures.py                 every figure and every numerical check
@@ -23,7 +26,7 @@ into an isolated environment:
 
 ```sh
 uv run make_figures.py all            # every figure and every check, writes figures/
-uv run make_figures.py all --quick    # the same, without the two slow scaling sweeps
+uv run make_figures.py all --quick    # the same, without the three slow steps
 uv run make_figures.py frontier       # one figure; run with no argument for the list
 uv run custom_backend.py              # the backend of Section 5.2 against the dense matrix
 ```
