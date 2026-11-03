@@ -77,7 +77,10 @@ or any backend of Section~\ref{sec:operators}), \code{lower\_bounds} and \code{u
 \code{a = np.ones((1, n))}, \code{b = np.ones(1)}). Optional are \code{g}, \code{h}
 ($p\times n$ and length $p$) for $Gw \le h$, \code{leverage} for the cap
 $\lVert w\rVert_1 \le c$, and \code{tol} (default $10^{-5}$), the tolerance for deciding
-that a weight sits on a bound and for validating each turning point; the event ordering
+that a weight sits on a bound at the first vertex and for validating each turning point:
+a point that violates a bound, a row of $G$ or the cap by up to \code{tol} after the
+projection of Appendix~\ref{sec:degeneracy} is accepted, while $Aw = b$ is checked to
+$10^{-7}$ regardless (Appendix~\ref{sec:guards}); the event ordering
 uses its own relative window of at most $10^{-10}$ (Section~\ref{sec:events}). The arrays (and a
 dense covariance) are copied into read-only arrays when the object is built, so
 changing the caller's arrays afterwards cannot put the stored turning points out of step
@@ -250,19 +253,23 @@ book = (
     .trace()
 )
 binds = sum(tp.active_ineq[0] for tp in book.turning_points)
-print(len(book), "turning points; the cap binds at", binds)
+gross = sum(abs(tp.weights).sum() > 1.3 - 1e-9 for tp in book.turning_points)
+print(len(book), "turning points; the cap binds at", binds,
+      "and the gross cap at", gross)
 _, w = book.frontier.max_sharpe
 print(f"max Sharpe: gross {abs(w).sum():.2f}, the ten names {in_tech @ w:.3f},",
       (w > 1e-9).sum(), "long,", (w < -1e-9).sum(), "short")
 \end{CodeInput}
 \begin{CodeOutput}
-250 turning points; the cap binds at 95
+250 turning points; the cap binds at 95 and the gross cap at 250
 max Sharpe: gross 1.30, the ten names 0.044, 47 long, 9 short
 \end{CodeOutput}
 \end{CodeChunk}
 
 The group cap binds over part of the frontier and is released elsewhere, both events of
-Section~\ref{sec:ineq}; the gross cap binds throughout. Between turning points the
+Section~\ref{sec:ineq}; the gross cap binds at every turning point. The data carry the
+survivorship bias of Section~\ref{sec:empirical}, so the maximum-Sharpe book illustrates
+the interface, not an investment. Between turning points the
 frontier is exact, so \code{interpolate} fills it in without re-solving, and
 \code{book.frontier.plot()} draws it (with \pkg{plotly}, an optional dependency).
 Figure~\ref{fig:worked} sets the book against the long-only one with the same $5\%$
@@ -292,7 +299,7 @@ InfeasibleProblemError: Could not construct a fully invested portfolio
 \includegraphics[width=0.6\textwidth]{worked_example.pdf}
 \caption{The frontier of the 130/30 book of Section~\ref{sec:worked} against the
 long-only book with the same $5\%$ limit per stock, both drawn with
-\code{interpolate}. Red marks the turning points at which the $6\%$ cap on the ten
+\code{interpolate}. Crosses mark the turning points at which the $6\%$ cap on the ten
 technology names binds (\code{make\_figures.py worked-example}).}
 \label{fig:worked}
 \end{figure}
