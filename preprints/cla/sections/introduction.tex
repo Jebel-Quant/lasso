@@ -61,7 +61,7 @@ gross-exposure cap $\lVert w\rVert_1 \le c$ (Section~\ref{sec:leverage}).
 \item \textbf{A tested implementation.} A least-index tie-break makes the trace
 deterministic and provably finite under standard assumptions (Section~\ref{sec:bland});
 every turning point is checked for feasibility as it is found, and an independent KKT
-certificate in the replication script certifies eleven traces, among them the largest
+certificate in the replication script certifies thirteen traces, among them the largest
 timed one ($n = 2560$) and the worked example (Section~\ref{sec:exactness}); inputs
 outside the supported domain are declined with an error that names the cause
 (Section~\ref{sec:errors}); and one script regenerates every figure and number.
@@ -71,7 +71,9 @@ otherwise reach for. The \proglang{R} package \pkg{CLA} \citep{rcla}, an open
 implementation of the CLA itself, covers box bounds and one budget row on a dense
 covariance, and \pkg{cvxcla} reproduces its turning points (Section~\ref{sec:exactness}).
 The \code{CLA} of \pkg{PyPortfolioOpt} \citep{pyportfolioopt}, with the same scope, is
-compared with \pkg{cvxcla} in a separate note \citep{schmelzer2026comparison}.
+compared with \pkg{cvxcla} in a separate note \citep{schmelzer2026comparison}, on the
+turning points both return, their speed, and how each handles degenerate inputs; nothing
+in this paper depends on it.
 
 \begin{table}[t]
 \centering

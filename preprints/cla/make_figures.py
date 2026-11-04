@@ -32,7 +32,7 @@ the KKT certificate of the largest traces, and the extended tolerance study.
 
     uv run make_figures.py            # choose interactively
     uv run make_figures.py all         # every figure + every check
-    uv run make_figures.py all --quick # skip the three slow steps
+    uv run make_figures.py all --quick # skip the four slow steps
     uv run make_figures.py frontier    # just one figure
 
 Targets (artefact in parentheses; sections, figures and tables are the paper's):
@@ -67,8 +67,12 @@ Targets (artefact in parentheses; sections, figures and tables are the paper's):
     problems; needs R and the CRAN package CLA, and is skipped without them (no figure).
   * ``threads``         -- Section 7: cvxcla's backends on one BLAS thread (no figure).
     SLOW.
+  * ``parallel-grid``   -- Section 7.5: the Clarabel factor-form grid split over a warm
+    process pool, against the serial grid and the factor trace (no figure).
+  * ``blas``            -- Section 7.2: the n=2560 dense and factor traces, with the BLAS
+    they ran on; run under Linux for the OpenBLAS comparison (no figure).  SLOW.
   * ``figures``         -- all five figures.
-  * ``checks``          -- all thirteen numerical checks.
+  * ``checks``          -- all fifteen numerical checks.
   * ``all``             -- every figure and every check.
 
 Beyond ``cvxcla`` itself the steps need a few third-party packages: ``matplotlib`` (all
@@ -80,8 +84,8 @@ script's inline (PEP 723) metadata, so ``uv run`` provisions them automatically.
 whose optional dependency is missing, or which raises, is reported and skipped rather
 than aborting the whole run.
 
-Pass ``--quick`` to ``all``/``figures``/``checks`` to skip the three slow steps
-(``scaling``, ``rank-scaling`` and ``threads``); selecting one explicitly always runs it.
+Pass ``--quick`` to ``all``/``figures``/``checks`` to skip the four slow steps
+(``scaling``, ``rank-scaling``, ``threads`` and ``blas``); selecting one explicitly always runs it.
 """
 
 from __future__ import annotations
@@ -139,9 +143,9 @@ def _along_segments(weights: np.ndarray, num: int = _CURVE_POINTS) -> np.ndarray
 
 
 # ======================================================================================
-# OSQP: the reference QP and the warm-started grid baseline
+# OSQP: the reference QP; the grid tolerance
 # ======================================================================================
-_OSQP_EPS = 1e-6  # the grid tolerance: the loosest that is exact to rounding on the S&P grid
+_OSQP_EPS = 1e-6  # the tolerance of the factor-form OSQP grids
 
 
 def _osqp_qp(
@@ -207,42 +211,6 @@ def _osqp_qp(
         verbose=False,
     )
     return np.asarray(solver.solve(raise_error=True).x[:n], dtype=float)
-
-
-def _osqp_warm_grid(mean: np.ndarray, sigma: np.ndarray, lams: np.ndarray, eps: float) -> tuple[np.ndarray, float]:
-    """The long-only, fully-invested portfolios at ``lams`` from one warm-started OSQP.
-
-    The strongest grid baseline short of a path algorithm: OSQP is set up once, so its
-    factorisation is reused, each lambda changes only the linear term, and each solve
-    starts from the previous solution. Polishing recovers the active-set solution.
-    """
-    import osqp
-    from scipy import sparse
-
-    n = mean.shape[0]
-    start = time.perf_counter()
-    solver = osqp.OSQP()
-    solver.setup(
-        P=sparse.csc_matrix(np.triu(sigma)),
-        q=-lams[0] * mean,
-        A=sparse.vstack([sparse.csc_matrix(np.ones((1, n))), sparse.eye(n)], format="csc"),
-        l=np.r_[1.0, np.zeros(n)],
-        u=np.r_[1.0, np.ones(n)],
-        eps_abs=eps,
-        eps_rel=eps,
-        polishing=True,
-        warm_starting=True,
-        # OSQP's default of 4000 iterations sits on a knife-edge at n = 640: a 1e-13
-        # change in the grid's top lambda tips one warm-started solve over it. A run
-        # that converges within 4000 is unaffected; a solve that still fails raises.
-        max_iter=40_000,
-        verbose=False,
-    )
-    weights = []
-    for lam in lams:
-        solver.update(q=-lam * mean)
-        weights.append(solver.solve(raise_error=True).x)
-    return np.array(weights), time.perf_counter() - start
 
 
 def _cla_weight_at(cla: CLA, lam: float) -> np.ndarray:
@@ -394,9 +362,6 @@ def figure_frontier(out_dir: Path) -> None:
 # Figure: scaling (from runtime_scaling.py)  ->  scaling.pdf  (SLOW)
 # ======================================================================================
 _SCALE_SIZES = [20, 40, 80, 160, 320, 640, 1280, 2560]
-# The OSQP grid baseline is timed only up to here: it already takes most of a minute
-# at n=640, and grows like n^3 or faster.
-_SCALE_BASELINE_MAX_N = 640
 # qpOASES follows the same parametric path as the CLA, so it is the closest external
 # comparison and is timed further, until it too takes minutes per trace.
 _SCALE_QPOASES_MAX_N = 2560
@@ -412,7 +377,7 @@ _SCALE_SMALL_REPEAT_MAX_N = 160
 def _scale_repeats(n: int) -> int:
     """How many times to time a method at size n."""
     return _SCALE_REPEATS_SMALL if n <= _SCALE_SMALL_REPEAT_MAX_N else _SCALE_REPEATS
-_SCALE_GRID = 100  # fixed lambda-grid size for the OSQP baseline, the same at every n
+_SCALE_GRID = 100  # fixed lambda-grid size for the factor-form grids, the same at every n
 
 
 def _scale_make_problem(rng: np.random.Generator, n: int, k: int) -> tuple[np.ndarray, FactorCovariance, dict]:
@@ -519,23 +484,6 @@ def _scale_free_sizes(covariance: object, problem: dict) -> tuple[int, float]:
     return max(sizes), float(np.median(sizes))
 
 
-def _scale_osqp_grid(dense: np.ndarray, problem: dict) -> tuple[int, float, float, float]:
-    """Time reconstructing the frontier with a warm-started OSQP grid of GRID lambda values.
-
-    The grid has a fixed size at every n, so its exponent reflects the per-solve cost
-    rather than a grid that grows with n. It spans the frontier's lambda-range from one
-    cvxcla trace, and the whole sweep is timed (median of REPEATS) against a single
-    trace. Returns (grid points, median, min, max) seconds.
-    """
-    cla = CLA(covariance=dense, **problem)
-    lam_max = max(tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb))
-    lams = np.linspace(lam_max, 0.0, _SCALE_GRID)
-    times = [
-        _osqp_warm_grid(problem["mean"], dense, lams, _OSQP_EPS)[1] for _ in range(_scale_repeats(len(problem["mean"])))
-    ]
-    return (len(lams), *_scale_stats(times))
-
-
 def _scale_raw_factors(n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The seed-7 size-n factor model as raw (d, U, delta, mean), drawn as in _scale_make_problem."""
     rng = np.random.default_rng(_SCALE_SEED)
@@ -563,9 +511,11 @@ def _factor_form(d: np.ndarray, u: np.ndarray, delta: np.ndarray) -> tuple:
 
 
 def _osqp_factor_grid(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, lams: np.ndarray) -> tuple:
-    """The warm-started OSQP grid of _osqp_warm_grid, on the factor form.
+    """A warm-started OSQP grid on the factor form.
 
-    Returns (weights, seconds, total iterations over the grid).
+    OSQP is set up once, so its factorisation is reused; each lambda changes only the
+    linear term, and each solve starts from the previous solution. Polishing recovers
+    the active-set solution. Returns (weights, seconds, total iterations over the grid).
     """
     import osqp
     from scipy import sparse
@@ -712,8 +662,6 @@ def _scale_measure(method: str, n: int) -> object:
         return _scale_median_trace(factor, problem)
     if method == "inverse":
         return _scale_median_trace_inverse(dense, problem)
-    if method == "osqp":
-        return _scale_osqp_grid(dense, problem)
     if method == "qpoases":
         return _scale_qpoases_path(dense, problem)
     if method == "osqp-factor":
@@ -760,6 +708,88 @@ def _scale_fresh(method: str, n: int, single_thread: bool = False) -> object:
                 os.environ[k] = v
 
 
+def _clarabel_chunk(d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, lams: np.ndarray) -> np.ndarray:
+    """Solve one worker's share of a Clarabel factor-form grid (run in a pool process)."""
+    return _clarabel_factor_grid(d, u, delta, mean, lams)[0]
+
+
+def _parallel_grid(
+    d: np.ndarray, u: np.ndarray, delta: np.ndarray, mean: np.ndarray, repeats: int
+) -> tuple[float, float, float, int]:
+    """Time the 100-point Clarabel factor-form grid serially and split over a warm process pool.
+
+    The pool is started, and every worker has imported Clarabel and solved one point, before
+    the clock starts, so the parallel time is what a user with a running pool would see.
+    Returns (median serial seconds, median parallel seconds, median factor trace seconds,
+    workers).
+    """
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    n = len(mean)
+    problem = {"lower_bounds": np.zeros(n), "upper_bounds": np.ones(n), "a": np.ones((1, n)), "b": np.ones(1)}
+    covariance = FactorCovariance(d=d, u=u, delta=delta)
+    trace_times = []
+    for _ in range(repeats):
+        start = time.perf_counter()
+        cla = CLA(mean=mean, covariance=covariance, **problem)
+        trace_times.append(time.perf_counter() - start)
+    lam_max = max(tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb))
+    lams = np.linspace(lam_max, 0.0, _SCALE_GRID)
+    serial = [_clarabel_factor_grid(d, u, delta, mean, lams)[1] for _ in range(repeats)]
+    workers = os.cpu_count() or 1
+    chunks = np.array_split(lams, workers)
+    parallel = []
+    with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+        list(pool.map(_clarabel_chunk, *zip(*[(d, u, delta, mean, c[:1]) for c in chunks], strict=True)))
+        for _ in range(repeats):
+            start = time.perf_counter()
+            parts = list(pool.map(_clarabel_chunk, *zip(*[(d, u, delta, mean, c) for c in chunks], strict=True)))
+            parallel.append(time.perf_counter() - start)
+    if sum(len(part) for part in parts) != len(lams):
+        msg = "the parallel grid lost grid points"
+        raise RuntimeError(msg)
+    return float(np.median(serial)), float(np.median(parallel)), float(np.median(trace_times)), workers
+
+
+def check_parallel_grid(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
+    """Time the Clarabel factor-form grid in parallel, against the serial grid and the factor trace."""
+    import pandas as pd
+
+    r = pd.read_parquet(DATA).to_numpy()
+    d_sp, u_sp, delta_sp = _real_factor_parts(np.cov(r, rowvar=False), _REAL_N_FACTORS)
+    d_syn, u_syn, delta_syn, mean_syn = _scale_raw_factors(_SCALE_SIZES[-1])
+    markets = [
+        (f"synthetic factor market, n={_SCALE_SIZES[-1]}", d_syn, u_syn, delta_syn, mean_syn),
+        (f"S&P 500, rank-{_REAL_N_FACTORS} factor model", d_sp, u_sp, delta_sp, r.mean(axis=0)),
+    ]
+    for label, d, u, delta, mean in markets:
+        serial, parallel, trace, workers = _parallel_grid(d, u, delta, mean, _REAL_REPEATS)
+        print(
+            f"{label:<40}: factor trace {trace * 1e3:8.1f} ms; Clarabel grid serial {serial * 1e3:8.1f} ms, "
+            f"on {workers} processes {parallel * 1e3:8.1f} ms ({serial / parallel:.1f}x; "
+            f"{parallel / trace:.2f}x the trace)"
+        )
+
+
+def check_blas(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
+    """Time the n = 2560 dense and factor traces and name the BLAS they ran on.
+
+    Run under Linux with NumPy's bundled OpenBLAS (Computational details) to see whether
+    the factor backend's advantage depends on the BLAS of the main machine.
+    """
+    n = _SCALE_SIZES[-1]
+    dense, factor, problem = _scale_make_problem(np.random.default_rng(_SCALE_SEED), n, _SCALE_N_FACTORS)
+    blas = np.show_config(mode="dicts")["Build Dependencies"]["blas"]
+    print(f"numpy {np.__version__}, BLAS {blas['name']} {blas.get('version', '')}")
+    medians = {}
+    for label, covariance in (("dense", dense), ("factor", factor)):
+        n_pts, t_med, t_lo, t_hi = _scale_median_trace(covariance, problem)
+        medians[label] = t_med
+        print(f"{label:<6} n={n}: {n_pts} turning points, median {t_med:.3f} s ({t_lo:.3f}-{t_hi:.3f})")
+    print(f"factor backend {medians['dense'] / medians['factor']:.0f}x faster")
+
+
 # Sizes at which the threads check reruns cvxcla's backends on one BLAS thread.
 _THREADS_SIZES = (640, 2560)
 
@@ -783,8 +813,8 @@ def check_threads(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner si
 
 def figure_scaling(out_dir: Path) -> None:
     """Run the scaling sweep, print a table, and write the figure."""
-    ns, dense_times, factor_times, inv_times, clar_times, points = [], [], [], [], [], []
-    dense_band, factor_band, inv_band, clar_band = [], [], [], []
+    ns, dense_times, factor_times, inv_times, points = [], [], [], [], []
+    dense_band, factor_band, inv_band = [], [], []
     qpo_times, qpo_band = [], []
     osf_times, osf_band, clf_times, clf_band = [], [], [], []
     memory = []
@@ -801,8 +831,6 @@ def figure_scaling(out_dir: Path) -> None:
             # rather than abort, so the figure still completes.
             print(f"  [note] incremental backend disagrees at n={n}: {inv[0]} vs {n_pts}; skipping its point")
             inv = None
-        baselines = n <= _SCALE_BASELINE_MAX_N
-        clar = _scale_fresh("osqp", n) if baselines else None
         qpo = _scale_fresh("qpoases", n) if n <= _SCALE_QPOASES_MAX_N else None
         # The factor-form grids exploit the same structure as the factor backend and are
         # cheap enough to time at every size.
@@ -815,11 +843,9 @@ def figure_scaling(out_dir: Path) -> None:
         dense_times.append(t_dense)
         factor_times.append(t_factor)
         inv_times.append(inv[1] if inv else None)
-        clar_times.append(clar[1] if clar else None)
         dense_band.append((d_lo, d_hi))
         factor_band.append((f_lo, f_hi))
         inv_band.append((inv[2], inv[3]) if inv else None)
-        clar_band.append((clar[2], clar[3]) if clar else None)
         qpo_times.append(qpo[1] if qpo else None)
         qpo_band.append((qpo[2], qpo[3]) if qpo else None)
         osf_times.append(osf[1])
@@ -827,7 +853,6 @@ def figure_scaling(out_dir: Path) -> None:
         clf_times.append(clf[1])
         clf_band.append((clf[2], clf[3]))
         inv_str = f"  inverse={inv[1] * 1e3:9.1f} ms" if inv else "  inverse=n/a"
-        clar_str = f"  osqp={clar[1] * 1e3:9.1f} ms ({clar[0]} solves)" if clar else "  osqp=n/a"
         qpo_str = (
             f"  qpoases={qpo[1] * 1e3:9.1f} ms ({qpo[0]} working-set changes, endpoint gap {qpo[4]:.1e})"
             if qpo
@@ -836,7 +861,7 @@ def figure_scaling(out_dir: Path) -> None:
         print(
             f"n={n:4d}  points={n_pts:4d}  dense={t_dense * 1e3:8.1f} ms  "
             f"factor={t_factor * 1e3:8.1f} ms  speedup={t_dense / t_factor:5.2f}x  "
-            f"|F| max={free_max:4d} median={free_med:6.1f}{inv_str}{clar_str}{qpo_str}"
+            f"|F| max={free_max:4d} median={free_med:6.1f}{inv_str}{qpo_str}"
         )
         print(
             f"        factor form: osqp={osf[1] * 1e3:9.1f} ms (max |dw| {osf[4]:.1e})  "
@@ -885,7 +910,6 @@ def figure_scaling(out_dir: Path) -> None:
         ("dense", dense_times),
         ("factor", factor_times),
         ("inverse", inv_times),
-        ("osqp", clar_times),
         ("qpoases", qpo_times),
         ("osqp-f", osf_times),
         ("clar-f", clf_times),
@@ -893,10 +917,6 @@ def figure_scaling(out_dir: Path) -> None:
         if sum(t is not None for t in series) >= 4:
             fit, last = slope(series)
             print(f"{name:7s} exponent p (time ~ n^p): {fit:.2f} over the largest four sizes, {last:.2f} last doubling")
-    n_base = _SCALE_BASELINE_MAX_N
-    i_base = ns.index(n_base)
-    if clar_times[i_base] is not None:
-        print(f"at n={n_base}: osqp/dense = {clar_times[i_base] / dense_times[i_base]:.0f}x")
     for n_q, t_q in zip(ns, qpo_times, strict=True):
         if t_q is not None:
             i_q = ns.index(n_q)
@@ -931,10 +951,9 @@ def figure_scaling(out_dir: Path) -> None:
 
     series = [
         # (times, bands, marker, colour, label); external baselines first, cvxcla last
-        (clar_times, clar_band, "-v", "#ff7f0e", f"OSQP, {_SCALE_GRID}-point $\\lambda$-grid"),
         (qpo_times, qpo_band, "-P", "#9467bd", "qpOASES, hot-started path"),
-        (osf_times, osf_band, "--v", "#ff7f0e", "OSQP grid, factor form"),
-        (clf_times, clf_band, "--^", "#8c564b", "Clarabel grid, factor form"),
+        (osf_times, osf_band, "--v", "#ff7f0e", f"OSQP, {_SCALE_GRID}-point $\\lambda$-grid, factor form"),
+        (clf_times, clf_band, "--^", "#8c564b", f"Clarabel, {_SCALE_GRID}-point $\\lambda$-grid, factor form"),
         (inv_times, inv_band, "-D", "#2ca02c", "cvxcla, incremental dense"),
         (dense_times, dense_band, "-o", "#c00000", "cvxcla, dense"),
         (factor_times, factor_band, "-s", "#1f4e79", f"cvxcla, factor ($K={_SCALE_N_FACTORS}$)"),
@@ -1069,6 +1088,10 @@ def figure_rank_scaling(out_dir: Path) -> None:
 # ======================================================================================
 _REAL_SHORT_WINDOW = 120  # trading days < N -> rank-deficient sample covariance
 _REAL_N_FACTORS = 20
+# The Gram backend on a window shorter than the universe (T < N = 494), without and with
+# a ridge (Sections 5 and 7.7): certified in validate-kkt, timed in real-frontier.
+_GRAM_WINDOW = 300
+_GRAM_RIDGE = 1e-5
 _REAL_REPEATS = 5
 
 
@@ -1141,6 +1164,25 @@ def check_real_frontier(out_dir: Path) -> None:  # noqa: ARG001 - the shared run
         f"same rank-{_REAL_N_FACTORS} matrix, dense: {len(dense20_cla)} turning points in "
         f"{dense20_time * 1e3:.1f} ms (median); factor backend {dense20_time / factor_time:.2f}x faster"
     )
+
+    # The Gram backend against the dense matrix on a window shorter than the universe,
+    # without a ridge (a singular sample covariance) and with one (Woodbury in the
+    # T-dimensional observation space).
+    from cvxcla import GramCovariance
+
+    window = r[-_GRAM_WINDOW:]
+    w_mean, w_cov = window.mean(axis=0), np.cov(window, rowvar=False)
+    for label, ridge in (("no ridge", 0.0), (f"ridge {_GRAM_RIDGE:g}", _GRAM_RIDGE)):
+        dense_w, t_dense_w = _real_median_trace(w_mean, w_cov + ridge * np.eye(n), n)
+        gram_w, t_gram_w = _real_median_trace(w_mean, GramCovariance(window, ridge=ridge), n)
+        gap = max(
+            float(np.max(np.abs(a.weights - b.weights)))
+            for a, b in zip(dense_w.turning_points, gram_w.turning_points, strict=False)
+        )
+        print(
+            f"last {_GRAM_WINDOW} days, {label:<12}: dense {len(dense_w)} points in {t_dense_w * 1e3:.1f} ms, "
+            f"Gram {len(gram_w)} points in {t_gram_w * 1e3:.1f} ms (median), max |dw| {gap:.1e}"
+        )
 
     frontier = cla.frontier
     ann = 252.0  # annualise daily moments for readable axes
@@ -1718,9 +1760,9 @@ def _tie_points(cla: CLA, kwargs: dict) -> tuple[int, int]:
 
 
 # A completed trace counts only if it is optimal: its worst KKT residual, the certificate
-# of Table 4, must not exceed the threshold that check uses. Counting completions alone
-# once reported traces that ended but left the efficient frontier (cvxcla 2.3.3, tied
-# maximum returns).
+# of Table 5, must not exceed the threshold that check uses. Counting completions alone
+# would report traces that end but leave the efficient frontier, as check_tie_degeneracy
+# shows by starting the tied families at the solver's vertex.
 _TIE_CERTIFIED = 1e-8
 
 
@@ -1796,18 +1838,33 @@ def check_tie_degeneracy(out_dir: Path) -> None:  # noqa: ARG001 - the shared ru
     print("'ties' counts turning points at the lambda of the one before (a tie); 'ties dep.'")
     print("those where the active constraint gradients are dependent, outside Proposition 1.")
 
+    # Why completion alone proves nothing: start the tied families at the vertex the
+    # solver returns instead of the point of the tied face the path leaves from (patch
+    # CLA._face_minimiser to return its argument), and certify those traces too.
+    print("\nstarted at the solver's vertex of the tied face instead (CLA._face_minimiser bypassed):")
+    original = CLA._face_minimiser
+    CLA._face_minimiser = lambda self, first: first  # type: ignore[method-assign]
+    try:
+        for name, build in (("tied means", _tie_tied_means), ("exchangeable pairs", _tie_duplicated_assets)):
+            counts = dict.fromkeys(("certified", "off", "declined", "cap_hit"), 0)
+            for n, seed in grid:
+                counts[_tie_outcome(build(np.random.default_rng(seed), n))[0]] += 1
+            print(
+                f"{name:<24}{counts['certified']:>10}{counts['off']:>5}{counts['declined']:>9}{counts['cap_hit']:>9}"
+            )
+    finally:
+        CLA._face_minimiser = original  # type: ignore[method-assign]
+
 
 # ======================================================================================
-# Check: osqp (a warm-started QP grid on the S&P 500 frontier, as in the lasso note)
+# Check: osqp (Sections 7.2 and 7.5: the S&P 500 trace against the factor-form grids)
 # ======================================================================================
-_OSQP_GRID = 100
-_OSQP_TOLS = (1e-6, 1e-5)
-
 
 def check_osqp(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
-    """Time the exact S&P 500 trace against a warm-started OSQP grid, at two tolerances.
+    """Time the exact S&P 500 trace against OSQP and Clarabel grids on the factor form.
 
-    The synthetic n-point grids are part of the ``scaling`` sweep.
+    Also reports the free-set sizes and the dense-against-factor timings of Sections 7.2
+    and 7.7. The synthetic n-point grids are part of the ``scaling`` sweep.
     """
     import pandas as pd
 
@@ -1815,23 +1872,9 @@ def check_osqp(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signa
     t_days, n = r.shape
     mean, sigma = r.mean(axis=0), np.cov(r, rowvar=False)
     cla, t_cla = _real_median_trace(mean, sigma, n)
-    lams_tp = [tp.lamb for tp in cla.turning_points if np.isfinite(tp.lamb) and tp.lamb > 0]
-    lams = np.geomspace(max(lams_tp), min(lams_tp), _OSQP_GRID)
-    exact = np.array([_cla_weight_at(cla, float(lam)) for lam in lams])
 
     print(f"universe                : {n} assets x {t_days} days")
     print(f"cvxcla exact trace      : {len(cla)} turning points in {t_cla * 1e3:.1f} ms (median)")
-    for eps in _OSQP_TOLS:
-        times = []
-        for _ in range(_REAL_REPEATS):
-            grid, secs = _osqp_warm_grid(mean, sigma, lams, eps)
-            times.append(secs)
-        gap = float(np.max(np.abs(grid - exact)))
-        t_osqp = float(np.median(times))
-        print(
-            f"OSQP warm grid eps={eps:.0e}: {_OSQP_GRID} solves in {t_osqp * 1e3:.1f} ms (median), "
-            f"{t_osqp / t_cla:.1f}x the exact trace, max|w - w*| = {gap:.1e}"
-        )
 
     # Free-set sizes set the cost of a dense step: on real data they stay far below n.
     def free_sizes(trace: CLA) -> str:
@@ -2118,7 +2161,7 @@ def check_validate_kkt(out_dir: Path) -> None:  # noqa: ARG001 - the shared runn
     """Report the largest KKT residual of each condition over every segment of several traces."""
     import pandas as pd
 
-    from cvxcla import IncrementalDenseCovariance
+    from cvxcla import GramCovariance, IncrementalDenseCovariance
 
     returns = pd.read_parquet(DATA)
     cases = []
@@ -2151,6 +2194,29 @@ def check_validate_kkt(out_dir: Path) -> None:  # noqa: ARG001 - the shared runn
             short_mean,
             short_cov,
             short_cov,
+            long_only(n_full),
+            None,
+        )
+    )
+
+    window = returns.iloc[-_GRAM_WINDOW:].to_numpy()
+    gram_mean, gram_cov = window.mean(axis=0), np.cov(window, rowvar=False)
+    cases.append(
+        (
+            f"S&P 500, last {_GRAM_WINDOW} days, Gram backend",
+            gram_mean,
+            gram_cov,
+            GramCovariance(window),
+            long_only(n_full),
+            None,
+        )
+    )
+    cases.append(
+        (
+            f"  same, Gram backend with ridge {_GRAM_RIDGE:g}",
+            gram_mean,
+            gram_cov + _GRAM_RIDGE * np.eye(n_full),
+            GramCovariance(window, ridge=_GRAM_RIDGE),
             long_only(n_full),
             None,
         )
@@ -2791,6 +2857,8 @@ class Target(enum.StrEnum):
     r_cla = "r-cla"
     validate_incremental = "validate-incremental"
     threads = "threads"
+    parallel_grid = "parallel-grid"
+    blas = "blas"
     worked_example = "worked-example"
     figures = "figures"
     checks = "checks"
@@ -2817,6 +2885,8 @@ STEPS: list[Step] = [
     Step(Target.r_cla, "Section 7.1: cvxcla against the R package CLA", check_r_cla, False),
     Step(Target.validate_incremental, "Section 5: drift of the incremental backend", check_validate_incremental, False),
     Step(Target.threads, "Section 7: cvxcla's backends on one BLAS thread", check_threads, True),
+    Step(Target.parallel_grid, "Section 7.5: the Clarabel grid on a process pool", check_parallel_grid, False),
+    Step(Target.blas, "Section 7.2: the n=2560 traces and the BLAS they ran on", check_blas, True),
 ]
 
 _STEP_BY_TARGET: dict[Target, Step] = {s.target: s for s in STEPS}
@@ -2843,6 +2913,8 @@ _CHECK_TARGETS = [
     Target.r_cla,
     Target.validate_incremental,
     Target.threads,
+    Target.parallel_grid,
+    Target.blas,
 ]
 
 
@@ -2892,7 +2964,7 @@ def _expand(target: Target, quick: bool) -> list[Step]:
 _DESCRIPTIONS: dict[Target, str] = {
     **{step.target: step.artefact for step in STEPS},
     Target.figures: "all five figures",
-    Target.checks: "all thirteen numerical checks",
+    Target.checks: "all fifteen numerical checks",
     Target.all: "every figure and every check",
 }
 
@@ -2921,7 +2993,7 @@ def _run_target(target: Target, out_dir: Path, quick: bool) -> int:
     steps = _expand(target, quick)
     is_group = target in (Target.all, Target.figures, Target.checks)
     if quick and is_group:
-        print("[--quick] skipping the three slow steps", flush=True)
+        print("[--quick] skipping the four slow steps", flush=True)
 
     results = {step.target: _run_step(step, out_dir) for step in steps}
 

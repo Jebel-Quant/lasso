@@ -8,8 +8,9 @@ $\mathbf{1}\trans w = b$, \code{init\_algo}
 $\lb$, sort the assets by descending $\mu$, and raise each towards $\ub_i$ until the
 budget is met (within a tolerance of $10^{-12}$; without it, round-off can skip the
 asset that should end strictly inside its box). The last asset touched absorbs the residual and is the
-single \emph{free} asset; all others are blocked. The same fill serves leverage
-($b > 1$) and dollar-neutral books ($b = 0$, negative $\lb$). The last asset is marked
+single \emph{free} asset; all others are blocked. The same fill serves a budget
+above one ($b > 1$) and dollar-neutral books ($b = 0$, negative $\lb$); ``leverage'' in
+the interface means the gross-exposure cap of Section~\ref{sec:leverage}. The last asset is marked
 free even when it lands exactly on a bound, so the reduced KKT system is non-singular
 from the outset.
 
@@ -27,10 +28,18 @@ program has a whole face of optima, and the greedy fill or the simplex returns o
 its vertices. The frontier does not start at an arbitrary one. For $\lambda$ just below
 $+\infty$ the optimiser of \eqref{eq:qp} is the point of that face where the quadratic
 term $\tfrac12 w\trans\Sig w$ is smallest, and the path leaves from there.
-\pkg{cvxcla} starts at that point, the solution of a small quadratic program over the
-face, and its free set is the assets strictly inside their bounds there. The vertex the
-solver returns is in general not that point, so a trace started there would be off the
-efficient frontier from its first turning point (Appendix~\ref{sec:degeneracy}).
+\pkg{cvxcla} starts at that point. It finds it with a second trace, run on the face
+itself (the constraints plus the row $\mu\trans w = \mu\trans w_0$, with $w_0$ the
+vertex the solver returned): that trace
+minimizes the variance over the face at its own $\lambda = 0$, and its own start is made
+unique by a generic linear term drawn from a fixed seed, so the result is deterministic.
+Where $\Sig$ fails the conditioning test of the singularity guard, it is first shifted
+by a multiple of $\mu\mu\trans$, which changes the objective on the face by a constant
+only and removes a singularity along directions that change the return
+(\code{CLA.\_face\_minimiser} in \srcfile{src/cvxcla/cla.py}{cla.py}). The free set is
+the assets strictly inside their bounds at the point found. The vertex the solver
+returns is in general not that point, and a walk started there does not lie on the path:
+on the tied problems of Appendix~\ref{sec:degeneracy} it is declined with an error.
 
 The vertex itself can be degenerate, with every weight on a bound or a duplicated tight
 row. Its partition is then read from a vertex of the linear program's optimal dual set,

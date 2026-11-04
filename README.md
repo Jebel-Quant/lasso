@@ -17,8 +17,8 @@ path, each with its LaTeX source and the code and data behind it.
   identity run the other way, computing constrained-LASSO paths with
   an unmodified CLA, and one script that reproduces every figure and number. See
   [`preprints/constrained_lasso/README.md`](preprints/constrained_lasso/README.md).
-- [`preprints/cla/`](preprints/cla) — *`cvxcla`: The Critical Line Algorithm with an
-  Operator Interface in Python*, the software paper for the Journal of Statistical
+- [`preprints/cla/`](preprints/cla) — *`cvxcla`: An Operator-Based Critical Line
+  Algorithm in Python*, the software paper for the Journal of Statistical
   Software, moved here from
   [`Jebel-Quant/homotopy`](https://github.com/Jebel-Quant/homotopy). It is built from the
   journal's class and a BibTeX bibliography, and its figures are committed rather than

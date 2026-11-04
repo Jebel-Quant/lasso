@@ -1,4 +1,4 @@
-\section{The covariance operator abstraction}
+\section{The covariance as an operator}
 \label{sec:operators}
 
 The design separates the path-following algorithm from the storage and solution of the
@@ -25,30 +25,44 @@ affine projection of Appendix~\ref{sec:degeneracy}
 (\linalgfile{src/cvx/linalg/kkt/projection.py}{projection.py}). \pkg{cvxcla} implements
 everything that is specific to the frontier: the turning-point loop, the starting
 portfolio, the event scan and tie-break, the gross-exposure lift, the feasibility checks
-and the error handling. Its backends \code{DenseCovariance}, \code{IncrementalDenseCovariance},
-\code{GramCovariance} and \code{FactorCovariance} validate their inputs and return the
-corresponding \pkg{cvx-linalg} operator
+and the error handling. Its four backends, \code{DenseCovariance} and the three of the paragraphs
+below, validate their inputs and return the corresponding \pkg{cvx-linalg} operator
 (\srcfile{src/cvxcla/operators/builders.py}{operators/builders.py}).
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
   box/.style={draw, rounded corners=2pt, align=center, font=\small, inner sep=4pt},
+  pkg/.style={draw, dotted, rounded corners=3pt, inner sep=4pt},
+  pkglabel/.style={font=\scriptsize\itshape, inner sep=1pt},
   arrow/.style={-{Latex[length=2mm]}, thick}]
-\node[box, minimum width=0.8\textwidth] (loop) {\textbf{Turning-point loop} (\code{CLA})\\
-  first vertex $\cdot$ reduced KKT solve $\cdot$ event scan $\cdot$ least-index tie-break};
-\node[box, below=0.55cm of loop, minimum width=0.8\textwidth] (proto) {\textbf{\code{QuadraticForm}}\\
-  \code{n} $\cdot$ \code{matvec} $\cdot$ \code{block\_matvec} $\cdot$ \code{solve\_free} $\cdot$ \code{rcond\_free}};
-\node[box, below=0.55cm of proto] (fac) {Factor\\Woodbury};
-\node[box, left=0.15cm of fac] (inc) {Incremental\\maintained $\Sig_{\F\F}\inv$};
-\node[box, left=0.15cm of inc] (dense) {Dense\\Cholesky};
+% The four built-in operators, and the user's backend set apart to the right.
+\node[box] (dense) {Dense\\Cholesky};
+\node[box, right=0.15cm of dense] (inc) {Incremental\\maintained $\Sig_{\F\F}\inv$};
+\node[box, right=0.15cm of inc] (fac) {Factor\\Woodbury};
 \node[box, right=0.15cm of fac] (gram) {Gram\\$X_c\trans X_c$};
-\node[box, right=0.15cm of gram, dashed] (user) {User-defined\\(Section~\ref{sec:custom})};
-\draw[arrow] (loop) -- (proto);
-\foreach \b in {dense, inc, fac, gram, user} \draw[arrow] (proto.south) -- (\b.north);
+\node[box, right=0.7cm of gram, dashed] (user) {User-defined\\(Section~\ref{sec:custom})};
+% The protocol spans the four operators; the loop spans the whole row.
+\path (dense.west) -- (gram.east) coordinate[midway] (opmid);
+\coordinate (optop) at (opmid |- dense.north);
+\node[box, anchor=south] (proto) at ([yshift=0.75cm]optop) {\textbf{\code{QuadraticForm}}\\
+  \code{n} $\cdot$ \code{matvec} $\cdot$ \code{block\_matvec} $\cdot$ \code{solve\_free} $\cdot$ \code{rcond\_free}};
+\node[box, anchor=south] (loop) at ([yshift=0.75cm]proto.north) {\textbf{Turning-point loop} (\code{CLA})\\
+  first vertex $\cdot$ reduced KKT solve $\cdot$ event scan $\cdot$ least-index tie-break};
+\draw[arrow] (loop.south) -- (proto.north);
+\foreach \b in {dense, inc, fac, gram} \draw[arrow] (proto.south) -- (\b.north);
+\draw[arrow] (proto.south east) -- (user.north);
+\node[pkg, fit=(loop)] (pkgcla) {};
+\node[pkglabel, anchor=south east] at (pkgcla.north east) {\pkg{cvxcla}};
+\node[pkg, fit=(proto) (dense) (gram)] (pkglinalg) {};
+\node[pkglabel, anchor=north east] at (pkglinalg.south east) {\pkg{cvx-linalg}};
+\node[pkglabel, anchor=north] at ([yshift=-4pt]user.south) {user code};
 \end{tikzpicture}
 \caption{The covariance enters the turning-point loop only through the
-\code{QuadraticForm} protocol; the backends below it are interchangeable.}
+\code{QuadraticForm} protocol; the backends below it are interchangeable. Dotted boxes
+mark the packages: the loop is \pkg{cvxcla}'s, the protocol and the four built-in
+operators are \pkg{cvx-linalg}'s, and \pkg{cvxcla} builds the operators from its
+inputs. A user-defined backend implements the protocol in the user's own code.}
 \label{fig:design}
 \end{figure}
 
@@ -134,12 +148,19 @@ A sample covariance is a Gram matrix: for the column-centred returns
 $X_c\in\R^{T\times n}$, $\Sig = X_c\trans X_c/(T-1)$. \code{GramCovariance} implements
 the protocol straight from $X_c$ in $O(Tn)$ storage. When $T<n$ the matrix is singular,
 and once the free set outgrows the data rank the free block is singular too; the active
-rows still hold it on their null space, where it is solved (Appendix~\ref{sec:degeneracy}).
+rows still hold it on their null space, where it is solved (Appendix~\ref{sec:degeneracy});
+Proposition~\ref{prop:termination} assumes $\Sig \succ 0$, so for such a trace only the
+iteration cap guarantees termination (Table~\ref{tab:coverage}).
 An optional ridge $\theta I$ (the argument \code{ridge}) makes $\Sig$ positive definite,
 a different, regularized frontier, and the solve is then Woodbury in the
 $T$-dimensional observation space. The saving is in storage: when the dense matrix fits,
-\code{DenseCovariance} is faster per step, and the structured route pays only while $T$
-(or $K$) stays well below $n$ (Section~\ref{sec:rankscaling}).
+\code{DenseCovariance} is as fast or faster, and the structured route pays only while $T$
+(or $K$) stays well below $n$ (Section~\ref{sec:rankscaling}). On the last $300$ days of
+the S\&P~500 data of Section~\ref{sec:empirical} ($T = 300 < n = 494$) both backends trace
+the same $81$ turning points, with weights within $2\times10^{-14}$; the Gram backend
+takes $41$~ms against $30$~ms for the dense one without a ridge, and $22$~ms for both with
+a ridge of $10^{-5}$ (\target{real-frontier}). Both traces pass the KKT certificate
+(Table~\ref{tab:kkt}).
 
 \subsection{Regularization through the operator}
 \label{sec:regularization}
@@ -194,7 +215,11 @@ with general constraints and with a gross-exposure cap, which goes through
 The frontier is exact to the accuracy of \code{solve\_free}; an approximate solver
 traces the frontier of the matrix it effectively applies. The package checks each
 turning point for feasibility only; optimality against the intended $\Sig$ is what the
-KKT certificate of Section~\ref{sec:exactness} tests, a function of the replication
-script that applies to any trace and its dense $\Sig$. A sparse matrix
+KKT certificate of Section~\ref{sec:exactness} tests. In release~2.7.1 the certificate
+is a function of the replication script (\code{\_kkt\_check} in \code{make\_figures.py}),
+not of the package: it applies to any trace, but it needs the dense $\Sig$, which a
+structured backend exists to avoid, and a linear program at vertices whose multipliers
+are not determined. A user who can afford the dense matrix can run it on their own
+trace; moving it into the package is left to a later release. A sparse matrix
 with a sparse Cholesky factor, a Kronecker product, or a matrix-free operator with an
 iterative \code{solve\_free} fit the same five members.

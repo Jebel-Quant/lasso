@@ -19,7 +19,7 @@
 \usepackage{amsmath, amssymb}
 \usepackage{amsthm}
 \usepackage{tikz}
-\usetikzlibrary{positioning,arrows.meta}
+\usetikzlibrary{positioning,arrows.meta,fit}
 \newtheorem{proposition}{Proposition}
 \usepackage{bm}
 \usepackage{booktabs}
@@ -67,9 +67,9 @@
 \author{Thomas Schmelzer\\Jebel Quant Research}
 \Plainauthor{Thomas Schmelzer}
 
-\title{\pkg{cvxcla}: The Critical Line Algorithm with an Operator Interface in
+\title{\pkg{cvxcla}: An Operator-Based Critical Line Algorithm in
   \proglang{Python}}
-\Plaintitle{cvxcla: The Critical Line Algorithm with an Operator Interface in Python}
+\Plaintitle{cvxcla: An Operator-Based Critical Line Algorithm in Python}
 \Shorttitle{\pkg{cvxcla}: The Critical Line Algorithm in \proglang{Python}}
 
 \Abstract{
@@ -84,7 +84,7 @@ the same covariance yields the same turning points. Box bounds, linear equalitie
 cap on gross exposure are supported, the last through a lift the package performs
 itself. The walk provably terminates under standard nondegeneracy assumptions, every
 turning point is checked for feasibility as it is found, an independent
-Karush--Kuhn--Tucker certificate passes on eleven traces of up to 2560 assets, and
+Karush--Kuhn--Tucker certificate passes on thirteen traces of up to 2560 assets, and
 inputs outside the supported domain stop with an error that names the cause. A
 structured backend pays where the free set is large and the solve dominates: on a
 synthetic factor market of 2560 assets where every asset is free at some point, the

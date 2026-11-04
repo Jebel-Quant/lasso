@@ -16,7 +16,11 @@ read with \pkg{pandas}~3.0.3 and \pkg{pyarrow}~24.0.0.
 \pkg{cvxcla} is released under the MIT license. Release~2.7.1 is
 archived on Zenodo \citep{cvxcla} under \doi{10.5281/zenodo.22209208}; the source is
 developed at \url{https://github.com/cvxgrp/cvxcla}, and every source link in this paper
-points to the release tag \code{v2.7.1}. The package declares only lower bounds on its
+points to the release tag \code{v2.7.1}. Its one non-standard dependency,
+\pkg{cvx-linalg} \citep{cvxlinalg}, is also MIT-licensed and on PyPI, developed at
+\url{https://github.com/Jebel-Quant/linalg} with its own test suite and documentation;
+it has no archived release of its own, and the replication script pins version~1.1.2,
+whose source links in Section~\ref{sec:operators} point to the tag \code{v1.1.2}. The package declares only lower bounds on its
 dependencies, and its continuous integration also tests them at those bounds; the
 experiment script pins the exact versions above. The test suite, some $600$ unit and
 property-based tests (the latter with \pkg{Hypothesis}), enforces full line coverage of
@@ -32,8 +36,11 @@ steps whose results this paper does not use (covariance estimators and resampled
 frontiers), and extended for this article: by the
 worked example of Section~\ref{sec:worked}, the factor-form grids of
 Section~\ref{sec:clarabel}, the comparison with the \proglang{R} package \pkg{CLA},
-the drift of the incremental backend, the single-thread timings, the KKT certificate
-of the largest traces, and the tolerance study of Appendix~\ref{sec:guards}. Every step named in the text is run by this script against
+the drift of the incremental backend, the single-thread timings, the parallel grid, the
+Gram backend's certificate and timing, the KKT certificate of the largest traces, the
+wrong-start test of Appendix~\ref{sec:degeneracy}, and the tolerance study of
+Appendix~\ref{sec:guards}; the dense \pkg{OSQP} grid of the release, which this paper
+does not use, is removed. Every step named in the text is run by this script against
 the released package, unchanged; the links on step names point to the release's
 script, which lacks these extensions. The script declares the versions above as
 inline (PEP~723) metadata, so with \pkg{uv} installed
@@ -44,7 +51,7 @@ uv run make_figures.py all
 \end{CodeChunk}
 installs them into an isolated environment and rebuilds everything. A target name in
 place of \code{all} rebuilds one artifact, and \code{all -{}-quick} skips the two scaling
-sweeps (Sections~\ref{sec:scaling} and~\ref{sec:rankscaling}) and the single-thread timings, which take about $50$ minutes
+sweeps (Sections~\ref{sec:scaling} and~\ref{sec:rankscaling}) and the single-thread timings, which take most of the run, under an hour
 on the machine above. Random inputs are drawn from fixed seeds and the S\&P 500 returns
 are a committed snapshot (Section~\ref{sec:empirical}), so the run needs no network access
 once the packages are installed. Timings and memory were measured on this machine only and will differ elsewhere; the
@@ -54,4 +61,6 @@ machine) the six correctness checks of Section~\ref{sec:exactness} and
 Appendix~\ref{sec:details} find the same turning points; the worst KKT residual is
 $3.5\times10^{-13}$ against $1.1\times10^{-13}$, and only round-off-level counts move,
 such as which zero-length segments of the $130/30$ trace occur and how often the
-projection of Appendix~\ref{sec:degeneracy} fires.
+projection of Appendix~\ref{sec:degeneracy} fires. In the same container the step
+\code{blas} times the $n=2560$ traces of Section~\ref{sec:scaling} (dense $234$~s,
+factor $1.5$~s); these are the only timings not taken on macOS.
