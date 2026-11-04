@@ -109,7 +109,8 @@ S\&P~500, with few assets free at once, the grid costs an order of magnitude mor
 The package \citep{cvxcla}\footnote{\href{\repourl}{\texttt{github.com/cvxgrp/cvxcla}}}
 is built around the class \code{CLA} in \srcfile{src/cvxcla/cla.py}{src/cvxcla/cla.py},
 supported by \srcfile{src/cvxcla/first.py}{first.py} (the starting portfolio),
-\srcfile{src/cvxcla/operators/__init__.py}{operators/} (the covariance backends), and
+\srcfile{src/cvxcla/operators/__init__.py}{operators/} (the covariance backends, built on
+the operators of \pkg{cvx-linalg} \citep{cvxlinalg}; Section~\ref{sec:operators}), and
 \srcfile{src/cvxcla/types.py}{types.py} (the turning-point and frontier data
 structures). The notation follows the code.
 

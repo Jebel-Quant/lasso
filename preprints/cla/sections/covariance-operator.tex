@@ -15,6 +15,21 @@ the null space of the active rows, which \code{rcond\_free} lets it check before
 trusting the solve (Appendix~\ref{sec:degeneracy}). Four backends ship with the package, and a user can add
 others without touching the loop (Section~\ref{sec:custom}).
 
+The work is split between the two packages. \pkg{cvx-linalg} implements the protocol and
+the linear algebra behind it: the four operators and their free-block solves
+(\linalgfile{src/cvx/linalg/operators/dense.py}{dense.py},
+\linalgfile{src/cvx/linalg/operators/factor.py}{factor.py},
+\linalgfile{src/cvx/linalg/operators/gram.py}{gram.py}), the bordered solve of
+\eqref{eq:saddle} (\linalgfile{src/cvx/linalg/kkt/bordered.py}{bordered.py}) and the
+affine projection of Appendix~\ref{sec:degeneracy}
+(\linalgfile{src/cvx/linalg/kkt/projection.py}{projection.py}). \pkg{cvxcla} implements
+everything that is specific to the frontier: the turning-point loop, the starting
+portfolio, the event scan and tie-break, the gross-exposure lift, the feasibility checks
+and the error handling. Its backends \code{DenseCovariance}, \code{IncrementalDenseCovariance},
+\code{GramCovariance} and \code{FactorCovariance} validate their inputs and return the
+corresponding \pkg{cvx-linalg} operator
+(\srcfile{src/cvxcla/operators/builders.py}{operators/builders.py}).
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[

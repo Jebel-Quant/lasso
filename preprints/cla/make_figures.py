@@ -3,6 +3,7 @@
 # dependencies = [
 #     "casadi==3.8.1",
 #     "clarabel==0.11.1",
+#     "cvx-linalg==1.1.2",
 #     "cvxcla==2.7.1",
 #     "matplotlib==3.11.0",
 #     "numpy==2.4.6",

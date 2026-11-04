@@ -56,6 +56,11 @@
 \newcommand{\srcfile}[2]{\href{\repourl/blob/\srcref/#1}{\texttt{#2}}}
 % \target{name}: one step of the reproduction script, run as
 % `uv run experiments/make_figures.py name`.
+% \linalgfile{url-path}{display}: the same for cvx-linalg, at the release the
+% experiments were run with.
+\newcommand{\linalgurl}{https://github.com/Jebel-Quant/linalg}
+\newcommand{\linalgref}{v1.1.2}
+\newcommand{\linalgfile}[2]{\href{\linalgurl/blob/\linalgref/#1}{\texttt{#2}}}
 \newcommand{\target}[1]{\srcfile{experiments/make_figures.py}{make\_figures.py~#1}}
 
 %% --- JSS front matter ------------------------------------------------------
