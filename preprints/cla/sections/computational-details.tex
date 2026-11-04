@@ -1,15 +1,15 @@
 \section*{Computational details}
 \addcontentsline{toc}{section}{Computational details}
 
-All results in this paper were computed with \pkg{cvxcla}~2.7.1 \citep{cvxcla} and
+All results in this paper were computed with \pkg{cvxcla}~2.7.1 \citep{cvxcla},
+its linear-algebra dependency \pkg{cvx-linalg}~1.1.2 \citep{cvxlinalg}, and
 \proglang{Python}~3.14.6 on an Apple M4 Pro (14 cores, 48~GB of memory) running
 macOS~15.6.1. \pkg{NumPy}~2.4.6 and \pkg{SciPy}~1.17.1 were linked against Apple's
 Accelerate BLAS, and the first turning point under a general equality system is found
 with the \pkg{HiGHS} solver through \code{scipy.optimize.linprog}. The comparisons use
 \pkg{OSQP}~1.1.3, \pkg{Clarabel}~0.11.1, the \pkg{qpOASES} bundled with
 \pkg{CasADi}~3.8.1, and \proglang{R}~4.6.1 with the \proglang{R} package
-\pkg{CLA}~0.96-3. The estimators of Section~\ref{sec:estimators} use
-\pkg{scikit-learn}~1.9.0, the figures \pkg{matplotlib}~3.11.0, and the return data are
+\pkg{CLA}~0.96-3. The figures use \pkg{matplotlib}~3.11.0, and the return data are
 read with \pkg{pandas}~3.0.3 and \pkg{pyarrow}~24.0.0.
 
 \paragraph{Software availability.}
@@ -27,7 +27,9 @@ Every figure, table, and number is produced by one script, \code{make\_figures.p
 which the replication materials of this article hold together with the returns
 snapshot. It is the experiment script of release~2.7.1
 (\srcfile{experiments/make_figures.py}{make\_figures.py} in the \pkg{cvxcla} repository), less the timing of the \pkg{PyPortfolioOpt} CLA, which this paper does not
-report and the separate note \citep{schmelzer2026comparison} takes up, and extended for this article: by the
+report and the separate note \citep{schmelzer2026comparison} takes up, and less two
+steps whose results this paper does not use (covariance estimators and resampled
+frontiers), and extended for this article: by the
 worked example of Section~\ref{sec:worked}, the factor-form grids of
 Section~\ref{sec:clarabel}, the comparison with the \proglang{R} package \pkg{CLA},
 the drift of the incremental backend, the single-thread timings, the KKT certificate

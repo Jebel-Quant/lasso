@@ -28,9 +28,9 @@ its vertices. The frontier does not start at an arbitrary one. For $\lambda$ jus
 $+\infty$ the optimiser of \eqref{eq:qp} is the point of that face where the quadratic
 term $\tfrac12 w\trans\Sig w$ is smallest, and the path leaves from there.
 \pkg{cvxcla} starts at that point, the solution of a small quadratic program over the
-face, and its free set is the assets strictly inside their bounds there. A trace
-started at the vertex the solver returns instead ends, but not on the efficient
-frontier (Appendix~\ref{sec:degeneracy}).
+face, and its free set is the assets strictly inside their bounds there. The vertex the
+solver returns is in general not that point, so a trace started there would be off the
+efficient frontier from its first turning point (Appendix~\ref{sec:degeneracy}).
 
 The vertex itself can be degenerate, with every weight on a bound or a duplicated tight
 row. Its partition is then read from a vertex of the linear program's optimal dual set,

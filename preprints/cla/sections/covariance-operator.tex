@@ -15,6 +15,21 @@ the null space of the active rows, which \code{rcond\_free} lets it check before
 trusting the solve (Appendix~\ref{sec:degeneracy}). Four backends ship with the package, and a user can add
 others without touching the loop (Section~\ref{sec:custom}).
 
+The work is split between the two packages. \pkg{cvx-linalg} implements the protocol and
+the linear algebra behind it: the four operators and their free-block solves
+(\linalgfile{src/cvx/linalg/operators/dense.py}{dense.py},
+\linalgfile{src/cvx/linalg/operators/factor.py}{factor.py},
+\linalgfile{src/cvx/linalg/operators/gram.py}{gram.py}), the bordered solve of
+\eqref{eq:saddle} (\linalgfile{src/cvx/linalg/kkt/bordered.py}{bordered.py}) and the
+affine projection of Appendix~\ref{sec:degeneracy}
+(\linalgfile{src/cvx/linalg/kkt/projection.py}{projection.py}). \pkg{cvxcla} implements
+everything that is specific to the frontier: the turning-point loop, the starting
+portfolio, the event scan and tie-break, the gross-exposure lift, the feasibility checks
+and the error handling. Its backends \code{DenseCovariance}, \code{IncrementalDenseCovariance},
+\code{GramCovariance} and \code{FactorCovariance} validate their inputs and return the
+corresponding \pkg{cvx-linalg} operator
+(\srcfile{src/cvxcla/operators/builders.py}{operators/builders.py}).
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
@@ -65,7 +80,7 @@ the reference backend.
 \code{IncrementalDenseCovariance} traces the same turning points but \emph{maintains}
 $\Sig_{\F\F}\inv$: because the free set changes by one asset per turning point, a
 bordered rank-one update or a symmetric deletion costs $O(n_\F^2)$ against a fresh
-$O(n_\F^3)$ factorization, which makes a trace about $1.6\times$ as fast at $n=320$, $2.7\times$ at $n=640$, and $6\times$ at $n=2560$ (Section~\ref{sec:baseline}). A non-positive Schur pivot or a multi-asset change triggers a full refactorization. The
+$O(n_\F^3)$ factorization; Section~\ref{sec:baseline} measures the gain. A non-positive Schur pivot or a multi-asset change triggers a full refactorization. The
 backend passes the same KKT certificate as the dense one (Table~\ref{tab:kkt}), but a
 maintained inverse carries round-off from step to step over the roughly $n$ updates of
 a trace, so it is opt-in. On the long-only problems of Section~\ref{sec:scaling} the
@@ -89,9 +104,7 @@ free-block solve never forms $\Sig_{\F\F}$; it uses the Woodbury identity
 W = \Delta\inv + U_\F\trans D_\F\inv U_\F \in\R^{K\times K},
 \end{equation}
 so a solve costs $O(n_\F K^2 + K^3)$ rather than $O(n_\F^3)$, storage is $O(nK)$, and
-the cross product is $U_\F\,\Delta\,(U_\B\trans x_\B)$. The same free-block algebra serves a
-single constrained solve as well: \citet{schmelzer2026nncg} reach the free block of a
-non-negative QP through the same Woodbury inverse and factored products.
+the cross product is $U_\F\,\Delta\,(U_\B\trans x_\B)$.
 
 The admissible model is $d > 0$ and $\Delta$ symmetric positive semidefinite.
 \code{FactorCovariance} folds $\Delta$ into the loadings when it is built: with
@@ -113,7 +126,7 @@ collinear to within $10^{-10}$, and the full rank $K = n = 120$
 $1.0\times10^{-12}$ and KKT residuals of at most $1.0\times10^{-13}$. A low-rank
 \emph{approximation} of a sample covariance is a different matter: it traces the
 frontier of the approximation, which is a different frontier
-(Section~\ref{sec:estimators}).
+(Section~\ref{sec:empirical}).
 
 \paragraph{Data matrix (Gram).}
 \label{sec:gram}
@@ -140,11 +153,8 @@ form is supplied as the covariance, a bundled or a user-written \code{QuadraticF
 (Section~\ref{sec:custom}). \code{GramCovariance} with $\theta>0$ and \code{FactorCovariance}
 already are such forms. A rank-deficient sample covariance needs neither: its frontier
 is traced as it is, as long as the active rows keep the free block positive definite on
-their null space (Appendix~\ref{sec:degeneracy}). A small ridge or a factor model is the
-fix when they do not, and a choice of estimator otherwise (Section~\ref{sec:estimators}). A penalty centred on a nonzero portfolio $w_0$ (tracking
-error, quadratic turnover) adds the linear term $-\theta\, w\trans M w_0$, which the
-interface does not expose; nonquadratic penalties such as linear transaction costs lie
-outside the method.
+their null space (Appendix~\ref{sec:degeneracy}); a small ridge or a factor model is the
+fix when they do not.
 
 \subsection{Writing a backend}
 \label{sec:custom}

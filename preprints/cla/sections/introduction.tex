@@ -31,23 +31,30 @@ universe it usually has more structure than that: multi-factor risk models, whic
 generalize the single-index model \citep{sharpe1963}, write it as a diagonal matrix
 plus a low-rank term. The large-scale methods cited above exploit structure through
 incremental factorizations, sparsity, or pivoting tied to an explicit matrix.
-\pkg{cvxcla} computes the same turning points as any CLA; its contribution is an
-\emph{interface} that makes the loop independent of how the covariance is stored, so
-the structure becomes a property of an exchangeable backend. The link between the CLA
+\pkg{cvxcla} computes the same turning points as any CLA; its contribution is a
+turning-point loop written so that it never needs the covariance as a matrix. Every
+step, including the start on a tied face, the gross-exposure lift and the singularity
+guard, uses only products with $\Sig$ or its blocks, solves against its free block and
+a condition estimate, so the structure becomes a property of an exchangeable backend. The operator
+protocol and the standard backends that implement these operations are provided by the
+companion package \pkg{cvx-linalg} \citep{cvxlinalg}; \pkg{cvxcla} is the frontier
+algorithm on top of them (Section~\ref{sec:operators}). The link between the CLA
 and the constrained LASSO is treated elsewhere
 \citep{schmelzer2026perspective,schmelzer2026lasso,schmelzer2026constrained}; this paper
 documents the software.
 
 \paragraph{Contributions.}
 \begin{enumerate}\setlength{\itemsep}{2pt}
-\item \textbf{An operator interface.} The turning-point loop reaches the covariance
-through a five-member protocol (Section~\ref{sec:operators}). A diagonal-plus-low-rank
-backend solves the free block through the Woodbury identity, never forms an
-$n\times n$ matrix, and traces the same turning points about $30\times$ faster than the dense
-backend at $n=2560$, in under $1$~MiB of working memory against $100$~MiB, on a market
-whose free set grows to every asset (Section~\ref{sec:scaling}). On a rank-$20$ factor
-model of the S\&P~500, where at most $55$ of $494$ assets are free at once, it traces the
-same frontier about $1.4\times$ faster (Section~\ref{sec:empirical}).
+\item \textbf{A CLA on an operator interface.} The turning-point loop, with its start on
+a tied face, its gross-exposure lift and its singularity guard, reaches the covariance
+only through the five members of the \pkg{cvx-linalg} protocol
+(Section~\ref{sec:operators}), so dense, factor, data-matrix and user-written backends
+run the same loop and return the same turning points. With a diagonal-plus-low-rank
+backend the trace never forms an $n\times n$ matrix, not even for the lifted problem. Its gain grows with the free set: about $1.4\times$
+on a rank-$20$ factor model of the S\&P~500, where at most $55$ of $494$ assets are free
+at once (Section~\ref{sec:empirical}), and about $30\times$ at $n=2560$, in under $1$~MiB
+of working memory against $100$~MiB, on a synthetic market whose free set grows to every
+asset (Section~\ref{sec:scaling}).
 \item \textbf{General linear constraints.} Box bounds combine with any linear
 equalities $A w = b$ and inequalities $G w \le h$ (Section~\ref{sec:ineq}) and a
 gross-exposure cap $\lVert w\rVert_1 \le c$ (Section~\ref{sec:leverage}).
@@ -60,12 +67,11 @@ outside the supported domain are declined with an error that names the cause
 (Section~\ref{sec:errors}); and one script regenerates every figure and number.
 \end{enumerate}
 Table~\ref{tab:compare} sets these capabilities against the software a user would
-otherwise reach for. Two open implementations of the CLA itself, the \proglang{R}
-package \pkg{CLA} \citep{rcla} and the \code{CLA} of \pkg{PyPortfolioOpt}
-\citep{pyportfolioopt}, cover box bounds and one budget row on a dense covariance.
-\pkg{cvxcla} reproduces the turning points of the first (Section~\ref{sec:exactness}), and
-\pkg{PyPortfolioOpt} is compared with \pkg{cvxcla} in a separate note
-\citep{schmelzer2026comparison}.
+otherwise reach for. The \proglang{R} package \pkg{CLA} \citep{rcla}, an open
+implementation of the CLA itself, covers box bounds and one budget row on a dense
+covariance, and \pkg{cvxcla} reproduces its turning points (Section~\ref{sec:exactness}).
+The \code{CLA} of \pkg{PyPortfolioOpt} \citep{pyportfolioopt}, with the same scope, is
+compared with \pkg{cvxcla} in a separate note \citep{schmelzer2026comparison}.
 
 \begin{table}[t]
 \centering
@@ -78,14 +84,13 @@ package \pkg{CLA} \citep{rcla} and the \code{CLA} of \pkg{PyPortfolioOpt}
 Software & Output & Covariance & Constraints & Gross cap \\
 \hline
 \pkg{CLA} (\proglang{R}) & turning points & dense matrix & box bounds, one budget row & no \\
-\pkg{PyPortfolioOpt} \code{CLA} & turning points & dense matrix & box bounds, one budget row & no \\
 QP over a $\lambda$ grid & one portfolio per grid point & as the solver accepts it & any convex & reformulated \\
 \pkg{qpOASES} via \pkg{CasADi} & path followed, endpoint returned & matrix & general linear & reformulated \\
 \pkg{cvxcla} & every turning point & any operator & box bounds, $Aw=b$, $Gw\le h$ & native lift \\
 \hline
 \end{tabular}
-\caption{What each route to the mean--variance frontier delivers. All rows but
-\pkg{PyPortfolioOpt} are used in Section~\ref{sec:experiment}: the QP over a $\lambda$ grid is described in Section~\ref{sec:clarabel},
+\caption{What each route to the mean--variance frontier delivers, as used in
+Section~\ref{sec:experiment}: the QP over a $\lambda$ grid is described in Section~\ref{sec:clarabel},
 \pkg{qpOASES} in Section~\ref{sec:qpoases}, \pkg{cvxcla}'s covariance operators in
 Section~\ref{sec:operators} and its lift of the gross cap in Section~\ref{sec:leverage}. ``Gross
 cap'' is $\lVert w\rVert_1 \le c$: ``reformulated'' means the user rewrites it with
@@ -110,7 +115,8 @@ S\&P~500, with few assets free at once, the grid costs an order of magnitude mor
 The package \citep{cvxcla}\footnote{\href{\repourl}{\texttt{github.com/cvxgrp/cvxcla}}}
 is built around the class \code{CLA} in \srcfile{src/cvxcla/cla.py}{src/cvxcla/cla.py},
 supported by \srcfile{src/cvxcla/first.py}{first.py} (the starting portfolio),
-\srcfile{src/cvxcla/operators/__init__.py}{operators/} (the covariance backends), and
+\srcfile{src/cvxcla/operators/__init__.py}{operators/} (the covariance backends, built on
+the operators of \pkg{cvx-linalg} \citep{cvxlinalg}; Section~\ref{sec:operators}), and
 \srcfile{src/cvxcla/types.py}{types.py} (the turning-point and frontier data
 structures). The notation follows the code.
 

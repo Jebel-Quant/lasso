@@ -161,8 +161,8 @@ To separate the structured solve from the dense linear algebra, we set
 \pkg{cvxcla}'s own dense backend against its opt-in incremental one, \code{IncrementalDenseCovariance} (Section~\ref{sec:incremental}), which runs the same loop
 but maintains $\Sig_{\F\F}\inv$ by rank-one updates and reports the same turning points.
 A trace is then $O(n^3)$, the measured exponent $\approx 2.2$, and the incremental
-backend is about $2.7\times$ faster than the dense one at $n=640$ and $6\times$ at
-$n=2560$: block elimination is not the fastest dense strategy. The factor backend is
+backend is about $1.6\times$ faster than the dense one at $n=320$, $2.7\times$ at $n=640$
+and $6\times$ at $n=2560$: block elimination is not the fastest dense strategy. The factor backend is
 still about $1.3\times$ faster than the incremental one at $n=640$ and $5.5\times$ at
 $n=2560$, so the speed comes from the structured solve. Updating the Woodbury
 capacitance $W$ incrementally would add little at $K=10$, where the $O(n)$ work of each
@@ -201,14 +201,10 @@ $\lambda$ changes only the linear term, and the grid has $100$ values of $\lambd
 the synthetic markets and geometrically spaced between the largest and smallest positive
 turning point on the S\&P~500. A grid's cost is proportional to its size, while the
 trace returns all its turning points at once; at $n=2560$ there are $2561$, so a grid as
-fine as the trace would cost about $25$ times as much as the one timed here. On the dense $\Sig$, an \pkg{OSQP} \citep{stellato2020} grid that
-warm-starts each solve from the last grows like $\approx n^{3.2}$ and is slower than
-the dense trace at every size, from about $1.5\times$ at $n=20$ to about $91\times$ at
-$n=640$ ($51$~s against $0.56$~s). On the real frontier of
-Section~\ref{sec:empirical} it is about $200\times$ slower at tolerance $10^{-6}$, and
-at $10^{-5}$ it misses points by $10^{-3}$ (\target{osqp}).
-
-A fair comparison hands the solver the factor model as well. With $y = U\trans w$ as
+fine as the trace would cost about $25$ times as much as the one timed here. Handed the
+dense $\Sig$, a warm-started \pkg{OSQP} \citep{stellato2020} grid is slower than the
+dense trace at every size timed (Figure~\ref{fig:scaling}), so we give the solver the
+factor model as well. With $y = U\trans w$ as
 $K$ extra variables, the risk $w\trans \Sig w$ of \eqref{eq:factor} becomes
 $w\trans D w + y\trans \Delta y$ under the $K$ extra equalities $y = U\trans w$: a QP
 with a diagonal Hessian and a sparse constraint matrix in $n + K$ variables. Each grid
@@ -227,12 +223,9 @@ faster: its grid costs $1.5\times$ to $4.1\times$ the factor trace, $1.9$~s at $
 ($3.0$~s, $2.4\times$, in the first run). Its accuracy is that of its tolerance. At the
 default settings the weights are within $2\times10^{-3}$ of the trace and the returns
 within a relative $10^{-5}$, but the variances only within a relative $4\times10^{-3}$, so
-the risk read off a grid portfolio is off in the third digit. Tightening all its
-tolerances to $10^{-12}$ brings weights and variances to $2\times10^{-5}$ and
-$4\times10^{-5}$ at about $1.1\times$ the time. A tolerance of $10^{-14}$ gains nothing
-further: the weights stay at $10^{-5}$ and the returns become less accurate
-($6\times10^{-5}$), so double-precision round-off in the solver, not the tolerance,
-appears to set the limit; we did not investigate it.
+the risk read off a grid portfolio is off in the third digit; tightening its tolerances
+to $10^{-12}$ brings weights and variances to $2\times10^{-5}$ and $4\times10^{-5}$, at
+$1.1\times$ the time.
 
 On real data the picture changes with the free set. On the rank-$20$ factor model of
 the S\&P~500 (Section~\ref{sec:empirical}), whose free set stays below $56$ of $494$
@@ -256,31 +249,34 @@ grid.
 \subsection{A parametric QP solver}
 \label{sec:qpoases}
 
-The large-scale active-set codes of \citet{perold1984}, \citet{stein2008} and
-\citet{hirschberger2010}, and that of \citet{niedermayer2010}, we could not run on
-current toolchains. \pkg{qpOASES} \citep{ferreau2014} solves parametric QPs by an online active-set
+\pkg{qpOASES} \citep{ferreau2014} solves parametric QPs by an online active-set
 strategy: a hot start from one QP to the next follows the homotopy between them and
 changes the working set at every breakpoint on the way. Hot-started from the
-maximum-return end to $\lambda = 0$, it walks the same path as the CLA. We run it
-through \pkg{CasADi} \citep{andersson2019}, solving once above the first finite turning
-point and hot-starting once to $\lambda = 0$ (\target{scaling}). Its time therefore
-includes CasADi's interface, which we did not separate. Called directly, \pkg{qpOASES}
-can report the working-set changes it passes, and its Schur-complement variant can
-exploit a sparse Hessian such as the factor form of Section~\ref{sec:clarabel}; neither
-was tried.
+maximum-return end to $\lambda = 0$, it walks the same path as the CLA, so it is both
+the closest alternative and an independent check. We run it through \pkg{CasADi}
+\citep{andersson2019}, solving once above the first finite turning point and
+hot-starting once to $\lambda = 0$ (\target{scaling}).
 
-The two codes follow the same path: \pkg{qpOASES} makes exactly as many working-set
-changes as \pkg{cvxcla} reports turning points ($21, 42, \dots, 2561$), and its endpoint
-matches the minimum-variance portfolio to $\sim\!2\times10^{-16}$. On small problems it
-is faster, by a factor of several up to
-$n=80$, where \pkg{cvxcla}'s \proglang{Python} per-step overhead dominates; the two meet
-near $n=200$. Beyond that \pkg{qpOASES} grows like $\approx n^{3.7}$ and takes about $1.7$~s at
-$n=640$ and $420$~s at $n=2560$ ($550$~s in the first run): about $3\times$ and $11\times$
-the dense backend, and $11\times$ and several hundred times the factor backend. Its local
-exponent over the last doubling is about $4.8$, steeper than its earlier growth; we did
-not separate \pkg{CasADi}'s share or memory effects, so the ratio at $n=2560$ rests on a
-single size and is indicative only. It also returns only the endpoint, since the
-turning points it passes are not exposed through the \pkg{CasADi} interface.
+The two codes follow the same path. On every scaling problem \pkg{qpOASES} makes exactly
+as many working-set changes as \pkg{cvxcla} reports turning points ($21, 42, \dots,
+2561$), and its endpoint matches the minimum-variance portfolio to
+$\sim\!2\times10^{-16}$.
+
+What differs is what each code accepts and returns. The constraint model of
+\pkg{qpOASES}, box bounds and two-sided general rows $\underline{a} \le Aw \le \bar{a}$,
+is at least as general as that of \pkg{cvxcla}, and its homotopy can move the bounds as
+well as the linear term. It takes the Hessian as a matrix, however, so a factor model
+reaches it only through auxiliary variables; a gross-exposure cap has to be rewritten
+by the user, with a singular Hessian in the lifted variables; and the turning points it
+passes are not returned through \pkg{CasADi}, only the endpoint. \pkg{cvxcla} returns
+every turning point, takes the covariance as an operator, and performs the lift itself.
+
+For speed we compare like with like, both codes on the dense $\Sig$; the time of
+\pkg{qpOASES} includes \pkg{CasADi}'s interface, which we did not separate. On small
+problems \pkg{qpOASES} is faster, by a factor of several up to $n=80$, where
+\pkg{cvxcla}'s \proglang{Python} per-step overhead dominates; the two meet near
+$n=200$. Beyond that \pkg{qpOASES} takes about $3\times$ as long as the dense backend at
+$n=640$ ($1.7$~s) and $11\times$ at $n=2560$ ($420$~s, $550$~s in the first run).
 
 \subsection[Empirical example: the SP 500 frontier]{Empirical example: the S\&P 500 frontier}
 \label{sec:empirical}
@@ -302,20 +298,7 @@ a rank-$20$ factor approximation traces a
 near-identical frontier ($89$ points) in about $18$~ms, against $25$~ms for the dense
 backend on the same rank-$20$ matrix. The frontier spans annualized
 returns of $0.14$--$0.89$ over volatilities of $0.10$--$0.87$ (\target{real-frontier}).
-
-\paragraph{Covariance estimators as backends.}
-\label{sec:estimators}
-Because \pkg{cvxcla} traces the frontier of whatever covariance it is given, a shrinkage
-or factor estimate is simply another backend. Most remedies for a noisy sample
-covariance \citep{johnstone2001} return the diagonal-plus-low-rank form
-\eqref{eq:factor}: approximate factor models \citep{chamberlain1983}, POET
-\citep{fan2013poet}, eigenvalue clipping \citep{laloux1999}, or Ledoit--Wolf shrinkage
-\citep{ledoitwolf2004}, $(1-\rho)S + \rho F$. On the same universe, changing only the
-covariance argument, \pkg{cvxcla} traces the frontier of the sample covariance ($96$
-turning points), the Ledoit--Wolf estimate ($94$) and a rank-$20$ PCA model ($89$); the
-three maximum-Sharpe portfolios hold $26$--$29$ names (\target{estimators}). As the
-window shrinks past $T = n$ the sample covariance loses rank while the shrinkage and
-factor estimates stay well-conditioned (Section~\ref{sec:regularization}). \pkg{cvxcla}
-controls only the computational error; an exact frontier of a noisy estimate is still
-noisy, and ranking the estimators would take an out-of-sample study.
+\pkg{cvxcla} controls only the computational error: an exact frontier of a noisy
+estimate is still noisy, and which estimate to trace is a statistical choice outside
+the package.
 

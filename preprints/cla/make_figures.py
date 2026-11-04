@@ -3,13 +3,13 @@
 # dependencies = [
 #     "casadi==3.8.1",
 #     "clarabel==0.11.1",
+#     "cvx-linalg==1.1.2",
 #     "cvxcla==2.7.1",
 #     "matplotlib==3.11.0",
 #     "numpy==2.4.6",
 #     "osqp==1.1.3",
 #     "pandas==3.0.3",
 #     "pyarrow==24.0.0",
-#     "scikit-learn==1.9.0",
 #     "scipy==1.17.1",
 #     "typer==0.26.7",
 # ]
@@ -32,57 +32,56 @@ the KKT certificate of the largest traces, and the extended tolerance study.
 
     uv run make_figures.py            # choose interactively
     uv run make_figures.py all         # every figure + every check
-    uv run make_figures.py all --quick # skip the slow scaling sweeps
+    uv run make_figures.py all --quick # skip the three slow steps
     uv run make_figures.py frontier    # just one figure
 
-Targets (artefact in parentheses):
+Targets (artefact in parentheses; sections, figures and tables are the paper's):
 
   * ``frontier``        -- Figure 1: the 20-asset factor-model efficient frontier
     (frontier.pdf).
-  * ``scaling``         -- Figure 2 + Table 1: runtime vs problem size, dense vs
-    factor (Woodbury) backend, with baselines, and the memory table (scaling.pdf), plus
-    the same timings for n <= 320 (scaling_small.pdf).
-    SLOW: the dense backend at n=2560 dominates the sweep.
-  * ``rank-scaling``    -- Figure 3 + Table 2: runtime vs factor rank at fixed n
+  * ``scaling``         -- Figure 4 and Sections 7.2-7.6: runtime vs problem size, dense
+    vs factor (Woodbury) backend, with the incremental backend, the grids and qpOASES,
+    and the memory figures (scaling.pdf).  SLOW: the dense backend at n=2560 dominates.
+  * ``rank-scaling``    -- Figure 5, Section 7.4: runtime vs factor rank at fixed n
     (rank_scaling.pdf).  SLOW.
-  * ``validate-exact``  -- Section 10.5 exactness numbers (no figure).
-  * ``validate-constraints`` -- Section 10.5 general-constraint exactness (no figure).
-  * ``real-frontier``   -- Figure 4: the S&P 500 empirical frontier (real_frontier.pdf).
-  * ``worked-example``  -- Section 6.4: a 130/30 book on the S&P 500 with a group cap,
-    run as printed in the paper (worked_example.pdf).
-  * ``degeneracy``      -- Figure 5: the degeneracy boundary (degeneracy.pdf).
-  * ``tie-degeneracy``  -- Section 10.6 tie-heavy stress envelope (no figure).
-  * ``osqp``            -- S&P 500 trace vs a warm-started OSQP grid (no figure).
-  * ``validate-kkt``    -- Section 8.6 KKT residuals on every segment (no figure).
-  * ``validate-scaling`` -- Section 8.6 invariance under a change of units, and the
+  * ``validate-exact``  -- Section 7.1: the frontier against a reference QP (no figure).
+  * ``validate-constraints`` -- Section 7.1: the same under general constraints (no figure).
+  * ``real-frontier``   -- Section 7.7: the S&P 500 frontier, dense and rank-20 (no figure).
+  * ``worked-example``  -- Section 6.4, Figure 3: a 130/30 book on the S&P 500 with a
+    group cap, run as printed in the paper (worked_example.pdf).
+  * ``degeneracy``      -- Appendix B, Figure 6: the degeneracy boundary (degeneracy.pdf).
+  * ``tie-degeneracy``  -- Appendix B: the tie-heavy stress families (no figure).
+  * ``osqp``            -- Sections 7.2 and 7.5: S&P 500 trace vs the QP grids (no figure).
+  * ``validate-kkt``    -- Section 7.1, Table 5: the KKT certificate (no figure).
+  * ``validate-scaling`` -- Appendix A.1: invariance under a change of units, and the
     sensitivity of the trace to the slope floor (no figure).
-  * ``validate-projection`` -- Appendix A: how often the feasibility projection fires
+  * ``validate-projection`` -- Appendix B: how often the feasibility projection fires
     and how large its corrections are (no figure).
   * ``validate-factor`` -- Section 5: the factor backend against the dense trace on
     ill-conditioned and degenerate factor models (no figure).
-  * ``validate-conditioning`` -- Appendix A: problems of prescribed condition number
+  * ``validate-conditioning`` -- Appendix B: problems of prescribed condition number
     across the singularity guard, each trace and its reference QP certified (no figure).
   * ``validate-incremental`` -- Section 5: round-off drift of the incremental backend
     against the dense one on the scaling problems (no figure).
-  * ``r-cla``           -- Section 1: cvxcla against the R package CLA on the scaling
+  * ``r-cla``           -- Section 7.1: cvxcla against the R package CLA on the scaling
     problems; needs R and the CRAN package CLA, and is skipped without them (no figure).
-  * ``estimators``      -- Figure 8 + Section 11.1 estimator table (estimator_shrinkage.pdf).
-  * ``michaud``         -- Figure 9 + Section 12 resampling table (michaud_frontier.pdf).
-  * ``figures``         -- all eight figures.
-  * ``checks``          -- all eleven numerical checks.
+  * ``threads``         -- Section 7: cvxcla's backends on one BLAS thread (no figure).
+    SLOW.
+  * ``figures``         -- all five figures.
+  * ``checks``          -- all thirteen numerical checks.
   * ``all``             -- every figure and every check.
 
 Beyond ``cvxcla`` itself the steps need a few third-party packages: ``matplotlib`` (all
 figures), ``pandas``/``pyarrow`` (the S&P 500 data), ``osqp`` (the reference QP and the
 warm-started grid baseline), ``casadi`` (the qpOASES parametric QP solver, an external
 baseline in ``scaling``), ``scipy`` (sparse
-matrices), and ``scikit-learn`` (the Ledoit--Wolf estimate). All are pinned in this
+matrices). All are pinned in this
 script's inline (PEP 723) metadata, so ``uv run`` provisions them automatically. A step
 whose optional dependency is missing, or which raises, is reported and skipped rather
 than aborting the whole run.
 
-Pass ``--quick`` to ``all``/``figures`` to skip the two long-running scaling sweeps
-(``scaling`` and ``rank-scaling``); selecting either explicitly always runs it.
+Pass ``--quick`` to ``all``/``figures``/``checks`` to skip the three slow steps
+(``scaling``, ``rank-scaling`` and ``threads``); selecting one explicitly always runs it.
 """
 
 from __future__ import annotations
@@ -398,8 +397,6 @@ _SCALE_SIZES = [20, 40, 80, 160, 320, 640, 1280, 2560]
 # The OSQP grid baseline is timed only up to here: it already takes most of a minute
 # at n=640, and grows like n^3 or faster.
 _SCALE_BASELINE_MAX_N = 640
-# The second, small-problem figure (scaling_small.pdf) shows the sizes up to here.
-_SCALE_SMALL_MAX_N = 320
 # qpOASES follows the same parametric path as the CLA, so it is the closest external
 # comparison and is timed further, until it too takes minutes per trace.
 _SCALE_QPOASES_MAX_N = 2560
@@ -978,11 +975,6 @@ def figure_scaling(out_dir: Path) -> None:
         print(f"wrote {out}")
 
     draw(ns[-1], "scaling.pdf", "CLA runtime vs problem size", 300.0)
-    # The practically common range of a few hundred assets, where per-step overhead
-    # still matters and qpOASES is faster than cvxcla.
-    draw(
-        _SCALE_SMALL_MAX_N, "scaling_small.pdf", f"CLA runtime vs problem size, $n \\leq {_SCALE_SMALL_MAX_N}$", 1000.0
-    )
 
 
 # ======================================================================================
@@ -1073,7 +1065,7 @@ def figure_rank_scaling(out_dir: Path) -> None:
 
 
 # ======================================================================================
-# Figure: real-frontier (from frontier_real.py)  ->  real_frontier.pdf
+# Check: real-frontier  (Section 7.7: the S&P 500 frontier)
 # ======================================================================================
 _REAL_SHORT_WINDOW = 120  # trading days < N -> rank-deficient sample covariance
 _REAL_N_FACTORS = 20
@@ -1117,8 +1109,8 @@ def _real_factor_estimate(cov: np.ndarray, k: int) -> FactorCovariance:
     return FactorCovariance(d=d, u=u, delta=delta)
 
 
-def figure_real_frontier(out_dir: Path) -> None:
-    """Run the empirical S&P 500 experiment, print statistics, and write the figure."""
+def check_real_frontier(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
+    """Run the empirical S&P 500 experiment and print its statistics (Section 7.7)."""
     import pandas as pd
 
     returns = pd.read_parquet(DATA)
@@ -1172,26 +1164,6 @@ def figure_real_frontier(out_dir: Path) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - a release before 2.6.0 declines it
         print(f"short window W={_REAL_SHORT_WINDOW}     : rank(S)={rank} < N={n}, declined: {type(exc).__name__}")
-
-    # Draw the exact curve between turning points and mark only the turning points.
-    curve_w = _along_segments(frontier.weights)
-    curve_vol = np.sqrt(np.einsum("ij,jk,ik->i", curve_w, sample_cov, curve_w) * ann)
-    curve_ret = (curve_w @ mean) * ann
-    fig, ax = plt.subplots(figsize=(5.0, 3.4))
-    ax.plot(curve_vol, curve_ret, "-", lw=1.0, color="#1f4e79", label="Efficient frontier")
-    ax.plot(vol, ret, "o", ms=2.5, color="#1f4e79", label="Turning points")
-    ax.scatter(vol[[0, -1]], ret[[0, -1]], color="#c00000", zorder=5, s=18)
-    ax.annotate("max return", (vol[0], ret[0]), textcoords="offset points", xytext=(-6, 4), ha="right", fontsize=8)
-    ax.annotate("min variance", (vol[-1], ret[-1]), textcoords="offset points", xytext=(8, -2), fontsize=8)
-    ax.set_xlabel("Annualised volatility")
-    ax.set_ylabel("Annualised expected return")
-    ax.set_title(f"S&P 500 efficient frontier: {n} assets, {t_days} days ({len(cla)} turning points)", fontsize=8.5)
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
-    out = out_dir / "real_frontier.pdf"
-    fig.savefig(out)
-    plt.close(fig)
-    print(f"wrote {out}")
 
 
 # ======================================================================================
@@ -1262,187 +1234,6 @@ def figure_worked_example(out_dir: Path) -> None:
     ax.legend(fontsize=8, loc="lower right")
     fig.tight_layout()
     out = out_dir / "worked_example.pdf"
-    fig.savefig(out)
-    plt.close(fig)
-    print(f"wrote {out}")
-
-
-# ======================================================================================
-# Figure: estimators (Section 11.1: structured covariance estimators)  ->  estimator_shrinkage.pdf
-# ======================================================================================
-_EST_WINDOWS = [1213, 900, 750, 600, 500, 400, 300, 250, 180, 120]
-
-
-def figure_estimators(out_dir: Path) -> None:
-    """Trace the S&P 500 frontier through three covariance estimators via the same engine.
-
-    Also shows how Ledoit--Wolf shrinkage tracks the conditioning of the sample
-    covariance as the estimation window shrinks.
-    """
-    import pandas as pd
-    from sklearn.covariance import LedoitWolf
-
-    r = pd.read_parquet(DATA).to_numpy()
-    t_days, n = r.shape
-    mean = r.mean(axis=0)
-    sample_cov = np.cov(r, rowvar=False)
-    ann = 252.0
-
-    # 1. Same engine, three statistical risk models, on the full-history universe.
-    lw_full = LedoitWolf().fit(r)
-    estimators = [
-        ("sample (dense)", sample_cov),
-        (f"Ledoit-Wolf (rho={lw_full.shrinkage_:.3f})", lw_full.covariance_),
-        (f"factor PCA (K={_REAL_N_FACTORS})", _real_factor_estimate(sample_cov, _REAL_N_FACTORS)),
-    ]
-    print(f"universe                : {n} assets x {t_days} days")
-    print(f"{'estimator':34s} points  median ms  maxSharpe(ann)  held  eff_N")
-    for name, cov in estimators:
-        cla, secs = _real_median_trace(mean, cov, n)
-        sharpe, w = cla.frontier.max_sharpe
-        held = int(np.sum(w > 1e-6))
-        eff = 1.0 / float(np.sum(w**2))  # inverse Herfindahl: effective # of holdings
-        print(
-            f"{name:34s}  {len(cla):4d}   {secs * 1e3:7.1f}    {sharpe * np.sqrt(ann):8.2f}     {held:3d}  {eff:5.1f}"
-        )
-
-    # 2. Shrinkage intensity and sample-covariance conditioning vs estimation window.
-    windows, rhos, conds = [], [], []
-    for tw in _EST_WINDOWS:
-        rt = r[-tw:]
-        windows.append(tw)
-        rhos.append(float(LedoitWolf().fit(rt).shrinkage_))
-        conds.append(float(np.linalg.cond(np.cov(rt, rowvar=False))))
-    print("\n   window T   LW rho      cond(S)")
-    for tw, rho, cond in zip(windows, rhos, conds, strict=True):
-        print(f"  {tw:8d}   {rho:6.3f}   {cond:10.2e}")
-
-    fig, ax = plt.subplots(figsize=(5.0, 3.4))
-    ax.plot(windows, rhos, "-o", ms=4, color="#1f4e79", label=r"Ledoit--Wolf $\rho$")
-    ax.set_xlabel("Estimation window $T$ (trading days)")
-    ax.set_ylabel(r"Shrinkage intensity $\rho$", color="#1f4e79")
-    ax.tick_params(axis="y", labelcolor="#1f4e79")
-    ax.axvline(n, ls="--", color="#888", lw=1)
-    ax.annotate(f"$T=n={n}$", (n, min(rhos)), xytext=(6, 0), textcoords="offset points", fontsize=8, color="#555")
-    ax.invert_xaxis()  # large windows (well-sampled) on the left
-    ax2 = ax.twinx()
-    ax2.semilogy(windows, conds, "-s", ms=4, color="#c00000")
-    ax2.set_ylabel("Sample-covariance condition number", color="#c00000")
-    ax2.tick_params(axis="y", labelcolor="#c00000")
-    ax.set_title("Shrinkage rises as the sample covariance degrades", fontsize=9)
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
-    out = out_dir / "estimator_shrinkage.pdf"
-    fig.savefig(out)
-    plt.close(fig)
-    print(f"wrote {out}")
-
-
-# ======================================================================================
-# Figure: michaud (Section 12: resampled / robust frontier)  ->  michaud_frontier.pdf
-# ======================================================================================
-_MICHAUD_B = 200
-_MICHAUD_SEED = 0
-_MICHAUD_TOL = 1e-4  # weight above which an asset counts as held
-_MICHAUD_ANN = 252.0
-
-
-def _michaud_frontier(mean: np.ndarray, cov: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Trace one frontier and return its annualised vol, return and holdings.
-
-    The three arrays are ordered by volatility, each evaluated under its own (mean, cov),
-    and sampled along each segment so interpolating them follows the exact curve.
-    """
-    tp = CLA(mean=mean, covariance=cov, **_real_problem(len(mean))).turning_points
-    w = _along_segments(np.array([t.weights for t in tp]), num=10)
-    vol = np.sqrt(np.einsum("ij,jk,ik->i", w, cov, w)) * np.sqrt(_MICHAUD_ANN)
-    ret = (w @ mean) * _MICHAUD_ANN
-    held = (w > _MICHAUD_TOL).sum(axis=1).astype(float)
-    order = np.argsort(vol)
-    return vol[order], ret[order], held[order]
-
-
-def _michaud_interp(grid: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Interpolate y(x) onto grid, NaN outside the frontier's own volatility range."""
-    out = np.full(grid.shape, np.nan)
-    inside = (grid >= x[0]) & (grid <= x[-1])
-    out[inside] = np.interp(grid[inside], x, y)
-    return out
-
-
-def figure_michaud(out_dir: Path) -> None:
-    """Draw a cloud of resampled efficient frontiers on the S&P 500.
-
-    The estimation-error spread around the full-sample frontier, made visible because
-    cvxcla traces each exact frontier cheaply. Left: the return cloud with envelopes;
-    right: the number of holdings, equally unstable, under the same resampling.
-    """
-    import pandas as pd
-
-    rng = np.random.default_rng(_MICHAUD_SEED)
-    r = pd.read_parquet(DATA).to_numpy()
-    t_days, n = r.shape
-    mu0 = r.mean(axis=0)
-    s0 = np.cov(r, rowvar=False)
-    chol = np.linalg.cholesky(s0 + 1e-12 * np.eye(n))  # fast Gaussian draws
-
-    start = time.perf_counter()
-    frontiers = []
-    for _ in range(_MICHAUD_B):
-        sim = mu0 + rng.standard_normal((t_days, n)) @ chol.T
-        with contextlib.suppress(Exception):  # a degenerate draw is simply skipped
-            frontiers.append(_michaud_frontier(sim.mean(axis=0), np.cov(sim, rowvar=False)))
-    secs = time.perf_counter() - start
-    vt, rt, ht = _michaud_frontier(mu0, s0)  # full-sample reference frontier
-
-    # Shared volatility grid covered by the bulk of the draws, so the bands are well posed.
-    vmins = np.array([f[0][0] for f in frontiers])
-    vmaxs = np.array([f[0][-1] for f in frontiers])
-    grid = np.linspace(float(np.quantile(vmins, 0.75)), float(np.quantile(vmaxs, 0.25)), 200)
-    ret_grid = np.array([_michaud_interp(grid, v, ret) for v, ret, _h in frontiers])
-    held_grid = np.array([_michaud_interp(grid, v, h) for v, _ret, h in frontiers])
-    r5, r25, r50, r75, r95 = (np.nanpercentile(ret_grid, q, axis=0) for q in (5, 25, 50, 75, 95))
-    h10, h50, h90 = (np.nanpercentile(held_grid, q, axis=0) for q in (10, 50, 90))
-
-    mid = grid.size // 2
-    print(f"universe                : {n} assets x {t_days} days")
-    each_ms = secs / len(frontiers) * 1e3
-    print(f"resampling              : B={len(frontiers)} exact frontiers in {secs:.1f}s ({each_ms:.0f} ms each)")
-    print(
-        f"at vol~{grid[mid]:.2f}    : return 25-75% [{r25[mid]:.2f}, {r75[mid]:.2f}] "
-        f"vs full-sample {np.interp(grid[mid], vt, rt):.2f}"
-    )
-    print(
-        f"                          holdings 10-90% [{h10[mid]:.0f}, {h90[mid]:.0f}] median {h50[mid]:.0f} "
-        f"vs full-sample {np.interp(grid[mid], vt, ht):.0f}"
-    )
-
-    blue, red = "#1f4e79", "#c00000"
-    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(8.4, 3.5))
-
-    for v, ret, _h in frontiers:
-        ax_a.plot(v, ret, "-", lw=0.4, color=blue, alpha=0.05, zorder=1)
-    ax_a.fill_between(grid, r5, r95, color=blue, alpha=0.15, lw=0, label="5--95%")
-    ax_a.fill_between(grid, r25, r75, color=blue, alpha=0.28, lw=0, label="25--75%")
-    ax_a.plot(grid, r50, "--", lw=1.1, color=blue, label="resampled median")
-    ax_a.plot(vt, rt, "-", lw=2.0, color=red, label="full-sample frontier")
-    ax_a.set_xlabel("Annualised volatility")
-    ax_a.set_ylabel("Annualised expected return")
-    ax_a.set_title(f"{len(frontiers)} resampled efficient frontiers", fontsize=9)
-    ax_a.legend(fontsize=6.5, loc="lower right", framealpha=0.9)
-    ax_a.grid(True, alpha=0.25)
-
-    ax_b.fill_between(grid, h10, h90, color=blue, alpha=0.22, lw=0, label="10--90% of draws")
-    ax_b.plot(grid, h50, "-", lw=1.6, color=blue, label="resampled median")
-    ax_b.plot(vt, ht, "-", lw=1.6, color=red, label="full-sample frontier")
-    ax_b.set_xlabel("Annualised volatility")
-    ax_b.set_ylabel("Number of holdings")
-    ax_b.set_title("Portfolio size under estimation error", fontsize=9)
-    ax_b.legend(fontsize=6.5, loc="upper right", framealpha=0.9)
-    ax_b.grid(True, alpha=0.25)
-
-    fig.tight_layout()
-    out = out_dir / "michaud_frontier.pdf"
     fig.savefig(out)
     plt.close(fig)
     print(f"wrote {out}")
@@ -2101,7 +1892,7 @@ def check_osqp(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signa
 
 
 # ======================================================================================
-# Check: validate-kkt  (Section 8.6 KKT residuals)
+# Check: validate-kkt  (Section 7.1, Table 5: the KKT certificate)
 # ======================================================================================
 _KKT_SHORT_WINDOW = 600  # trading days: more than the 494 assets, but ill-conditioned
 _KKT_TOL = 1e-9  # a weight within this of a bound, or a row within it of h, is active
@@ -2450,7 +2241,7 @@ def check_validate_kkt(out_dir: Path) -> None:  # noqa: ARG001 - the shared runn
 
 
 # ======================================================================================
-# Check: validate-scaling  (Section 8.6 units and the slope floor)
+# Check: validate-scaling  (Appendix A.1: units and the slope floor)
 # ======================================================================================
 _VSCALE_FACTORS = (1e-6, 1e-3, 1.0, 1e3, 1e6)  # rescalings of mu and of Sigma
 _VSCALE_FLOORS = (1e-6, 1e-4, 1e-2, 1.0, 1e2, 1e4, 1e6)  # multiples of the slope floors
@@ -2768,6 +2559,10 @@ def _vproj_trace(mean: np.ndarray, cov: np.ndarray) -> tuple[str, list[tuple[flo
     return outcome, records
 
 
+# Sample-covariance windows of the S&P 500 (the last T days), down to T < n = 494.
+_SP500_WINDOWS = [1213, 900, 750, 600, 500, 400, 300, 250, 180, 120]
+
+
 def check_validate_projection(out_dir: Path) -> None:  # noqa: ARG001 - the shared runner signature
     """Report how often the feasibility projection fires and how large its corrections are."""
     import pandas as pd
@@ -2780,7 +2575,7 @@ def check_validate_projection(out_dir: Path) -> None:  # noqa: ARG001 - the shar
             (f"synthetic n={_DEGEN_N_ASSETS}, T={t_obs}", returns.mean(axis=0), np.cov(returns, rowvar=False))
         )
     sp500 = pd.read_parquet(DATA)
-    for t_obs in _EST_WINDOWS:
+    for t_obs in _SP500_WINDOWS:
         window = sp500.iloc[-t_obs:]
         problems.append(
             (f"S&P 500 n=494, T={t_obs}", window.mean(axis=0).to_numpy(), np.cov(window.to_numpy(), rowvar=False))
@@ -2997,35 +2792,31 @@ class Target(enum.StrEnum):
     validate_incremental = "validate-incremental"
     threads = "threads"
     worked_example = "worked-example"
-    estimators = "estimators"
-    michaud = "michaud"
     figures = "figures"
     checks = "checks"
     all = "all"
 
 
-# The individual steps, in the order the paper presents them (from reproduce_paper.py).
+# The individual steps, in the order the script runs them.
 STEPS: list[Step] = [
     Step(Target.frontier, "Figure 1 (frontier.pdf)", figure_frontier, False),
-    Step(Target.scaling, "Figure 2 (scaling.pdf) + Table 1", figure_scaling, True),
-    Step(Target.rank_scaling, "Figure 3 (rank_scaling.pdf) + Table 2", figure_rank_scaling, True),
-    Step(Target.validate_exact, "Section 10.5 exactness numbers", check_validate_exact, False),
-    Step(Target.validate_constraints, "Section 10.5 general-constraint exactness", check_validate_constraints, False),
-    Step(Target.real_frontier, "Figure 4 (real_frontier.pdf)", figure_real_frontier, False),
-    Step(Target.worked_example, "Section 6.4 worked example (worked_example.pdf)", figure_worked_example, False),
-    Step(Target.degeneracy, "Figure 5 (degeneracy.pdf)", figure_degeneracy, False),
-    Step(Target.tie_degeneracy, "Section 10.6 tie-heavy stress envelope", check_tie_degeneracy, False),
-    Step(Target.osqp, "Section 10.4 warm-started OSQP grid on the S&P 500", check_osqp, False),
-    Step(Target.validate_kkt, "Section 8.6 KKT residuals on every segment", check_validate_kkt, False),
-    Step(Target.validate_scaling, "Section 8.6 units and the slope floor", check_validate_scaling, False),
-    Step(Target.validate_projection, "Appendix A feasibility corrections", check_validate_projection, False),
-    Step(Target.validate_factor, "Section 5 factor-model conditioning", check_validate_factor, False),
-    Step(Target.validate_conditioning, "Appendix A conditioning study", check_validate_conditioning, False),
-    Step(Target.r_cla, "Section 1: cvxcla against the R package CLA", check_r_cla, False),
+    Step(Target.scaling, "Figure 4 (scaling.pdf), Sections 7.2-7.6", figure_scaling, True),
+    Step(Target.rank_scaling, "Figure 5 (rank_scaling.pdf), Section 7.4", figure_rank_scaling, True),
+    Step(Target.validate_exact, "Section 7.1: the frontier against a reference QP", check_validate_exact, False),
+    Step(Target.validate_constraints, "Section 7.1: general constraints", check_validate_constraints, False),
+    Step(Target.real_frontier, "Section 7.7: the S&P 500 frontier", check_real_frontier, False),
+    Step(Target.worked_example, "Section 6.4, Figure 3 (worked_example.pdf)", figure_worked_example, False),
+    Step(Target.degeneracy, "Appendix B, Figure 6 (degeneracy.pdf)", figure_degeneracy, False),
+    Step(Target.tie_degeneracy, "Appendix B: tie-heavy stress families", check_tie_degeneracy, False),
+    Step(Target.osqp, "Sections 7.2 and 7.5: the S&P 500 trace against QP grids", check_osqp, False),
+    Step(Target.validate_kkt, "Section 7.1, Table 5: the KKT certificate", check_validate_kkt, False),
+    Step(Target.validate_scaling, "Appendix A.1: units and the slope floor", check_validate_scaling, False),
+    Step(Target.validate_projection, "Appendix B: feasibility corrections", check_validate_projection, False),
+    Step(Target.validate_factor, "Section 5: factor-model conditioning", check_validate_factor, False),
+    Step(Target.validate_conditioning, "Appendix B: conditioning study", check_validate_conditioning, False),
+    Step(Target.r_cla, "Section 7.1: cvxcla against the R package CLA", check_r_cla, False),
     Step(Target.validate_incremental, "Section 5: drift of the incremental backend", check_validate_incremental, False),
     Step(Target.threads, "Section 7: cvxcla's backends on one BLAS thread", check_threads, True),
-    Step(Target.estimators, "Figure 8 (estimator_shrinkage.pdf) + estimator table", figure_estimators, False),
-    Step(Target.michaud, "Figure 9 (michaud_frontier.pdf) + Section 12 resampling table", figure_michaud, False),
 ]
 
 _STEP_BY_TARGET: dict[Target, Step] = {s.target: s for s in STEPS}
@@ -3035,15 +2826,13 @@ _FIGURE_TARGETS = [
     Target.frontier,
     Target.scaling,
     Target.rank_scaling,
-    Target.real_frontier,
     Target.worked_example,
     Target.degeneracy,
-    Target.estimators,
-    Target.michaud,
 ]
 _CHECK_TARGETS = [
     Target.validate_exact,
     Target.validate_constraints,
+    Target.real_frontier,
     Target.tie_degeneracy,
     Target.osqp,
     Target.validate_kkt,
@@ -3101,19 +2890,9 @@ def _expand(target: Target, quick: bool) -> list[Step]:
 # Typer CLI
 # ======================================================================================
 _DESCRIPTIONS: dict[Target, str] = {
-    Target.frontier: "Fig 1: 20x50 factor-model frontier   -> frontier.pdf",
-    Target.scaling: "Fig 2: runtime vs problem size (SLOW) -> scaling.pdf",
-    Target.rank_scaling: "Fig 3: runtime vs factor rank (SLOW)  -> rank_scaling.pdf",
-    Target.validate_exact: "Sec 10.5: frontier exactness vs QP    (check)",
-    Target.validate_constraints: "Sec 10.5: constrained exactness vs QP (check)",
-    Target.real_frontier: "Fig 4: S&P 500 empirical frontier     -> real_frontier.pdf",
-    Target.degeneracy: "Fig 5: the degeneracy boundary        -> degeneracy.pdf",
-    Target.tie_degeneracy: "Sec 10.6: tie-heavy stress envelope   (check)",
-    Target.osqp: "Sec 10.4: S&P trace vs warm OSQP grid (check)",
-    Target.estimators: "Fig 8: covariance-estimator shrinkage -> estimator_shrinkage.pdf",
-    Target.michaud: "Fig 9: Michaud resampled frontier     -> michaud_frontier.pdf",
-    Target.figures: "all eight figures",
-    Target.checks: "all eleven numerical checks",
+    **{step.target: step.artefact for step in STEPS},
+    Target.figures: "all five figures",
+    Target.checks: "all thirteen numerical checks",
     Target.all: "every figure and every check",
 }
 
@@ -3142,7 +2921,7 @@ def _run_target(target: Target, out_dir: Path, quick: bool) -> int:
     steps = _expand(target, quick)
     is_group = target in (Target.all, Target.figures, Target.checks)
     if quick and is_group:
-        print("[--quick] skipping the long-running scaling sweeps", flush=True)
+        print("[--quick] skipping the three slow steps", flush=True)
 
     results = {step.target: _run_step(step, out_dir) for step in steps}
 
