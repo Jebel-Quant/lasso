@@ -252,21 +252,31 @@ grid.
 \pkg{qpOASES} \citep{ferreau2014} solves parametric QPs by an online active-set
 strategy: a hot start from one QP to the next follows the homotopy between them and
 changes the working set at every breakpoint on the way. Hot-started from the
-maximum-return end to $\lambda = 0$, it walks the same path as the CLA. We run it
-through \pkg{CasADi} \citep{andersson2019}, solving once above the first finite turning
-point and hot-starting once to $\lambda = 0$ (\target{scaling}), so its time includes
-\pkg{CasADi}'s interface.
+maximum-return end to $\lambda = 0$, it walks the same path as the CLA, so it is both
+the closest alternative and an independent check. We run it through \pkg{CasADi}
+\citep{andersson2019}, solving once above the first finite turning point and
+hot-starting once to $\lambda = 0$ (\target{scaling}).
 
-The two codes follow the same path: \pkg{qpOASES} makes exactly as many working-set
-changes as \pkg{cvxcla} reports turning points ($21, 42, \dots, 2561$), and its endpoint
-matches the minimum-variance portfolio to $\sim\!2\times10^{-16}$. On small problems it
-is faster, by a factor of several up to
-$n=80$, where \pkg{cvxcla}'s \proglang{Python} per-step overhead dominates; the two meet
-near $n=200$. Beyond that \pkg{qpOASES} grows like $\approx n^{3.7}$ and takes about $1.7$~s at
-$n=640$ and $420$~s at $n=2560$ ($550$~s in the first run): about $3\times$ and $11\times$
-the dense backend, and $11\times$ and several hundred times the factor backend. It
-returns only the endpoint, since the turning points it passes are not exposed through
-the \pkg{CasADi} interface.
+The two codes follow the same path. On every scaling problem \pkg{qpOASES} makes exactly
+as many working-set changes as \pkg{cvxcla} reports turning points ($21, 42, \dots,
+2561$), and its endpoint matches the minimum-variance portfolio to
+$\sim\!2\times10^{-16}$.
+
+What differs is what each code accepts and returns. The constraint model of
+\pkg{qpOASES}, box bounds and two-sided general rows $\underline{a} \le Aw \le \bar{a}$,
+is at least as general as that of \pkg{cvxcla}, and its homotopy can move the bounds as
+well as the linear term. It takes the Hessian as a matrix, however, so a factor model
+reaches it only through auxiliary variables; a gross-exposure cap has to be rewritten
+by the user, with a singular Hessian in the lifted variables; and the turning points it
+passes are not returned through \pkg{CasADi}, only the endpoint. \pkg{cvxcla} returns
+every turning point, takes the covariance as an operator, and performs the lift itself.
+
+For speed we compare like with like, both codes on the dense $\Sig$; the time of
+\pkg{qpOASES} includes \pkg{CasADi}'s interface, which we did not separate. On small
+problems \pkg{qpOASES} is faster, by a factor of several up to $n=80$, where
+\pkg{cvxcla}'s \proglang{Python} per-step overhead dominates; the two meet near
+$n=200$. Beyond that \pkg{qpOASES} takes about $3\times$ as long as the dense backend at
+$n=640$ ($1.7$~s) and $11\times$ at $n=2560$ ($420$~s, $550$~s in the first run).
 
 \subsection[Empirical example: the SP 500 frontier]{Empirical example: the S\&P 500 frontier}
 \label{sec:empirical}
