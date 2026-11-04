@@ -69,8 +69,11 @@ Section~\ref{sec:first}.
 
 \code{CLA} takes the problem as keyword arguments, all \pkg{NumPy} arrays of floats, and
 traces the frontier in its constructor, so every \code{CLA} object holds a complete,
-validated frontier. Its input arrays are copied read-only (see below), a changed $\mu$
-or $\Sig$ needs a new object, and a trace is not warm-started from an earlier one. Required are \code{mean} ($\mu$, length $n$),
+validated frontier. Its input arrays are copied read-only (see below), and a changed
+$\mu$ or $\Sig$ needs a new object and a full trace: the package does not warm-start
+a trace from an earlier one, although the old sequence of active sets would be a
+natural starting guess. Sensitivity studies, resampling and rolling estimation, which
+re-trace after small changes in $\mu$, therefore pay the full cost each time. Required are \code{mean} ($\mu$, length $n$),
 \code{covariance} (an $n\times n$ array, which is wrapped as a \code{DenseCovariance},
 or any backend of Section~\ref{sec:operators}), \code{lower\_bounds} and \code{upper\_bounds}
 (length $n$), and \code{a}, \code{b} ($m\times n$ and length $m$; a budget is
@@ -82,7 +85,12 @@ a point that violates a bound, a row of $G$ or the cap by up to \code{tol} after
 projection of Appendix~\ref{sec:degeneracy} is accepted, while $Aw = b$ is checked to
 $10^{-7}$ regardless (Appendix~\ref{sec:guards}). The tolerance is a ceiling: the
 projection itself stops at $10^{-12}$, and on the traces of Table~\ref{tab:kkt} no
-tested point violates a constraint by more than $1.1\times10^{-13}$. The event ordering
+tested point violates a constraint by more than $1.1\times10^{-13}$. The default is
+loose for a reason: at a linear-programming first vertex \code{tol} decides which
+weights \pkg{HiGHS} has put on a bound, and \pkg{HiGHS} meets its constraints only to its
+own feasibility tolerance, $10^{-7}$ by default, so \code{tol} must stay well above that.
+On the problems of Appendix~\ref{sec:guards} every value from $10^{-4}$ to $10^{-10}$
+gives the same traces. The event ordering
 uses its own relative window of at most $10^{-10}$ (Section~\ref{sec:events}). The arrays (and a
 dense covariance) are copied into read-only arrays when the object is built, so
 changing the caller's arrays afterwards cannot put the stored turning points out of step
@@ -96,7 +104,10 @@ assets, and the mask \code{active\_ineq} of active rows of $G$. The maximum-retu
 vertex appears twice, at $\lambda = \infty$ and again at the first finite turning point,
 where the path leaves it, so that every pair of consecutive turning points bounds one
 segment of the path, the first being the constant stretch above the first finite
-$\lambda$; \code{len(cla)} is the number of turning points.
+$\lambda$; \code{len(cla)} is the number of turning points, which counts that vertex
+twice, so the number of distinct portfolios is \code{len(cla) - 1}. Software that lists
+each turning point once, such as the \proglang{R} package \pkg{CLA}, reports one fewer
+(Section~\ref{sec:exactness}).
 \code{cla.frontier} wraps them as a \code{Frontier}
 (\srcfile{src/cvxcla/types.py}{types.py}), which exposes the \code{weights},
 \code{returns}, \code{variance}, \code{volatility} and \code{sharpe\_ratio} of the
@@ -145,6 +156,8 @@ handlers keep working.
 A sample covariance from fewer observations than assets is supported. It is singular, and its free block becomes singular partway
 along the frontier. The budget row still holds the free assets on its null space, where
 the block stays positive definite, so the trace goes on there (Appendix~\ref{sec:degeneracy}).
+Termination is then guaranteed by the iteration cap, not by
+Proposition~\ref{prop:termination}, which assumes $\Sig \succ 0$.
 A ridged Gram backend (Section~\ref{sec:gram}) traces a different, regularized frontier:
 
 \noindent\begin{minipage}{\textwidth}

@@ -4,6 +4,7 @@
 \subsection{The event guards}
 \label{sec:guards}
 
+\paragraph{Floors and window.}
 Slopes are tested against a floor of $\sqrt{\varepsilon_{\text{mach}}}$ in the
 problem's own units, not against the user tolerance, which would let a tiny but genuine
 slope go unnoticed. With $m = \lVert\mu\rVert_\infty$ and
@@ -15,9 +16,10 @@ $\sqrt{\varepsilon_{\text{mach}}}\,m$. The $\lambda$ window is a relative $10^{-
 taken against $\max(\lvert\lambda\rvert, \sigma/m)$, so that it does not vanish as
 $\lambda \to 0$.
 
+\paragraph{Units and the floor.}
 \label{sec:invariance}\label{sec:moreexp}%
-The trace does not depend on the units (\target{validate-scaling}). Rescaling the returns
-by $c$ and the covariance by $s$, each from $10^{-6}$ to $10^{6}$, leaves all $29$
+The trace does not depend on the units. Rescaling the returns by $c$ and the covariance
+by $s$, each from $10^{-6}$ to $10^{6}$ (\target{validate-scaling}), leaves all $29$
 turning points of the $40$-asset problem in place: the weights agree to
 $8\times10^{-15}$, and $\lambda c/s$ to a relative $1.2\times10^{-13}$. Multiplying the
 slope floors by any factor from $10^{-6}$ to $10^{4}$ leaves the traces of the $40$- and
@@ -26,7 +28,10 @@ for bit unchanged. Only at $10^{6}$ does the floor start to swallow genuine slop
 $40$-asset trace is still unchanged, the $600$-day window's weights move by
 $7\times10^{-2}$, and the trace of the $494$-asset problem and of the factor market is
 declined. So on these inputs genuine slopes and round-off are about ten orders of
-magnitude apart. The user tolerance \code{tol} enters the trace in three places: it decides which
+magnitude apart.
+
+\paragraph{The user tolerance.}
+\code{tol} enters the trace in three places: it decides which
 weights sit on a bound at the linear-programming first vertex and at the start on a face
 of tied maximum returns (Section~\ref{sec:first}), and it bounds the violation of a
 bound, a row of $G$ or the gross cap that validation accepts after the projection.
