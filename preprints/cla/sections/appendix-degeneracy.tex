@@ -92,9 +92,10 @@ over-constrained family of $p=n$ overlapping caps, whose maximum-return vertex i
 degenerate, gives $32$, with up to $240$ rows active at once. No trace is off the
 frontier.
 
-Counting completed traces is not enough: a trace started at an arbitrary vertex of the
-tied face, rather than the one of Section~\ref{sec:first}, can complete and still fail
-the certificate.
+Counting completed traces would not be enough. The loop checks each turning point for
+feasibility, not for optimality, so a trace that went wrong, for instance by starting
+at a vertex of a tied face other than the one of Section~\ref{sec:first}, need not stop;
+only the certificate tells it from a correct one.
 
 The tied-means and group-cap families, the full-rank windows of
 Figure~\ref{fig:degeneracy} and both conditioning families satisfy the hypotheses of

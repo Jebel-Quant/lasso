@@ -31,20 +31,26 @@ universe it usually has more structure than that: multi-factor risk models, whic
 generalize the single-index model \citep{sharpe1963}, write it as a diagonal matrix
 plus a low-rank term. The large-scale methods cited above exploit structure through
 incremental factorizations, sparsity, or pivoting tied to an explicit matrix.
-\pkg{cvxcla} computes the same turning points as any CLA; its contribution is an
-\emph{interface} that makes the loop independent of how the covariance is stored, so
-the structure becomes a property of an exchangeable backend. The link between the CLA
+\pkg{cvxcla} computes the same turning points as any CLA; its contribution is a
+turning-point loop written so that it never needs the covariance as a matrix. Every
+step, including the start on a tied face, the gross-exposure lift and the singularity
+guard, uses only products with $\Sig$ or its blocks, solves against its free block and
+a condition estimate, so the structure becomes a property of an exchangeable backend. The operator
+protocol and the standard backends that implement these operations are provided by the
+companion package \pkg{cvx-linalg} \citep{cvxlinalg}; \pkg{cvxcla} is the frontier
+algorithm on top of them (Section~\ref{sec:operators}). The link between the CLA
 and the constrained LASSO is treated elsewhere
 \citep{schmelzer2026perspective,schmelzer2026lasso,schmelzer2026constrained}; this paper
 documents the software.
 
 \paragraph{Contributions.}
 \begin{enumerate}\setlength{\itemsep}{2pt}
-\item \textbf{An operator interface.} The turning-point loop reaches the covariance
-through a five-member protocol (Section~\ref{sec:operators}), so dense, factor, data-matrix
-and user-written backends run the same loop and return the same turning points. A
-diagonal-plus-low-rank backend solves the free block through the Woodbury identity and
-never forms an $n\times n$ matrix. Its gain grows with the free set: about $1.4\times$
+\item \textbf{A CLA on an operator interface.} The turning-point loop, with its start on
+a tied face, its gross-exposure lift and its singularity guard, reaches the covariance
+only through the five members of the \pkg{cvx-linalg} protocol
+(Section~\ref{sec:operators}), so dense, factor, data-matrix and user-written backends
+run the same loop and return the same turning points. With a diagonal-plus-low-rank
+backend the trace never forms an $n\times n$ matrix, not even for the lifted problem. Its gain grows with the free set: about $1.4\times$
 on a rank-$20$ factor model of the S\&P~500, where at most $55$ of $494$ assets are free
 at once (Section~\ref{sec:empirical}), and about $30\times$ at $n=2560$, in under $1$~MiB
 of working memory against $100$~MiB, on a synthetic market whose free set grows to every
