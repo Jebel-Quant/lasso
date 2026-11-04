@@ -42,7 +42,10 @@ and back-substitution gives
 \beta_\F = z^{\beta} - Y\nu^{\beta}.
 \end{equation}
 The dominant cost is the solve against $\Sig_{\F\F}$; for the plain budget $S$ is a
-scalar. With $1 < m_c \le n_\F$ the rows are first replaced by an orthonormal basis of
+scalar.
+
+\paragraph{Nearly dependent rows.}
+With $1 < m_c \le n_\F$ the rows are first replaced by an orthonormal basis of
 their span, $C_\F\trans = QR$, and the system is solved with $Q$ in place of
 $C_\F\trans$, the target $R^{-\mathsf{T}} r_2$, and the multipliers recovered by a
 triangular solve with $R$. Since $\operatorname{cond}(X\trans B X) \le \operatorname{cond}(B)\operatorname{cond}(X)^2$
@@ -54,6 +57,7 @@ dependent active rows lose accuracy in proportion to $\operatorname{cond}(C_\F)$
 sensitivity of the constraint data, and not to its square. Solving only for the free block keeps every step a dense solve of size
 $|\F|$, where \citet{markowitz2021} assemble one large KKT system over all variables.
 
+\paragraph{Reduced gradients.}
 To decide when a blocked asset should re-enter, the code forms the reduced gradients
 \begin{equation}
 \label{eq:gamma}
@@ -179,6 +183,7 @@ Appendix~\ref{sec:proof} gives the full argument, including the correspondence b
 the event types of the code and the complementary pairs of the problem.
 \end{proof}
 
+\paragraph{Beyond the hypotheses.}
 The proposition holds in exact arithmetic and under its hypotheses.
 Table~\ref{tab:coverage} sorts the features of the package by what is proved for them.
 Two weaker statements hold more widely. Because $\Sig \succ 0$ the optimiser
@@ -224,7 +229,8 @@ rather than a partial frontier. A partition with dependent active rows is refuse
 \label{tab:coverage}
 \end{table}
 
-In floating point the tie window and the slope floor make the computed signs agree with
+\paragraph{In floating point.}
+The tie window and the slope floor are meant to make the computed signs agree with
 the exact ones; that is not proved either. At run time every turning point is validated
 against the bounds, $A w = b$ and $G w \le h$ before it is accepted, and the KKT
 certificate of Section~\ref{sec:exactness} checks the traces of Table~\ref{tab:kkt}

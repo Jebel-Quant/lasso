@@ -2,9 +2,26 @@
 
 The Critical Line Algorithm computes the whole mean--variance frontier by walking its
 piecewise-linear path from the maximum-return to the minimum-variance portfolio.
-\pkg{cvxcla} takes each step with one block-eliminated KKT solve, resolves ties by a
-least-index rule under which the walk provably terminates (Proposition~\ref{prop:termination}),
-and reaches the covariance only through a five-member operator protocol. A factor risk
-model therefore yields the same turning points as the dense matrix it represents; with $2560$ assets and ten factors, on a market where every asset is free at some point, it does so about $30$ times faster, in under $1$~MiB of working memory beyond the stored frontier. There a general interior-point solver given the same factor form returns a grid of $100$ frontier portfolios at a similar cost, but only to its solver tolerance, with variances off in the third digit; on the S\&P~500, where few assets are free at once, the grid takes more than twenty times as long as the trace. The trace returns every turning point, exact up to round-off. The gain is one of scale and structure. Below about $200$
-assets the per-step overhead of \proglang{Python} dominates, and \pkg{qpOASES}, which
-follows the same path, is faster.
+\pkg{cvxcla} implements that walk so that it never needs the covariance as a matrix:
+every step, including the start on a tied face, the gross-exposure lift and the
+singularity guard, reaches $\Sig$ only through the five members of the \pkg{cvx-linalg}
+operator protocol. Dense, factor, data-matrix and user-written backends therefore run
+the same loop and return the same turning points. The loop handles box bounds, general
+linear equalities and inequalities, and a gross-exposure cap that the package lifts
+itself; a least-index tie-break makes it terminate provably under standard assumptions;
+every turning point is checked for feasibility; and an independent KKT certificate,
+which trusts neither the code's partition nor its multipliers, passes on every trace it
+was run on, up to $2560$ assets.
+
+A structured backend pays where the free set is large. On a factor market of $2560$
+assets in which every asset is free at some point, the factor backend traces the
+frontier about $30$ times faster than the dense one, in under $1$~MiB of working memory,
+and an interior-point grid of $100$ portfolios on the same factor form costs about as
+much, accurate only to its tolerance. On the S\&P~500, where few assets are free at
+once, the gain over the dense backend is about $1.4\times$, and the same grid takes more
+than twenty times as long as the exact trace.
+
+Three limitations remain. Below about $200$ assets the per-step overhead of
+\proglang{Python} dominates, and \pkg{qpOASES}, which follows the same path, is faster.
+A change in $\mu$ or $\Sig$ needs a full new trace, with no warm start from the old one.
+And the KKT certificate belongs to the replication script, not yet to the package.

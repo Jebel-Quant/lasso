@@ -1,4 +1,4 @@
-# Replication materials for "cvxcla: The Critical Line Algorithm with an Operator Interface in Python"
+# Replication materials for "cvxcla: An Operator-Based Critical Line Algorithm in Python"
 
 This script reproduces every figure, table and number in the paper. It is the experiment
 script of cvxcla 2.7.1 (`experiments/make_figures.py` at tag `v2.7.1`), less one
@@ -45,7 +45,7 @@ uv run make_figures.py r-cla
 ## Expected runtime and output
 
 The paper's results were computed on an Apple M4 Pro (14 cores, 48 GB) under macOS 15.6.1
-with Python 3.14.6. On that machine `all` takes about 50 minutes, nearly all of it in the
+with Python 3.14.6. On that machine `all` takes under an hour, nearly all of it in the
 two scaling sweeps (Sections 7.2 and 7.4) and the single-thread timings (`threads`);
 `all --quick` skips those three and takes a few minutes.
 
